@@ -68,6 +68,10 @@ export async function initializeSchema(db: SQLiteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(accountId);
     CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(categoryId);
     CREATE INDEX IF NOT EXISTS idx_budgets_period ON budgets(period, startDate);
+
+    UPDATE accounts SET type = 'debit' WHERE type = 'bank';
+    UPDATE accounts SET type = 'credit' WHERE type = 'card';
+    UPDATE accounts SET type = 'ewallet' WHERE type = 'wallet';
   `);
 }
 

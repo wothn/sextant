@@ -29,12 +29,12 @@ describe("account.service", () => {
     jest.spyOn(Date, "now").mockReturnValue(1700000000000);
     jest.spyOn(Math, "random").mockReturnValue(0.5);
 
-    const accountId = await createAccount("  招商银行卡  ", "bank");
+    const accountId = await createAccount("  招商银行卡  ", "debit");
 
     expect(accountId).toBe("1700000000000-8");
     expect(db.runAsync).toHaveBeenCalledWith(
       "INSERT INTO accounts (id, name, type, balance, currency, isActive, createdAt, updatedAt) VALUES (?, ?, ?, 0, ?, 1, ?, ?)",
-      ["1700000000000-8", "招商银行卡", "bank", "CNY", 1700000000000, 1700000000000],
+      ["1700000000000-8", "招商银行卡", "debit", "CNY", 1700000000000, 1700000000000],
     );
   });
 
