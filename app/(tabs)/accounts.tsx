@@ -32,18 +32,6 @@ export default function AccountsScreen() {
 
   return (
     <Screen contentContainerStyle={{ paddingBottom: 132 }}>
-      <View style={{ gap: 4 }}>
-        <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
-          Accounts
-        </Text>
-        <Text variant="headlineMedium" style={{ fontWeight: "700" }}>
-          账户与资金空间
-        </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
-          用统一的账户体系整理现金、钱包、银行卡和信用卡。
-        </Text>
-      </View>
-
       <Card>
         <Card.Content style={{ gap: 10 }}>
           <Text variant="titleMedium">创建账户</Text>
@@ -84,7 +72,7 @@ export default function AccountsScreen() {
               >
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text variant="titleLarge">{account.name}</Text>
-                  <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+                  <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }} tabularNums>
                     {`${account.type} · 余额 ¥${account.balance.toFixed(2)}`}
                   </Text>
                 </View>

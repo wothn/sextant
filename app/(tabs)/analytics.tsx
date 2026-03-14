@@ -107,20 +107,17 @@ export default function AnalyticsScreen() {
     }
   };
 
+  const nestedCardStyle = {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceAlt,
+    padding: 12,
+    gap: 8,
+  } as const;
+
   return (
     <Screen contentContainerStyle={{ paddingBottom: 132 }}>
-      <View style={{ gap: 4 }}>
-        <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
-          Analytics
-        </Text>
-        <Text variant="headlineMedium" style={{ fontWeight: "700" }}>
-          本月资金轮廓
-        </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
-          用趋势、结构和预算进度快速判断你的现金流状态。
-        </Text>
-      </View>
-
       <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
         {[
           { label: "本月收入", value: formatCurrency(summary.income), tone: theme.colors.success },
@@ -128,7 +125,7 @@ export default function AnalyticsScreen() {
           {
             label: "本月净额",
             value: formatSignedCurrency(summary.net),
-            tone: theme.colors.accent,
+            tone: summary.net >= 0 ? theme.colors.success : theme.colors.danger,
           },
         ].map((item) => (
           <Card key={item.label} style={{ flexBasis: "31%", flexGrow: 1, borderRadius: 16 }}>
@@ -136,7 +133,11 @@ export default function AnalyticsScreen() {
               <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
                 {item.label}
               </Text>
-              <Text variant="titleLarge" style={{ color: item.tone, fontWeight: "700" }}>
+              <Text
+                variant="titleLarge"
+                tabularNums
+                style={{ color: item.tone, fontWeight: "700" }}
+              >
                 {item.value}
               </Text>
             </Card.Content>
@@ -218,15 +219,19 @@ export default function AnalyticsScreen() {
           >
             {trend.slice(-3).map((item) => (
               <View key={item.monthKey} style={{ minWidth: 88, gap: 4 }}>
-                <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
-                  {item.label}
-                </Text>
-                <Text variant="bodyMedium">收入 {formatCurrency(item.income)}</Text>
-                <Text variant="bodyMedium">支出 {formatCurrency(item.expense)}</Text>
-              </View>
-            ))}
-          </View>
-        </Card.Content>
+              <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
+                {item.label}
+              </Text>
+              <Text variant="bodyMedium" tabularNums>
+                收入 {formatCurrency(item.income)}
+              </Text>
+              <Text variant="bodyMedium" tabularNums>
+                支出 {formatCurrency(item.expense)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Card.Content>
       </Card>
 
       <Card style={{ borderRadius: 18 }}>
@@ -240,33 +245,39 @@ export default function AnalyticsScreen() {
               <View style={{ flex: 1, gap: 10 }}>
                 {categories.slice(0, 5).map((item) => (
                   <View key={item.categoryName} style={{ gap: 4 }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
-                        <View
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                      <View
                           style={{
                             width: 10,
                             height: 10,
                             borderRadius: 5,
                             backgroundColor: item.categoryColor,
                           }}
-                        />
-                        <Text variant="bodyMedium">{item.categoryName}</Text>
-                      </View>
-                      <Text variant="labelLarge">{formatCompactPercent(item.share)}</Text>
+                      />
+                      <Text variant="bodyMedium">{item.categoryName}</Text>
                     </View>
-                    <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
-                      {formatCurrency(item.amount)} · {item.transactionCount} 笔
+                    <Text variant="labelLarge" tabularNums>
+                      {formatCompactPercent(item.share)}
                     </Text>
                   </View>
-                ))}
-              </View>
+                    <Text
+                      variant="bodySmall"
+                      style={{ color: theme.colors.textMuted }}
+                      tabularNums
+                    >
+                      {formatCurrency(item.amount)} · {item.transactionCount} 笔
+                    </Text>
+                </View>
+              ))}
             </View>
+          </View>
           )}
         </Card.Content>
       </Card>
@@ -285,20 +296,18 @@ export default function AnalyticsScreen() {
             </Text>
           </View>
 
-          <Card style={{ borderRadius: 14 }}>
-            <Card.Content style={{ gap: 6 }}>
-              <Text variant="labelLarge">预算池概览</Text>
-              <Text variant="titleMedium">
-                已使用 {formatCurrency(totalBudgetExpense)} / {formatCurrency(totalBudgetAmount)}
-              </Text>
-              <ProgressBar
-                progress={
-                  totalBudgetAmount > 0 ? Math.min(totalBudgetExpense / totalBudgetAmount, 1) : 0
-                }
-                color={riskBudgetCount > 0 ? theme.colors.danger : theme.colors.accent}
-              />
-            </Card.Content>
-          </Card>
+          <View style={nestedCardStyle}>
+            <Text variant="labelLarge">预算池概览</Text>
+            <Text variant="titleMedium" tabularNums>
+              已使用 {formatCurrency(totalBudgetExpense)} / {formatCurrency(totalBudgetAmount)}
+            </Text>
+            <ProgressBar
+              progress={
+                totalBudgetAmount > 0 ? Math.min(totalBudgetExpense / totalBudgetAmount, 1) : 0
+              }
+              color={riskBudgetCount > 0 ? theme.colors.danger : theme.colors.accent}
+            />
+          </View>
 
           {!error && budgets.length === 0 ? (
             <Text>当前还没有预算，先去设置页添加。</Text>
@@ -308,26 +317,24 @@ export default function AnalyticsScreen() {
             const over = progress >= item.alertThreshold;
 
             return (
-              <Card key={item.categoryId} style={{ borderRadius: 14 }}>
-                <Card.Content style={{ gap: 8 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text>{item.categoryName}</Text>
-                    <Text>{`${formatCurrency(item.expenseAmount)} / ${formatCurrency(item.budgetAmount)}`}</Text>
-                  </View>
-                  <ProgressBar
-                    progress={Math.min(progress, 1)}
-                    color={over ? theme.colors.danger : theme.colors.accent}
-                  />
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: over ? theme.colors.danger : theme.colors.textMuted }}
-                  >
-                    {over
-                      ? `已达到预警阈值 ${formatCompactPercent(item.alertThreshold)}`
-                      : `剩余 ${formatCurrency(Math.max(item.budgetAmount - item.expenseAmount, 0))}`}
-                  </Text>
-                </Card.Content>
-              </Card>
+              <View key={item.categoryId} style={nestedCardStyle}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text>{item.categoryName}</Text>
+                  <Text tabularNums>{`${formatCurrency(item.expenseAmount)} / ${formatCurrency(item.budgetAmount)}`}</Text>
+                </View>
+                <ProgressBar
+                  progress={Math.min(progress, 1)}
+                  color={over ? theme.colors.danger : theme.colors.accent}
+                />
+                <Text
+                  variant="bodySmall"
+                  style={{ color: over ? theme.colors.danger : theme.colors.textMuted }}
+                >
+                  {over
+                    ? `已达到预警阈值 ${formatCompactPercent(item.alertThreshold)}`
+                    : `剩余 ${formatCurrency(Math.max(item.budgetAmount - item.expenseAmount, 0))}`}
+                </Text>
+              </View>
             );
           })}
         </Card.Content>
@@ -338,36 +345,36 @@ export default function AnalyticsScreen() {
           <Text variant="titleMedium">账户视图</Text>
           {!error && accounts.length === 0 ? <Text>还没有可展示的账户数据。</Text> : null}
           {accounts.map((account) => (
-            <Card key={account.accountId} style={{ borderRadius: 14 }}>
-              <Card.Content style={{ gap: 8 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <View>
-                    <Text variant="titleSmall">{account.accountName}</Text>
-                    <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
-                      {account.accountType} · {account.transactionCount} 笔
-                    </Text>
-                  </View>
-                  <Text variant="titleSmall">余额 {formatCurrency(account.balance)}</Text>
-                </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                  <Text variant="bodyMedium" style={{ color: theme.colors.success }}>
-                    收入 {formatCurrency(account.income)}
-                  </Text>
-                  <Text variant="bodyMedium" style={{ color: theme.colors.danger }}>
-                    支出 {formatCurrency(account.expense)}
-                  </Text>
-                  <Text variant="bodyMedium" style={{ color: theme.colors.accent }}>
-                    净额 {formatSignedCurrency(account.net)}
+            <View key={account.accountId} style={nestedCardStyle}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <View>
+                  <Text variant="titleSmall">{account.accountName}</Text>
+                  <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
+                    {account.accountType} · {account.transactionCount} 笔
                   </Text>
                 </View>
-              </Card.Content>
-            </Card>
+                <Text variant="titleSmall" tabularNums>
+                  余额 {formatCurrency(account.balance)}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                <Text variant="bodyMedium" style={{ color: theme.colors.success }} tabularNums>
+                  收入 {formatCurrency(account.income)}
+                </Text>
+                <Text variant="bodyMedium" style={{ color: theme.colors.danger }} tabularNums>
+                  支出 {formatCurrency(account.expense)}
+                </Text>
+                <Text variant="bodyMedium" style={{ color: theme.colors.accent }} tabularNums>
+                  净额 {formatSignedCurrency(account.net)}
+                </Text>
+              </View>
+            </View>
           ))}
         </Card.Content>
       </Card>

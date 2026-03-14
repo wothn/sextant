@@ -55,6 +55,8 @@ const TEXT_VARIANTS = {
   labelSmall: { fontSize: 11, lineHeight: 14, fontWeight: "600" as const },
 } as const;
 
+const FONT_FAMILY = "Avenir Next";
+
 type TextVariant = keyof typeof TEXT_VARIANTS;
 type IconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
 
@@ -120,19 +122,26 @@ interface TextProps extends PropsWithChildren {
   accessibilityLabel?: string;
   numberOfLines?: number;
   adjustsFontSizeToFit?: boolean;
+  tabularNums?: boolean;
 }
 
 export function Text({
   children,
   variant = "bodyMedium",
   style,
+  tabularNums = false,
   ...rest
 }: TextProps) {
   const { colors } = useTheme();
 
   return (
     <ReactNativeText
-      style={[TEXT_VARIANTS[variant], { color: colors.text }, style]}
+      style={[
+        TEXT_VARIANTS[variant],
+        { color: colors.text, fontFamily: FONT_FAMILY },
+        tabularNums ? { fontVariant: ["tabular-nums"] } : null,
+        style,
+      ]}
       {...rest}
     >
       {children}
@@ -440,6 +449,7 @@ export function TextInput({
             borderColor: colors.borderStrong,
             backgroundColor: colors.surface,
             color: colors.text,
+            fontFamily: FONT_FAMILY,
           },
         ]}
       />
@@ -623,7 +633,7 @@ const styles = StyleSheet.create({
     width: 280,
     height: 280,
     borderRadius: 140,
-    opacity: 0.38,
+    opacity: 0.28,
   },
   screenGlowBottom: {
     position: "absolute",
@@ -632,7 +642,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    opacity: 0.18,
+    opacity: 0.12,
   },
   buttonBase: {
     borderRadius: 12,
@@ -659,10 +669,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     gap: 10,
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
   chip: {
     borderRadius: 10,
@@ -699,10 +709,10 @@ const styles = StyleSheet.create({
   surface: {
     borderRadius: 20,
     borderWidth: 1,
-    shadowOpacity: 0.1,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,

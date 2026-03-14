@@ -160,6 +160,8 @@ export default function QuickEntrySheetForm({
   const selectedDate = new Date(value.transactionDate);
   const selectedHour = pad(selectedDate.getHours());
   const selectedMinute = pad(selectedDate.getMinutes());
+  const expenseSelected = value.type === "expense";
+  const incomeSelected = value.type === "income";
 
   const handleTypeChange = (nextType: EntryType): void => {
     if (nextType === value.type) {
@@ -286,7 +288,7 @@ export default function QuickEntrySheetForm({
               style={[
                 styles.typeSwitch,
                 {
-                  backgroundColor: theme.colors.surfaceStrong,
+                  backgroundColor: theme.colors.surfaceAlt,
                   borderColor: theme.colors.border,
                 },
               ]}
@@ -297,18 +299,13 @@ export default function QuickEntrySheetForm({
                 onPress={() => handleTypeChange("expense")}
                 style={[
                   styles.typeButton,
-                  value.type === "expense"
-                    ? { backgroundColor: theme.colors.accent }
-                    : null,
+                  expenseSelected ? { backgroundColor: theme.colors.danger } : null,
                 ]}
               >
                 <Text
                   variant="labelLarge"
                   style={{
-                    color:
-                      value.type === "expense"
-                        ? theme.colors.onAccent
-                        : theme.colors.text,
+                    color: expenseSelected ? theme.colors.onAccent : theme.colors.text,
                     fontWeight: "700",
                   }}
                 >
@@ -322,18 +319,13 @@ export default function QuickEntrySheetForm({
                 onPress={() => handleTypeChange("income")}
                 style={[
                   styles.typeButton,
-                  value.type === "income"
-                    ? { backgroundColor: theme.colors.accent }
-                    : null,
+                  incomeSelected ? { backgroundColor: theme.colors.success } : null,
                 ]}
               >
                 <Text
                   variant="labelLarge"
                   style={{
-                    color:
-                      value.type === "income"
-                        ? theme.colors.onAccent
-                        : theme.colors.text,
+                    color: incomeSelected ? theme.colors.onAccent : theme.colors.text,
                     fontWeight: "700",
                   }}
                 >
@@ -373,6 +365,7 @@ export default function QuickEntrySheetForm({
               accessibilityLabel="金额"
               numberOfLines={1}
               adjustsFontSizeToFit
+              tabularNums
               style={{
                 fontWeight: "800",
                 color: theme.colors.text,
@@ -478,15 +471,16 @@ export default function QuickEntrySheetForm({
                         accessibilityRole="button"
                         accessibilityLabel="删除金额"
                         onPress={handleDelete}
-                        style={[
+                        style={({ pressed }) => [
                           styles.keypadButton,
-                        styles.deleteKeypadButton,
-                        {
-                          backgroundColor: theme.colors.surfaceAlt,
-                          borderWidth: 1,
-                          borderColor: theme.colors.borderStrong,
-                        },
-                      ]}
+                          styles.deleteKeypadButton,
+                          {
+                            backgroundColor: theme.colors.surfaceAlt,
+                            borderWidth: 1,
+                            borderColor: theme.colors.borderStrong,
+                          },
+                          pressed ? { transform: [{ scale: 0.98 }] } : null,
+                        ]}
                     >
                         <MaterialCommunityIcons
                           name="backspace-outline"
@@ -503,13 +497,14 @@ export default function QuickEntrySheetForm({
                       accessibilityRole="button"
                       accessibilityLabel={key}
                       onPress={() => handleDigitPress(key)}
-                      style={[
+                      style={({ pressed }) => [
                         styles.keypadButton,
                         {
                           backgroundColor: theme.colors.surface,
                           borderWidth: 1,
                           borderColor: theme.colors.borderStrong,
                         },
+                        pressed ? { transform: [{ scale: 0.98 }], backgroundColor: theme.colors.surfaceAlt } : null,
                       ]}
                     >
                       <Text
