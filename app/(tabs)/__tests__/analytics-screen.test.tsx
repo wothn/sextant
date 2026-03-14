@@ -79,8 +79,6 @@ describe("AnalyticsScreen", () => {
     renderWithProviders(<AnalyticsScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText("Analytics")).toBeTruthy();
-      expect(screen.getByText("本月资金轮廓")).toBeTruthy();
       expect(screen.getByText("本月收入")).toBeTruthy();
       expect(screen.getByText("¥3000.00")).toBeTruthy();
       expect(screen.getByText("近 6 月趋势")).toBeTruthy();

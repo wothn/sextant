@@ -32,8 +32,6 @@ describe("AccountsScreen", () => {
     renderWithProviders(<AccountsScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText("Accounts")).toBeTruthy();
-      expect(screen.getByText("账户与资金空间")).toBeTruthy();
       expect(screen.getByText("新增账户")).toBeTruthy();
       expect(screen.getByText("现金")).toBeTruthy();
       expect(screen.getByText("cash · 余额 ¥100.00")).toBeTruthy();

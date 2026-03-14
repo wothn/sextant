@@ -53,23 +53,49 @@ async function loadHomeScreenData(): Promise<HomeScreenData> {
   };
 }
 
-function getGreeting(): { greeting: string; subtext: string } {
-  const hour = new Date().getHours();
+const DAILY_LINES = [
+  "把今天折成一页",
+  "让心事慢慢落地",
+  "给生活一点微光",
+  "把日子写轻一点",
+  "把勇气放进清晨",
+  "把温柔留给自己",
+  "把风交给方向",
+  "把念头归于安静",
+  "把时间交给当下",
+  "让步子从容些",
+  "把忙碌变得可爱",
+  "把期待留给晴天",
+  "把浪漫装进口袋",
+  "把心跳交给节奏",
+];
+
+function getDayOfYear(date: Date): number {
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date.getTime() - start.getTime();
+  return Math.floor(diff / 86_400_000);
+}
+
+function getGreeting(): { greeting: string; mood: string } {
+  const now = new Date();
+  const hour = now.getHours();
+  const dayOfYear = getDayOfYear(now);
+  const greeting = DAILY_LINES[dayOfYear % DAILY_LINES.length] ?? "把今天折成一页";
 
   if (hour >= 0 && hour < 5) {
-    return { greeting: "深夜了", subtext: "星辰相伴，早些休息" };
+    return { greeting, mood: "夜色未央" };
   } else if (hour >= 5 && hour < 9) {
-    return { greeting: "早安", subtext: "晨光微熹，新的一天开始了" };
+    return { greeting, mood: "晨光微澜" };
   } else if (hour >= 9 && hour < 11) {
-    return { greeting: "上午好", subtext: "愿时光温柔以待" };
+    return { greeting, mood: "风从窗边过" };
   } else if (hour >= 11 && hour < 14) {
-    return { greeting: "午安", subtext: "今日正好" };
+    return { greeting, mood: "日光正好" };
   } else if (hour >= 14 && hour < 17) {
-    return { greeting: "下午好", subtext: "岁月静好" };
+    return { greeting, mood: "云影缓行" };
   } else if (hour >= 17 && hour < 19) {
-    return { greeting: "傍晚了", subtext: "落日余晖正温柔" };
+    return { greeting, mood: "暮色初至" };
   } else {
-    return { greeting: "晚安", subtext: "今夜好梦" };
+    return { greeting, mood: "灯火将眠" };
   }
 }
 
@@ -124,88 +150,73 @@ export default function HomeScreen() {
     };
   }, [selectedTransaction]);
 
-  const { greeting, subtext } = getGreeting();
+  const { greeting, mood } = getGreeting();
 
   return (
     <>
       <Screen contentContainerStyle={{ paddingBottom: 132 }}>
         <View style={{ gap: 4 }}>
-          <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
-            Sextant Ledger
-          </Text>
           <Text variant="headlineMedium" style={{ fontWeight: "700", letterSpacing: -0.4 }}>
             {greeting}
           </Text>
           <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
-            {subtext} · {formatDate()}
+            {formatDate()} · {mood}
           </Text>
         </View>
 
-        <Card
-          style={{
-            borderRadius: 22,
-          }}
-        >
-          <Card.Content style={{ gap: 18 }}>
-            <View
-              style={{
-                borderRadius: 16,
-                padding: 16,
-                backgroundColor: theme.colors.surface,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                gap: 8,
-              }}
-            >
+        <Card style={{ borderRadius: 22 }}>
+          <Card.Content style={{ gap: 12 }}>
+            <View style={{ gap: 6 }}>
               <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
                 今天已经花了
               </Text>
-              <Text
-                variant="displaySmall"
-                style={{ color: theme.colors.danger, fontWeight: "800" }}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
               >
-                {formatCurrency(todaySummary.expense)}
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
-                净变化 {formatSignedCurrency(todaySummary.net)}
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-              {[
-                {
-                  label: "本月支出",
-                  value: formatCurrency(monthSummary.expense),
-                  tone: theme.colors.danger,
-                },
-                {
-                  label: "本月收入",
-                  value: formatSignedCurrency(monthSummary.net),
-                  tone: monthSummary.net >= 0 ? theme.colors.success : theme.colors.danger,
-                },
-              ].map((item) => (
-                <View
-                  key={item.label}
-                  style={{
-                    flex: 1,
-                    minWidth: 132,
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    borderColor: theme.colors.border,
-                    paddingHorizontal: 14,
-                    paddingVertical: 12,
-                    backgroundColor: theme.colors.surface,
-                    gap: 4,
-                  }}
+                <Text
+                  variant="headlineSmall"
+                  tabularNums
+                  style={{ color: theme.colors.danger, fontWeight: "800" }}
                 >
-                  <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
-                    {item.label}
+                  {formatCurrency(todaySummary.expense)}
+                </Text>
+                <View style={{ alignItems: "flex-end", gap: 2 }}>
+                  <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
+                    净变化
                   </Text>
-                  <Text variant="titleLarge" style={{ color: item.tone, fontWeight: "700" }}>
-                    {item.value}
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: theme.colors.textMuted }}
+                    tabularNums
+                  >
+                    {formatSignedCurrency(todaySummary.net)}
                   </Text>
                 </View>
-              ))}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
+                  本月支出
+                </Text>
+                <Text variant="titleMedium" tabularNums style={{ color: theme.colors.danger }}>
+                  {formatCurrency(monthSummary.expense)}
+                </Text>
+              </View>
+              <View style={{ flex: 1, gap: 4, alignItems: "flex-end" }}>
+                <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
+                  本月收入
+                </Text>
+                <Text variant="titleMedium" tabularNums style={{ color: theme.colors.success }}>
+                  {formatCurrency(monthSummary.income)}
+                </Text>
+              </View>
             </View>
           </Card.Content>
         </Card>
@@ -261,13 +272,13 @@ export default function HomeScreen() {
                     justifyContent: "flex-end",
                   }}
                 >
-                    <Text variant="labelMedium" style={{ color: theme.colors.danger }}>
+                  <Text variant="labelMedium" style={{ color: theme.colors.danger }} tabularNums>
                     支 {formatCurrency(group.totalExpense)}
                   </Text>
-                    <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
+                  <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
                     ·
                   </Text>
-                    <Text variant="labelMedium" style={{ color: theme.colors.success }}>
+                  <Text variant="labelMedium" style={{ color: theme.colors.success }} tabularNums>
                     收 {formatCurrency(group.totalIncome)}
                   </Text>
                 </View>
@@ -285,6 +296,14 @@ export default function HomeScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={`${categoryName} 交易详情`}
                       onPress={() => setSelectedTransaction(item)}
+                      style={({ pressed }) => [
+                        {
+                          borderRadius: 12,
+                          paddingVertical: 6,
+                          paddingHorizontal: 4,
+                        },
+                        pressed ? { backgroundColor: theme.colors.surfaceAlt } : null,
+                      ]}
                     >
                       <View
                         style={{
@@ -319,6 +338,7 @@ export default function HomeScreen() {
                                     : theme.colors.accent,
                               fontWeight: "700",
                             }}
+                            tabularNums
                           >
                             {formatSignedCurrency(
                               item.type === "expense" ? -item.amount : item.amount,
@@ -388,6 +408,7 @@ export default function HomeScreen() {
                           : theme.colors.accent,
                     fontWeight: "700",
                   }}
+                  tabularNums
                 >
                   {selectedTransactionSummary.amount}
                 </Text>

@@ -39,8 +39,6 @@ describe("SettingsScreen", () => {
     renderWithProviders(<SettingsScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeTruthy();
-      expect(screen.getByText("预算与数据管理")).toBeTruthy();
       expect(screen.getByText("本月预算设置")).toBeTruthy();
       expect(screen.getByText(/当前分类：/)).toBeTruthy();
       expect(screen.getByText("餐饮")).toBeTruthy();

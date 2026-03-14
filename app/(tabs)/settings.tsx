@@ -64,18 +64,6 @@ export default function SettingsScreen() {
 
   return (
     <Screen contentContainerStyle={{ paddingBottom: 132 }}>
-      <View style={{ gap: 4 }}>
-        <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
-          Settings
-        </Text>
-        <Text variant="headlineMedium" style={{ fontWeight: "700" }}>
-          预算与数据管理
-        </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
-          用简洁规则管理预算阈值，并把数据安全导出到本地。
-        </Text>
-      </View>
-
       <Card>
         <Card.Content style={{ gap: 10 }}>
           <Text variant="titleMedium">本月预算设置</Text>

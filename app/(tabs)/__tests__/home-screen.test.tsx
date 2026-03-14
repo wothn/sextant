@@ -80,12 +80,12 @@ describe("HomeScreen", () => {
     renderWithProviders(<HomeScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText("Sextant Ledger")).toBeTruthy();
       expect(screen.getByText("今天已经花了")).toBeTruthy();
       expect(screen.getByText("¥35.00")).toBeTruthy();
       expect(screen.getByText("本月支出")).toBeTruthy();
       expect(screen.getByText("本月收入")).toBeTruthy();
-      expect(screen.getByText("今天 · 3月8日 周日")).toBeTruthy();
+      expect(screen.getByText("¥3000.00")).toBeTruthy();
+      expect(screen.getByText(/3月8日 周日/)).toBeTruthy();
       expect(screen.getByText("餐饮")).toBeTruthy();
       expect(screen.getByText("午饭")).toBeTruthy();
       expect(screen.getAllByText("银行卡").length).toBeGreaterThan(0);
