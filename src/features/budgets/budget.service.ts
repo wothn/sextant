@@ -81,6 +81,7 @@ export async function listCurrentMonthBudgetProgress(): Promise<BudgetProgressIt
       WHERE b.period = 'monthly'
         AND b.startDate = ?
         AND b.isActive = 1
+        AND c.includeInSpending = 1
    GROUP BY b.categoryId, c.name, b.amount, b.alertThreshold
    ORDER BY expenseAmount DESC`,
     [start, end, start],

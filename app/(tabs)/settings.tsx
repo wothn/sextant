@@ -20,11 +20,12 @@ export default function SettingsScreen() {
 
     const loadCategories = async (): Promise<void> => {
       const rows = await listCategories("expense");
+      const spendingRows = rows.filter((item) => item.includeInSpending === 1);
       if (!mounted) {
         return;
       }
-      setCategories(rows);
-      setSelectedCategory((current) => current ?? rows[0]?.id ?? null);
+      setCategories(spendingRows);
+      setSelectedCategory((current) => current ?? spendingRows[0]?.id ?? null);
     };
 
     void loadCategories();

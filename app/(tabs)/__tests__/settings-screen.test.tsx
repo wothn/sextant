@@ -28,8 +28,8 @@ jest.mock("@/src/lib/backup/backup.service", () => ({
 describe("SettingsScreen", () => {
   beforeEach(() => {
     mockListCategories.mockResolvedValue([
-      { id: "cat-1", name: "餐饮", type: "expense" },
-      { id: "cat-2", name: "交通", type: "expense" },
+      { id: "cat-1", name: "餐饮", type: "expense", includeInSpending: 1 },
+      { id: "cat-2", name: "交通", type: "expense", includeInSpending: 1 },
     ]);
     mockUpsertMonthlyBudget.mockResolvedValue("budget-1");
     mockExportTransactionsCsv.mockResolvedValue("file:///documents/export.csv");

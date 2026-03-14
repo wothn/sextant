@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-import type { Category } from "@/src/types/domain";
+import type { Category, PaymentMethod } from "@/src/types/domain";
 import { Button, Chip, Dialog, Divider, Modal, Portal, Surface, Text, useTheme } from "@/src/ui";
 
 type EntryType = "expense" | "income";
@@ -13,12 +13,14 @@ export interface QuickEntryFormValue {
   type: EntryType;
   amountText: string;
   categoryId: string | null;
+  paymentMethodId: string | null;
   transactionDate: number;
 }
 
 interface QuickEntrySheetFormProps {
   visible: boolean;
   categories: Category[];
+  paymentMethods: PaymentMethod[];
   value: QuickEntryFormValue;
   saving?: boolean;
   message?: string;
@@ -111,6 +113,7 @@ function buildMinuteOptions(): string[] {
 export default function QuickEntrySheetForm({
   visible,
   categories,
+  paymentMethods,
   value,
   saving = false,
   message = "",
@@ -136,6 +139,10 @@ export default function QuickEntrySheetForm({
     () => categories.find((item) => item.id === value.categoryId) ?? null,
     [categories, value.categoryId],
   );
+  const selectedPaymentMethod = useMemo(
+    () => paymentMethods.find((item) => item.id === value.paymentMethodId) ?? null,
+    [paymentMethods, value.paymentMethodId],
+  );
   const monthMatrix = useMemo(() => getMonthMatrix(calendarMonth), [calendarMonth]);
   const hourOptions = useMemo(() => buildHourOptions(), []);
   const minuteOptions = useMemo(() => buildMinuteOptions(), []);
@@ -159,6 +166,10 @@ export default function QuickEntrySheetForm({
 
   const handleCategorySelect = (categoryId: string): void => {
     onChange({ categoryId });
+  };
+
+  const handlePaymentMethodSelect = (paymentMethodId: string | null): void => {
+    onChange({ paymentMethodId });
   };
 
   const handleDigitPress = (digit: string): void => {
@@ -409,6 +420,43 @@ export default function QuickEntrySheetForm({
                   selected={value.categoryId === item.id}
                   showSelectedOverlay
                   onPress={() => handleCategorySelect(item.id)}
+                  style={styles.categoryChip}
+                >
+                  {item.name}
+                </Chip>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.categorySection}>
+            <View style={styles.categoryHeader}>
+              <Text variant="titleMedium" style={{ fontWeight: "700" }}>
+                支付方式
+              </Text>
+              <Text
+                variant="bodyMedium"
+                numberOfLines={1}
+                style={[styles.categoryHint, { color: theme.colors.textMuted }]}
+              >
+                {selectedPaymentMethod ? `已选：${selectedPaymentMethod.name}` : "可选，默认不设置"}
+              </Text>
+            </View>
+
+            <View style={styles.categoryList}>
+              <Chip
+                selected={value.paymentMethodId === null}
+                showSelectedOverlay
+                onPress={() => handlePaymentMethodSelect(null)}
+                style={styles.categoryChip}
+              >
+                不设置
+              </Chip>
+              {paymentMethods.map((item) => (
+                <Chip
+                  key={item.id}
+                  selected={value.paymentMethodId === item.id}
+                  showSelectedOverlay
+                  onPress={() => handlePaymentMethodSelect(item.id)}
                   style={styles.categoryChip}
                 >
                   {item.name}

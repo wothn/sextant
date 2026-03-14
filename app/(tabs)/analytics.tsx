@@ -8,18 +8,15 @@ import {
 import { DonutChart } from "@/src/components/charts/DonutChart";
 import { TrendLineChart } from "@/src/components/charts/TrendLineChart";
 import {
-  getCurrentMonthAccountSummaries,
   getCurrentMonthCategoryBreakdown,
   getCurrentMonthSummary,
   getMonthlyTrend,
-  type AccountMonthlySummary,
   type CategoryBreakdownItem,
   type MonthlyTrendPoint,
 } from "@/src/features/transactions/transaction.service";
 import { useAsyncData } from "@/src/hooks/use-async-data";
 import { formatCompactPercent, formatCurrency, formatSignedCurrency } from "@/src/lib/format";
 import { useUIStore } from "@/src/store/ui.store";
-import { getAccountTypeLabel } from "@/src/types/domain";
 import { Button, Card, ProgressBar, Screen, Text, useTheme } from "@/src/ui";
 
 interface AnalyticsScreenData {
@@ -30,7 +27,6 @@ interface AnalyticsScreenData {
   };
   trend: MonthlyTrendPoint[];
   categories: CategoryBreakdownItem[];
-  accounts: AccountMonthlySummary[];
   budgets: BudgetProgressItem[];
 }
 
@@ -42,17 +38,15 @@ const INITIAL_ANALYTICS_SCREEN_DATA: AnalyticsScreenData = {
   },
   trend: [],
   categories: [],
-  accounts: [],
   budgets: [],
 };
 
 async function loadAnalyticsScreenData(): Promise<AnalyticsScreenData> {
-  const [summary, budgets, trend, categories, accounts] = await Promise.all([
+  const [summary, budgets, trend, categories] = await Promise.all([
     getCurrentMonthSummary(),
     listCurrentMonthBudgetProgress(),
     getMonthlyTrend(6),
     getCurrentMonthCategoryBreakdown(),
-    getCurrentMonthAccountSummaries(),
   ]);
 
   return {
@@ -60,7 +54,6 @@ async function loadAnalyticsScreenData(): Promise<AnalyticsScreenData> {
     budgets,
     trend,
     categories,
-    accounts,
   };
 }
 
@@ -73,7 +66,7 @@ export default function AnalyticsScreen() {
     fetcher: loadAnalyticsScreenData,
     deps: [refreshKey],
   });
-  const { accounts, budgets, categories, summary, trend } = data;
+  const { budgets, categories, summary, trend } = data;
 
   const riskBudgetCount = useMemo(
     () =>
@@ -338,45 +331,6 @@ export default function AnalyticsScreen() {
               </View>
             );
           })}
-        </Card.Content>
-      </Card>
-
-      <Card style={{ borderRadius: 18 }}>
-        <Card.Content style={{ gap: 12 }}>
-          <Text variant="titleMedium">账户视图</Text>
-          {!error && accounts.length === 0 ? <Text>还没有可展示的账户数据。</Text> : null}
-          {accounts.map((account) => (
-            <View key={account.accountId} style={nestedCardStyle}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <View>
-                  <Text variant="titleSmall">{account.accountName}</Text>
-                  <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
-                    {getAccountTypeLabel(account.accountType)} · {account.transactionCount} 笔
-                  </Text>
-                </View>
-                <Text variant="titleSmall" tabularNums>
-                  余额 {formatCurrency(account.balance)}
-                </Text>
-              </View>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                <Text variant="bodyMedium" style={{ color: theme.colors.success }} tabularNums>
-                  收入 {formatCurrency(account.income)}
-                </Text>
-                <Text variant="bodyMedium" style={{ color: theme.colors.danger }} tabularNums>
-                  支出 {formatCurrency(account.expense)}
-                </Text>
-                <Text variant="bodyMedium" style={{ color: theme.colors.accent }} tabularNums>
-                  净额 {formatSignedCurrency(account.net)}
-                </Text>
-              </View>
-            </View>
-          ))}
         </Card.Content>
       </Card>
     </Screen>
