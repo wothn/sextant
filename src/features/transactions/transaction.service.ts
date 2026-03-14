@@ -1,8 +1,10 @@
-import type { AccountType, Category, TransactionType } from "@/src/types/domain";
+import type { Category, PaymentMethod, TransactionType } from "@/src/types/domain";
 
 import { getDb } from "@/src/db/client";
 import { getDateKey, getDayRange, getMonthKey, getMonthRange } from "@/src/lib/date";
 import { generateId } from "@/src/lib/id";
+
+type EntryTransactionType = Exclude<TransactionType, "transfer">;
 
 export interface TransactionListItem {
   id: string;
@@ -13,7 +15,8 @@ export interface TransactionListItem {
   categoryName: string | null;
   categoryColor?: string | null;
   categoryIcon?: string | null;
-  accountName: string;
+  paymentMethodName: string | null;
+  includeInSpending: number;
 }
 
 export interface TodaySummaryCategory {
@@ -55,21 +58,19 @@ export interface CategoryBreakdownItem {
   share: number;
 }
 
-export interface AccountMonthlySummary {
-  accountId: string;
-  accountName: string;
-  accountType: AccountType;
-  balance: number;
-  income: number;
-  expense: number;
-  net: number;
-  transactionCount: number;
-}
-
 interface RangeSummary {
   income: number;
   expense: number;
   net: number;
+}
+
+interface CreateTransactionInput {
+  categoryId: string;
+  paymentMethodId?: string | null;
+  amount: number;
+  type: EntryTransactionType;
+  description?: string;
+  transactionDate?: number;
 }
 
 function assertNonEmpty(value: string, label: string): void {
@@ -84,6 +85,27 @@ function assertPositiveAmount(amount: number, label: string): void {
   }
 }
 
+async function resolveSystemAccountId(
+  db: Awaited<ReturnType<typeof getDb>>,
+  now: number,
+): Promise<string> {
+  const account = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM accounts ORDER BY createdAt ASC LIMIT 1",
+  );
+
+  if (account?.id) {
+    return account.id;
+  }
+
+  const accountId = generateId();
+  await db.runAsync(
+    "INSERT INTO accounts (id, name, type, balance, currency, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [accountId, "系统账户", "cash", 0, "CNY", now, now],
+  );
+
+  return accountId;
+}
+
 async function getRangeSummary(
   start: number,
   end: number,
@@ -92,11 +114,20 @@ async function getRangeSummary(
   const db = dbArg ?? (await getDb());
 
   const summary = await db.getFirstAsync<{ income: number; expense: number }>(
-    `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions
-      WHERE transactionDate >= ?
-        AND transactionDate < ?`,
+    `SELECT COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) as income,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN t.type = 'expense' AND COALESCE(c.includeInSpending, 1) = 1 THEN t.amount
+                  ELSE 0
+                END
+              ),
+              0
+            ) as expense
+       FROM transactions t
+  LEFT JOIN categories c ON c.id = t.categoryId
+      WHERE t.transactionDate >= ?
+        AND t.transactionDate < ?`,
     [start, end],
   );
 
@@ -107,123 +138,67 @@ async function getRangeSummary(
   };
 }
 
-interface CreateTransactionInput {
-  accountId: string;
-  categoryId: string;
-  amount: number;
-  type: Exclude<TransactionType, "transfer">;
-  description?: string;
-  transactionDate?: number;
-}
-
-export async function listCategories(
-  type: Exclude<TransactionType, "transfer">,
-): Promise<Category[]> {
+export async function listCategories(type: EntryTransactionType): Promise<Category[]> {
   const db = await getDb();
   return db.getAllAsync<Category>(
-    "SELECT * FROM categories WHERE isActive = 1 AND type = ? ORDER BY isBuiltIn DESC, name ASC",
+    `SELECT *
+       FROM categories
+      WHERE isActive = 1
+        AND type = ?
+   ORDER BY includeInSpending DESC, isBuiltIn DESC, name ASC`,
     [type],
   );
 }
 
+export async function listPaymentMethods(): Promise<PaymentMethod[]> {
+  const db = await getDb();
+  return db.getAllAsync<PaymentMethod>(
+    `SELECT *
+       FROM payment_methods
+      WHERE isActive = 1
+   ORDER BY isBuiltIn DESC, name ASC`,
+  );
+}
+
 export async function createTransaction(input: CreateTransactionInput): Promise<string> {
-  assertNonEmpty(input.accountId, "账户");
   assertNonEmpty(input.categoryId, "分类");
   assertPositiveAmount(input.amount, "金额");
 
   const db = await getDb();
   const now = Date.now();
+  const accountId = await resolveSystemAccountId(db, now);
   const txId = generateId();
-  const signedAmount = input.type === "expense" ? -Math.abs(input.amount) : Math.abs(input.amount);
 
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      "INSERT INTO transactions (id, accountId, categoryId, amount, type, description, transactionDate, createdAt, updatedAt, relatedAccountId, relatedTransactionId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
-      [
-        txId,
-        input.accountId,
-        input.categoryId,
-        Math.abs(input.amount),
-        input.type,
-        input.description ?? "",
-        input.transactionDate ?? now,
-        now,
-        now,
-      ],
-    );
-
-    await db.runAsync("UPDATE accounts SET balance = balance + ?, updatedAt = ? WHERE id = ?", [
-      signedAmount,
+  await db.runAsync(
+    `INSERT INTO transactions (
+       id,
+       accountId,
+       categoryId,
+       paymentMethodId,
+       amount,
+       type,
+       description,
+       transactionDate,
+       createdAt,
+       updatedAt,
+       relatedAccountId,
+       relatedTransactionId
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+    [
+      txId,
+      accountId,
+      input.categoryId,
+      input.paymentMethodId ?? null,
+      Math.abs(input.amount),
+      input.type,
+      input.description ?? "",
+      input.transactionDate ?? now,
       now,
-      input.accountId,
-    ]);
-  });
+      now,
+    ],
+  );
 
   return txId;
-}
-
-export async function createTransfer(
-  fromAccountId: string,
-  toAccountId: string,
-  amount: number,
-  description = "",
-): Promise<void> {
-  assertNonEmpty(fromAccountId, "转出账户");
-  assertNonEmpty(toAccountId, "转入账户");
-  if (fromAccountId.trim() === toAccountId.trim()) {
-    throw new Error("转入转出账户不能相同");
-  }
-  assertPositiveAmount(amount, "金额");
-
-  const db = await getDb();
-  const now = Date.now();
-  const outId = generateId();
-  const inId = generateId();
-
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      "INSERT INTO transactions (id, accountId, categoryId, amount, type, description, transactionDate, createdAt, updatedAt, relatedAccountId, relatedTransactionId) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [
-        outId,
-        fromAccountId,
-        Math.abs(amount),
-        "transfer",
-        description,
-        now,
-        now,
-        now,
-        toAccountId,
-        inId,
-      ],
-    );
-
-    await db.runAsync(
-      "INSERT INTO transactions (id, accountId, categoryId, amount, type, description, transactionDate, createdAt, updatedAt, relatedAccountId, relatedTransactionId) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [
-        inId,
-        toAccountId,
-        Math.abs(amount),
-        "transfer",
-        description,
-        now,
-        now,
-        now,
-        fromAccountId,
-        outId,
-      ],
-    );
-
-    await db.runAsync("UPDATE accounts SET balance = balance - ?, updatedAt = ? WHERE id = ?", [
-      Math.abs(amount),
-      now,
-      fromAccountId,
-    ]);
-    await db.runAsync("UPDATE accounts SET balance = balance + ?, updatedAt = ? WHERE id = ?", [
-      Math.abs(amount),
-      now,
-      toAccountId,
-    ]);
-  });
 }
 
 export async function listRecentTransactions(limit = 20): Promise<TransactionListItem[]> {
@@ -237,12 +212,13 @@ export async function listRecentTransactions(limit = 20): Promise<TransactionLis
             c.name as categoryName,
             c.color as categoryColor,
             c.icon as categoryIcon,
-            a.name as accountName
-     FROM transactions t
-     JOIN accounts a ON a.id = t.accountId
-     LEFT JOIN categories c ON c.id = t.categoryId
-     ORDER BY t.transactionDate DESC
-     LIMIT ?`,
+            pm.name as paymentMethodName,
+            COALESCE(c.includeInSpending, 1) as includeInSpending
+       FROM transactions t
+  LEFT JOIN categories c ON c.id = t.categoryId
+  LEFT JOIN payment_methods pm ON pm.id = t.paymentMethodId
+   ORDER BY t.transactionDate DESC
+      LIMIT ?`,
     [limit],
   );
 }
@@ -267,8 +243,9 @@ export async function getTodaySummary(): Promise<TodaySummary> {
             c.name as categoryName,
             COALESCE(SUM(t.amount), 0) as amount
        FROM transactions t
-       LEFT JOIN categories c ON c.id = t.categoryId
+  LEFT JOIN categories c ON c.id = t.categoryId
       WHERE t.type = 'expense'
+        AND COALESCE(c.includeInSpending, 1) = 1
         AND t.transactionDate >= ?
         AND t.transactionDate < ?
    GROUP BY t.categoryId, c.name
@@ -308,10 +285,11 @@ export async function listTransactionGroupsByDay(
             c.name as categoryName,
             c.color as categoryColor,
             c.icon as categoryIcon,
-            a.name as accountName
+            pm.name as paymentMethodName,
+            COALESCE(c.includeInSpending, 1) as includeInSpending
        FROM transactions t
-       JOIN accounts a ON a.id = t.accountId
-       LEFT JOIN categories c ON c.id = t.categoryId
+  LEFT JOIN categories c ON c.id = t.categoryId
+  LEFT JOIN payment_methods pm ON pm.id = t.paymentMethodId
       WHERE t.transactionDate >= ?
    ORDER BY t.transactionDate DESC
       LIMIT ?`,
@@ -330,7 +308,7 @@ export async function listTransactionGroupsByDay(
       if (row.type === "income") {
         existing.totalIncome += row.amount;
       }
-      if (row.type === "expense") {
+      if (row.type === "expense" && row.includeInSpending === 1) {
         existing.totalExpense += row.amount;
       }
       continue;
@@ -339,7 +317,7 @@ export async function listTransactionGroupsByDay(
     groups.set(dateKey, {
       dateKey,
       totalIncome: row.type === "income" ? row.amount : 0,
-      totalExpense: row.type === "expense" ? row.amount : 0,
+      totalExpense: row.type === "expense" && row.includeInSpending === 1 ? row.amount : 0,
       transactionCount: 1,
       transactions: [row],
     });
@@ -361,8 +339,17 @@ export async function getMonthlyTrend(months = 6): Promise<MonthlyTrendPoint[]> 
   }>(
     `SELECT strftime('%Y-%m', t.transactionDate / 1000, 'unixepoch', 'localtime') as monthKey,
             COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) as income,
-            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) as expense
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN t.type = 'expense' AND COALESCE(c.includeInSpending, 1) = 1 THEN t.amount
+                  ELSE 0
+                END
+              ),
+              0
+            ) as expense
        FROM transactions t
+  LEFT JOIN categories c ON c.id = t.categoryId
       WHERE t.transactionDate >= ?
         AND t.transactionDate < ?
         AND t.type IN ('income', 'expense')
@@ -409,8 +396,9 @@ export async function getCurrentMonthCategoryBreakdown(): Promise<CategoryBreakd
             COALESCE(SUM(t.amount), 0) as amount,
             COUNT(t.id) as transactionCount
        FROM transactions t
-       LEFT JOIN categories c ON c.id = t.categoryId
+  LEFT JOIN categories c ON c.id = t.categoryId
       WHERE t.type = 'expense'
+        AND COALESCE(c.includeInSpending, 1) = 1
         AND t.transactionDate >= ?
         AND t.transactionDate < ?
    GROUP BY t.categoryId, c.name, c.color
@@ -427,32 +415,4 @@ export async function getCurrentMonthCategoryBreakdown(): Promise<CategoryBreakd
     transactionCount: item.transactionCount,
     share: total > 0 ? item.amount / total : 0,
   }));
-}
-
-export async function getCurrentMonthAccountSummaries(): Promise<AccountMonthlySummary[]> {
-  const db = await getDb();
-  const monthRange = getMonthRange(new Date());
-
-  const rows = await db.getAllAsync<AccountMonthlySummary>(
-    `SELECT a.id as accountId,
-            a.name as accountName,
-            a.type as accountType,
-            a.balance as balance,
-            COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) as income,
-            COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) as expense,
-            COUNT(t.id) as transactionCount,
-            COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) as net
-       FROM accounts a
-       LEFT JOIN transactions t
-         ON t.accountId = a.id
-        AND t.transactionDate >= ?
-        AND t.transactionDate < ?
-        AND t.type IN ('income', 'expense')
-      WHERE a.isActive = 1
-   GROUP BY a.id, a.name, a.type, a.balance
-   ORDER BY net DESC, a.createdAt ASC`,
-    [monthRange.start, monthRange.end],
-  );
-
-  return rows;
 }

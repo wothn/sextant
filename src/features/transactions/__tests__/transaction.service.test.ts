@@ -1,12 +1,11 @@
 import {
   createTransaction,
-  createTransfer,
-  getCurrentMonthAccountSummaries,
   getCurrentMonthCategoryBreakdown,
   getCurrentMonthSummary,
   getMonthlyTrend,
   getTodaySummary,
   listCategories,
+  listPaymentMethods,
   listTransactionGroupsByDay,
   listRecentTransactions,
 } from "@/src/features/transactions/transaction.service";
@@ -20,9 +19,14 @@ describe("transaction.service", () => {
     resetMockDbClient();
   });
 
-  it("lists categories by transaction type", async () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  it("lists categories by transaction type with spending categories first", async () => {
     const db = createMockDb();
-    const rows = [{ id: "c1", name: "餐饮", type: "expense" }];
+    const rows = [{ id: "c1", name: "餐饮", type: "expense", includeInSpending: 1 }];
     db.getAllAsync.mockResolvedValueOnce(rows);
     mockGetDb.mockResolvedValueOnce(db);
 
@@ -30,128 +34,110 @@ describe("transaction.service", () => {
 
     expect(result).toEqual(rows);
     expect(db.getAllAsync).toHaveBeenCalledWith(
-      "SELECT * FROM categories WHERE isActive = 1 AND type = ? ORDER BY isBuiltIn DESC, name ASC",
+      expect.stringContaining("ORDER BY includeInSpending DESC, isBuiltIn DESC, name ASC"),
       ["expense"],
     );
   });
 
-  it("creates an expense transaction and updates account balance in one transaction", async () => {
+  it("lists active payment methods", async () => {
+    const db = createMockDb();
+    const rows = [{ id: "pm-1", name: "现金" }];
+    db.getAllAsync.mockResolvedValueOnce(rows);
+    mockGetDb.mockResolvedValueOnce(db);
+
+    const result = await listPaymentMethods();
+
+    expect(result).toEqual(rows);
+    expect(db.getAllAsync).toHaveBeenCalledWith(expect.stringContaining("FROM payment_methods"));
+  });
+
+  it("creates a transaction with the resolved system account and optional payment method", async () => {
     const db = createMockDb();
     mockGetDb.mockResolvedValueOnce(db);
+    db.getFirstAsync.mockResolvedValueOnce({ id: "system-account" });
     jest.spyOn(Date, "now").mockReturnValue(1700000000000);
     jest.spyOn(Math, "random").mockReturnValue(0.25);
 
     const transactionId = await createTransaction({
-      accountId: "acc-1",
       categoryId: "cat-1",
+      paymentMethodId: "pm-1",
       amount: 35.5,
       type: "expense",
       description: "午饭",
     });
 
     expect(transactionId).toBe("1700000000000-4");
-    expect(db.withTransactionAsync).toHaveBeenCalledTimes(1);
+    expect(db.getFirstAsync).toHaveBeenCalledWith(
+      "SELECT id FROM accounts ORDER BY createdAt ASC LIMIT 1",
+    );
+    expect(db.runAsync).toHaveBeenCalledWith(expect.stringContaining("paymentMethodId"), [
+      "1700000000000-4",
+      "system-account",
+      "cat-1",
+      "pm-1",
+      35.5,
+      "expense",
+      "午饭",
+      1700000000000,
+      1700000000000,
+      1700000000000,
+    ]);
+  });
+
+  it("creates the internal system account when none exists", async () => {
+    const db = createMockDb();
+    mockGetDb.mockResolvedValueOnce(db);
+    db.getFirstAsync.mockResolvedValueOnce(null);
+    jest.spyOn(Date, "now").mockReturnValue(1700000001000);
+    const randomSpy = jest.spyOn(Math, "random");
+    randomSpy.mockReturnValueOnce(0.125).mockReturnValueOnce(0.875);
+
+    await createTransaction({
+      categoryId: "cat-1",
+      amount: 20,
+      type: "expense",
+    });
+
     expect(db.runAsync).toHaveBeenNthCalledWith(
       1,
-      "INSERT INTO transactions (id, accountId, categoryId, amount, type, description, transactionDate, createdAt, updatedAt, relatedAccountId, relatedTransactionId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
-      [
-        "1700000000000-4",
-        "acc-1",
-        "cat-1",
-        35.5,
-        "expense",
-        "午饭",
-        1700000000000,
-        1700000000000,
-        1700000000000,
-      ],
+      "INSERT INTO accounts (id, name, type, balance, currency, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ["1700000001000-2", "系统账户", "cash", 0, "CNY", 1700000001000, 1700000001000],
     );
     expect(db.runAsync).toHaveBeenNthCalledWith(
       2,
-      "UPDATE accounts SET balance = balance + ?, updatedAt = ? WHERE id = ?",
-      [-35.5, 1700000000000, "acc-1"],
+      expect.stringContaining("INSERT INTO transactions"),
+      [
+        "1700000001000-e",
+        "1700000001000-2",
+        "cat-1",
+        null,
+        20,
+        "expense",
+        "",
+        1700000001000,
+        1700000001000,
+        1700000001000,
+      ],
     );
   });
 
   it("rejects invalid transaction input before hitting the database", async () => {
     await expect(
       createTransaction({
-        accountId: "",
-        categoryId: "cat-1",
+        categoryId: "",
         amount: 12,
         type: "expense",
       }),
-    ).rejects.toThrow("账户不能为空");
+    ).rejects.toThrow("分类不能为空");
 
     await expect(
       createTransaction({
-        accountId: "acc-1",
         categoryId: "cat-1",
         amount: 0,
         type: "income",
       }),
     ).rejects.toThrow("金额必须为正数");
 
-    expect(mockGetDb).not.toHaveBeenCalled();
-  });
-
-  it("creates paired transfer transactions and updates both account balances", async () => {
-    const db = createMockDb();
-    mockGetDb.mockResolvedValueOnce(db);
-    jest.spyOn(Date, "now").mockReturnValue(1700000001000);
-    const randomSpy = jest.spyOn(Math, "random");
-    randomSpy.mockReturnValueOnce(0.125).mockReturnValueOnce(0.875);
-
-    await createTransfer("from-1", "to-1", 88, "调拨");
-
-    expect(db.withTransactionAsync).toHaveBeenCalledTimes(1);
-    expect(db.runAsync).toHaveBeenNthCalledWith(
-      1,
-      "INSERT INTO transactions (id, accountId, categoryId, amount, type, description, transactionDate, createdAt, updatedAt, relatedAccountId, relatedTransactionId) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [
-        "1700000001000-2",
-        "from-1",
-        88,
-        "transfer",
-        "调拨",
-        1700000001000,
-        1700000001000,
-        1700000001000,
-        "to-1",
-        "1700000001000-e",
-      ],
-    );
-    expect(db.runAsync).toHaveBeenNthCalledWith(
-      2,
-      "INSERT INTO transactions (id, accountId, categoryId, amount, type, description, transactionDate, createdAt, updatedAt, relatedAccountId, relatedTransactionId) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [
-        "1700000001000-e",
-        "to-1",
-        88,
-        "transfer",
-        "调拨",
-        1700000001000,
-        1700000001000,
-        1700000001000,
-        "from-1",
-        "1700000001000-2",
-      ],
-    );
-    expect(db.runAsync).toHaveBeenNthCalledWith(
-      3,
-      "UPDATE accounts SET balance = balance - ?, updatedAt = ? WHERE id = ?",
-      [88, 1700000001000, "from-1"],
-    );
-    expect(db.runAsync).toHaveBeenNthCalledWith(
-      4,
-      "UPDATE accounts SET balance = balance + ?, updatedAt = ? WHERE id = ?",
-      [88, 1700000001000, "to-1"],
-    );
-  });
-
-  it("rejects invalid transfer input before hitting the database", async () => {
-    await expect(createTransfer("acc-1", "acc-1", 50)).rejects.toThrow("转入转出账户不能相同");
-    await expect(createTransfer("acc-1", "acc-2", -10)).rejects.toThrow("金额必须为正数");
     expect(mockGetDb).not.toHaveBeenCalled();
   });
 
@@ -165,12 +151,12 @@ describe("transaction.service", () => {
 
     expect(result).toEqual(rows);
     expect(db.getAllAsync).toHaveBeenCalledWith(
-      expect.stringContaining("ORDER BY t.transactionDate DESC"),
+      expect.stringContaining("pm.name as paymentMethodName"),
       [5],
     );
   });
 
-  it("computes the current month summary from income and expense totals", async () => {
+  it("computes the current month summary using only spending categories", async () => {
     const db = createMockDb();
     mockGetDb.mockResolvedValueOnce(db);
     jest.useFakeTimers().setSystemTime(new Date("2026-03-06T08:00:00.000Z"));
@@ -179,7 +165,10 @@ describe("transaction.service", () => {
     const result = await getCurrentMonthSummary();
 
     expect(result).toEqual({ income: 3200, expense: 1250, net: 1950 });
-    expect(db.getFirstAsync).toHaveBeenCalledTimes(1);
+    expect(db.getFirstAsync).toHaveBeenCalledWith(
+      expect.stringContaining("COALESCE(c.includeInSpending, 1) = 1"),
+      expect.any(Array),
+    );
   });
 
   it("computes today's summary with top categories", async () => {
@@ -205,7 +194,7 @@ describe("transaction.service", () => {
     });
   });
 
-  it("groups recent transactions by day", async () => {
+  it("groups recent transactions by day and skips excluded expenses in headers", async () => {
     const db = createMockDb();
     mockGetDb.mockResolvedValueOnce(db);
     jest.useFakeTimers().setSystemTime(new Date("2026-03-08T08:00:00.000Z"));
@@ -219,7 +208,8 @@ describe("transaction.service", () => {
         categoryName: "餐饮",
         categoryColor: "#FF7043",
         categoryIcon: "food",
-        accountName: "现金",
+        paymentMethodName: "现金",
+        includeInSpending: 1,
       },
       {
         id: "tx-2",
@@ -230,18 +220,20 @@ describe("transaction.service", () => {
         categoryName: "兼职",
         categoryColor: "#66BB6A",
         categoryIcon: "cash",
-        accountName: "银行卡",
+        paymentMethodName: "银行卡",
+        includeInSpending: 1,
       },
       {
         id: "tx-3",
-        amount: 20,
+        amount: 88,
         type: "expense",
-        description: "早餐",
+        description: "定投",
         transactionDate: new Date("2026-03-07T01:00:00.000Z").getTime(),
-        categoryName: "餐饮",
-        categoryColor: "#FF7043",
-        categoryIcon: "food",
-        accountName: "现金",
+        categoryName: "基金定投",
+        categoryColor: "#5C6BC0",
+        categoryIcon: "chart-line",
+        paymentMethodName: "支付宝",
+        includeInSpending: 0,
       },
     ]);
 
@@ -256,7 +248,7 @@ describe("transaction.service", () => {
     });
     expect(result[1]).toMatchObject({
       dateKey: "2026-03-07",
-      totalExpense: 20,
+      totalExpense: 0,
       totalIncome: 0,
       transactionCount: 1,
     });
@@ -322,39 +314,6 @@ describe("transaction.service", () => {
         amount: 200,
         transactionCount: 4,
         share: 0.4,
-      },
-    ]);
-  });
-
-  it("lists current month account summaries", async () => {
-    const db = createMockDb();
-    mockGetDb.mockResolvedValueOnce(db);
-    jest.useFakeTimers().setSystemTime(new Date("2026-03-08T08:00:00.000Z"));
-    db.getAllAsync.mockResolvedValueOnce([
-      {
-        accountId: "acc-1",
-        accountName: "现金",
-        accountType: "cash",
-        balance: 560,
-        income: 800,
-        expense: 240,
-        net: 560,
-        transactionCount: 8,
-      },
-    ]);
-
-    const result = await getCurrentMonthAccountSummaries();
-
-    expect(result).toEqual([
-      {
-        accountId: "acc-1",
-        accountName: "现金",
-        accountType: "cash",
-        balance: 560,
-        income: 800,
-        expense: 240,
-        net: 560,
-        transactionCount: 8,
       },
     ]);
   });

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { listAccounts } from "@/src/features/transactions/account.service";
-import { createTransaction, listCategories } from "@/src/features/transactions/transaction.service";
+import {
+  createTransaction,
+  listCategories,
+  listPaymentMethods,
+} from "@/src/features/transactions/transaction.service";
 import QuickEntrySheetForm, {
   type QuickEntryFormValue,
 } from "@/src/features/transactions/components/QuickEntrySheetForm";
 import { useUIStore } from "@/src/store/ui.store";
-import type { Account, Category } from "@/src/types/domain";
+import type { Category, PaymentMethod } from "@/src/types/domain";
 
 interface QuickEntrySheetContainerProps {
   visible?: boolean;
@@ -19,8 +22,8 @@ export default function QuickEntrySheetContainer({
   onMount,
   onDismiss,
 }: QuickEntrySheetContainerProps) {
-  const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -50,36 +53,40 @@ export default function QuickEntrySheetContainer({
   }, [onMount, openQuickEntrySheet, quickEntrySheetVisible, visible]);
 
   const syncDefaults = useCallback(
-    (accountRows: Account[], categoryRows: Category[]) => {
-      const nextAccountId =
-        quickEntry.accountId && accountRows.some((item) => item.id === quickEntry.accountId)
-          ? quickEntry.accountId
-          : (accountRows[0]?.id ?? null);
-
+    (categoryRows: Category[], paymentMethodRows: PaymentMethod[]) => {
       const nextCategoryId =
         quickEntry.categoryId && categoryRows.some((item) => item.id === quickEntry.categoryId)
           ? quickEntry.categoryId
           : (categoryRows[0]?.id ?? null);
 
-      if (nextAccountId !== quickEntry.accountId || nextCategoryId !== quickEntry.categoryId) {
+      const nextPaymentMethodId =
+        quickEntry.paymentMethodId &&
+        paymentMethodRows.some((item) => item.id === quickEntry.paymentMethodId)
+          ? quickEntry.paymentMethodId
+          : null;
+
+      if (
+        nextCategoryId !== quickEntry.categoryId ||
+        nextPaymentMethodId !== quickEntry.paymentMethodId
+      ) {
         setQuickEntry({
-          accountId: nextAccountId,
           categoryId: nextCategoryId,
+          paymentMethodId: nextPaymentMethodId,
         });
       }
     },
-    [quickEntry.accountId, quickEntry.categoryId, setQuickEntry],
+    [quickEntry.categoryId, quickEntry.paymentMethodId, setQuickEntry],
   );
 
   const loadData = useCallback(async () => {
-    const [accountRows, categoryRows] = await Promise.all([
-      listAccounts(),
+    const [categoryRows, paymentMethodRows] = await Promise.all([
       listCategories(quickEntry.type),
+      listPaymentMethods(),
     ]);
 
-    setAccounts(accountRows);
     setCategories(categoryRows);
-    syncDefaults(accountRows, categoryRows);
+    setPaymentMethods(paymentMethodRows);
+    syncDefaults(categoryRows, paymentMethodRows);
   }, [quickEntry.type, syncDefaults]);
 
   useEffect(() => {
@@ -107,8 +114,8 @@ export default function QuickEntrySheetContainer({
   const handleSubmit = useCallback(async () => {
     const amount = Number(quickEntry.amountText);
 
-    if (!quickEntry.accountId || !quickEntry.categoryId || !amount || amount <= 0) {
-      setMessage("请先补全账户、分类和金额");
+    if (!quickEntry.categoryId || !amount || amount <= 0) {
+      setMessage("请先补全分类和金额");
       return;
     }
 
@@ -117,8 +124,8 @@ export default function QuickEntrySheetContainer({
 
     try {
       await createTransaction({
-        accountId: quickEntry.accountId,
         categoryId: quickEntry.categoryId,
+        paymentMethodId: quickEntry.paymentMethodId,
         amount,
         type: quickEntry.type,
         description: quickEntry.description,
@@ -137,10 +144,10 @@ export default function QuickEntrySheetContainer({
     bumpRefreshKey,
     closeQuickEntrySheet,
     onDismiss,
-    quickEntry.accountId,
     quickEntry.amountText,
     quickEntry.categoryId,
     quickEntry.description,
+    quickEntry.paymentMethodId,
     quickEntry.transactionDate,
     quickEntry.type,
     resetQuickEntry,
@@ -150,12 +157,14 @@ export default function QuickEntrySheetContainer({
     <QuickEntrySheetForm
       visible={resolvedVisible}
       categories={categories}
+      paymentMethods={paymentMethods}
       saving={saving}
       message={message}
       value={{
         type: quickEntry.type,
         amountText: quickEntry.amountText,
         categoryId: quickEntry.categoryId,
+        paymentMethodId: quickEntry.paymentMethodId,
         transactionDate: quickEntry.transactionDate,
       }}
       onChange={handleChange}

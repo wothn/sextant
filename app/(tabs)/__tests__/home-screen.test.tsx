@@ -43,7 +43,8 @@ describe("HomeScreen", () => {
             categoryName: "餐饮",
             categoryColor: "#FF7043",
             categoryIcon: "food",
-            accountName: "现金",
+            paymentMethodName: "现金",
+            includeInSpending: 1,
           },
           {
             id: "tx-2",
@@ -54,7 +55,8 @@ describe("HomeScreen", () => {
             categoryName: "交通",
             categoryColor: "#42A5F5",
             categoryIcon: "bus",
-            accountName: "银行卡",
+            paymentMethodName: "银行卡",
+            includeInSpending: 1,
           },
           {
             id: "tx-3",
@@ -65,7 +67,8 @@ describe("HomeScreen", () => {
             categoryName: "兼职",
             categoryColor: "#66BB6A",
             categoryIcon: "cash",
-            accountName: "银行卡",
+            paymentMethodName: "银行卡",
+            includeInSpending: 1,
           },
         ],
       },
@@ -85,7 +88,7 @@ describe("HomeScreen", () => {
       expect(screen.getByText("本月支出")).toBeTruthy();
       expect(screen.getByText("本月收入")).toBeTruthy();
       expect(screen.getByText("¥3000.00")).toBeTruthy();
-      expect(screen.getByText(/3月8日 周日/)).toBeTruthy();
+      expect(screen.getAllByText(/3月8日 周日/).length).toBeGreaterThan(0);
       expect(screen.getByText("餐饮")).toBeTruthy();
       expect(screen.getByText("午饭")).toBeTruthy();
       expect(screen.getAllByText("银行卡").length).toBeGreaterThan(0);
@@ -112,7 +115,7 @@ describe("HomeScreen", () => {
       expect(screen.getByText("交易详情")).toBeTruthy();
       expect(screen.getByText("备注")).toBeTruthy();
       expect(screen.getByText("未填写")).toBeTruthy();
-      expect(screen.getByText("账户")).toBeTruthy();
+      expect(screen.getByText("支付方式")).toBeTruthy();
       expect(screen.getAllByText("银行卡").length).toBeGreaterThan(0);
     });
 

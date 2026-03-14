@@ -28,7 +28,7 @@ describe("backup.service", () => {
         transactionDate: new Date("2026-03-05T00:00:00.000Z").getTime(),
         type: "expense",
         amount: 25.5,
-        accountName: "现金",
+        paymentMethodName: "现金",
         categoryName: "餐饮",
         description: '午饭 "双拼"',
       },
@@ -41,7 +41,7 @@ describe("backup.service", () => {
     expect(path).toBe("file:///documents/sextant-transactions-1700000000000.csv");
     expect(FileSystem.writeAsStringAsync).toHaveBeenCalledWith(
       path,
-      'date,type,amount,account,category,description\n2026-03-05,expense,25.5,现金,餐饮,"午饭 ""双拼"""',
+      'date,type,amount,payment_method,category,description\n2026-03-05,expense,25.5,现金,餐饮,"午饭 ""双拼"""',
       { encoding: FileSystem.EncodingType.UTF8 },
     );
   });

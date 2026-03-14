@@ -25,7 +25,7 @@ describe("ui.store", () => {
     useUIStore.getState().setQuickEntry({
       amountText: "12",
       description: "午餐",
-      accountId: "acc-1",
+      paymentMethodId: "pm-1",
     });
 
     useUIStore.getState().resetQuickEntry();
@@ -34,7 +34,7 @@ describe("ui.store", () => {
       amountText: "",
       description: "",
       categoryId: null,
-      accountId: null,
+      paymentMethodId: null,
       type: "expense",
       transactionDate: new Date("2026-03-08T08:00:00.000Z").getTime(),
     });

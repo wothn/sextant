@@ -55,15 +55,6 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="accounts"
-          options={{
-            title: "账户",
-            tabBarIcon: ({ color, size }) => (
-              <MaterialCommunityIcons name="wallet-outline" color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
           name="quick-entry"
           options={{
             title: "记账",

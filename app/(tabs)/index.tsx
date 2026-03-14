@@ -108,6 +108,26 @@ function formatDate(): string {
   return `${month}月${date}日 ${weekday}`;
 }
 
+function getTransactionCategoryLabel(item: TransactionListItem): string {
+  if (item.categoryName) {
+    return item.categoryName;
+  }
+
+  return item.type === "transfer" ? "转移记录" : "未分类";
+}
+
+function getTransactionTypeLabel(item: TransactionListItem): string {
+  if (item.type === "income") {
+    return "收入";
+  }
+
+  if (item.type === "transfer") {
+    return "转移";
+  }
+
+  return item.includeInSpending === 1 ? "支出" : "支出（不计入统计）";
+}
+
 export default function HomeScreen() {
   const theme = useTheme();
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionListItem | null>(null);
@@ -124,12 +144,8 @@ export default function HomeScreen() {
       return null;
     }
 
-    const categoryName =
-      selectedTransaction.categoryName ??
-      (selectedTransaction.type === "transfer" ? "转账" : "未分类");
-
     return {
-      categoryName,
+      categoryName: getTransactionCategoryLabel(selectedTransaction),
       amount:
         selectedTransaction.type === "expense"
           ? formatSignedCurrency(-selectedTransaction.amount)
@@ -140,12 +156,14 @@ export default function HomeScreen() {
         hour: "2-digit",
         minute: "2-digit",
       }),
-      typeLabel:
-        selectedTransaction.type === "expense"
-          ? "支出"
-          : selectedTransaction.type === "income"
-            ? "收入"
-            : "转账",
+      typeLabel: getTransactionTypeLabel(selectedTransaction),
+      spendingLabel:
+        selectedTransaction.type !== "expense"
+          ? "不适用"
+          : selectedTransaction.includeInSpending === 1
+            ? "计入支出统计"
+            : "不计入支出统计",
+      paymentMethodName: selectedTransaction.paymentMethodName ?? "未设置",
       description: selectedTransaction.description.trim() || "未填写",
     };
   }, [selectedTransaction]);
@@ -281,9 +299,9 @@ export default function HomeScreen() {
               </View>
 
               {group.transactions.map((item, index) => {
-                const categoryName =
-                  item.categoryName ?? (item.type === "transfer" ? "转账" : "未分类");
+                const categoryName = getTransactionCategoryLabel(item);
                 const description = item.description.trim();
+                const paymentMethodName = item.paymentMethodName?.trim() ?? "";
 
                 return (
                   <View key={item.id}>
@@ -315,9 +333,11 @@ export default function HomeScreen() {
                               {description}
                             </Text>
                           ) : null}
-                          <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
-                            {item.accountName}
-                          </Text>
+                          {paymentMethodName ? (
+                            <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+                              {paymentMethodName}
+                            </Text>
+                          ) : null}
                         </View>
                         <View style={{ alignItems: "flex-end", gap: 4 }}>
                           <Text
@@ -411,9 +431,10 @@ export default function HomeScreen() {
                     value: selectedTransactionSummary.typeLabel,
                   },
                   {
-                    label: "账户",
-                    value: selectedTransaction?.accountName ?? "",
+                    label: "支付方式",
+                    value: selectedTransactionSummary.paymentMethodName,
                   },
+                  { label: "统计口径", value: selectedTransactionSummary.spendingLabel },
                   { label: "时间", value: selectedTransactionSummary.time },
                   {
                     label: "备注",

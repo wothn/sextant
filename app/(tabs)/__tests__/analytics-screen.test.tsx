@@ -6,7 +6,6 @@ import { renderWithProviders } from "@/src/test/render";
 const mockGetCurrentMonthSummary = jest.fn();
 const mockGetMonthlyTrend = jest.fn();
 const mockGetCurrentMonthCategoryBreakdown = jest.fn();
-const mockGetCurrentMonthAccountSummaries = jest.fn();
 const mockListCurrentMonthBudgetProgress = jest.fn();
 const mockTrendLineChart = jest.fn<void, [TrendLineChartProps]>();
 
@@ -33,7 +32,6 @@ jest.mock("@/src/features/transactions/transaction.service", () => ({
   getCurrentMonthSummary: () => mockGetCurrentMonthSummary(),
   getMonthlyTrend: () => mockGetMonthlyTrend(),
   getCurrentMonthCategoryBreakdown: () => mockGetCurrentMonthCategoryBreakdown(),
-  getCurrentMonthAccountSummaries: () => mockGetCurrentMonthAccountSummaries(),
 }));
 
 jest.mock("@/src/features/budgets/budget.service", () => ({
@@ -62,18 +60,6 @@ describe("AnalyticsScreen", () => {
         share: 0.625,
       },
     ]);
-    mockGetCurrentMonthAccountSummaries.mockResolvedValueOnce([
-      {
-        accountId: "acc-1",
-        accountName: "现金",
-        accountType: "cash",
-        balance: 1800,
-        income: 2000,
-        expense: 200,
-        net: 1800,
-        transactionCount: 5,
-      },
-    ]);
     mockListCurrentMonthBudgetProgress.mockResolvedValueOnce([]);
 
     renderWithProviders(<AnalyticsScreen />);
@@ -86,8 +72,6 @@ describe("AnalyticsScreen", () => {
       expect(topSpending.props.numberOfLines).toBe(1);
       expect(topSpending.props.ellipsizeMode).toBe("tail");
       expect(screen.getByText("支出结构")).toBeTruthy();
-      expect(screen.getByText("账户视图")).toBeTruthy();
-      expect(screen.getByText("现金")).toBeTruthy();
       expect(screen.getByText("当前还没有预算，先去设置页添加。")).toBeTruthy();
     });
   });
@@ -96,7 +80,6 @@ describe("AnalyticsScreen", () => {
     mockGetCurrentMonthSummary.mockResolvedValueOnce({ income: 3000, expense: 1200, net: 1800 });
     mockGetMonthlyTrend.mockResolvedValueOnce([]);
     mockGetCurrentMonthCategoryBreakdown.mockResolvedValueOnce([]);
-    mockGetCurrentMonthAccountSummaries.mockResolvedValueOnce([]);
     mockListCurrentMonthBudgetProgress.mockResolvedValueOnce([
       {
         categoryId: "cat-1",
@@ -123,7 +106,6 @@ describe("AnalyticsScreen", () => {
       { monthKey: "2026-02", label: "2月", income: 2600, expense: 1600, net: 1000 },
     ]);
     mockGetCurrentMonthCategoryBreakdown.mockResolvedValueOnce([]);
-    mockGetCurrentMonthAccountSummaries.mockResolvedValueOnce([]);
     mockListCurrentMonthBudgetProgress.mockResolvedValueOnce([]);
 
     renderWithProviders(<AnalyticsScreen />);

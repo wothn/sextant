@@ -2,35 +2,36 @@ import * as FileSystem from "expo-file-system/legacy";
 
 import { getDb } from "@/src/db/client";
 
-export async function exportTransactionsCsv() {
+export async function exportTransactionsCsv(): Promise<string> {
   const db = await getDb();
   const rows = await db.getAllAsync<{
     transactionDate: number;
     type: string;
     amount: number;
-    accountName: string;
+    paymentMethodName: string | null;
     categoryName: string | null;
     description: string;
   }>(
     `SELECT t.transactionDate,
             t.type,
             t.amount,
-            a.name as accountName,
+            pm.name as paymentMethodName,
             c.name as categoryName,
             t.description
        FROM transactions t
-       JOIN accounts a ON a.id = t.accountId
+  LEFT JOIN payment_methods pm ON pm.id = t.paymentMethodId
   LEFT JOIN categories c ON c.id = t.categoryId
    ORDER BY t.transactionDate DESC`,
   );
 
   const lines = [
-    "date,type,amount,account,category,description",
+    "date,type,amount,payment_method,category,description",
     ...rows.map((row) => {
       const date = new Date(row.transactionDate).toISOString().slice(0, 10);
+      const paymentMethod = row.paymentMethodName ?? "";
       const category = row.categoryName ?? "";
       const description = (row.description ?? "").replaceAll('"', '""');
-      return `${date},${row.type},${row.amount},${row.accountName},${category},"${description}"`;
+      return `${date},${row.type},${row.amount},${paymentMethod},${category},"${description}"`;
     }),
   ];
 

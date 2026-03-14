@@ -5,8 +5,8 @@ import { renderWithProviders } from "@/src/test/render";
 import { useUIStore } from "@/src/store/ui.store";
 
 const mockReplace = jest.fn();
-const mockListAccounts = jest.fn();
 const mockListCategories = jest.fn();
+const mockListPaymentMethods = jest.fn();
 const mockCreateTransaction = jest.fn();
 
 jest.mock("expo-router", () => ({
@@ -15,12 +15,9 @@ jest.mock("expo-router", () => ({
   },
 }));
 
-jest.mock("@/src/features/transactions/account.service", () => ({
-  listAccounts: () => mockListAccounts(),
-}));
-
 jest.mock("@/src/features/transactions/transaction.service", () => ({
   listCategories: (...args: unknown[]) => mockListCategories(...args),
+  listPaymentMethods: () => mockListPaymentMethods(),
   createTransaction: (...args: unknown[]) => mockCreateTransaction(...args),
 }));
 
@@ -34,20 +31,19 @@ describe("QuickEntryScreen", () => {
     });
 
     mockReplace.mockReset();
-    mockListAccounts.mockReset();
     mockListCategories.mockReset();
+    mockListPaymentMethods.mockReset();
     mockCreateTransaction.mockReset();
 
-    mockListAccounts.mockResolvedValue([
+    mockListPaymentMethods.mockResolvedValue([
       {
-        id: "acc-1",
+        id: "pm-1",
         name: "现金",
-        balance: 12,
-        type: "cash",
-        currency: "CNY",
+        icon: "cash",
+        color: "#D97706",
         isActive: 1,
+        isBuiltIn: 1,
         createdAt: 1,
-        updatedAt: 1,
       },
     ]);
 
@@ -63,6 +59,8 @@ describe("QuickEntryScreen", () => {
                 color: "#66BB6A",
                 isBuiltIn: 1,
                 isActive: 1,
+                includeInSpending: 1,
+                parentCategoryId: null,
                 createdAt: 1,
               },
             ]
@@ -75,6 +73,8 @@ describe("QuickEntryScreen", () => {
                 color: "#FF7043",
                 isBuiltIn: 1,
                 isActive: 1,
+                includeInSpending: 1,
+                parentCategoryId: null,
                 createdAt: 1,
               },
             ],
@@ -140,8 +140,8 @@ describe("QuickEntryScreen", () => {
     });
 
     const payload = mockCreateTransaction.mock.calls[0]?.[0] as {
-      accountId: string;
       categoryId: string;
+      paymentMethodId: string | null;
       amount: number;
       type: "expense" | "income";
       description?: string;
@@ -149,8 +149,8 @@ describe("QuickEntryScreen", () => {
     };
 
     expect(payload).toMatchObject({
-      accountId: "acc-1",
       categoryId: "cat-2",
+      paymentMethodId: null,
       amount: 12.5,
       type: "income",
       description: "",
@@ -188,7 +188,7 @@ describe("QuickEntryScreen", () => {
     fireEvent.press(screen.getByText("保存本次记账"));
 
     await waitFor(() => {
-      expect(screen.getByText("请先补全账户、分类和金额")).toBeTruthy();
+      expect(screen.getByText("请先补全分类和金额")).toBeTruthy();
     });
 
     expect(mockCreateTransaction).not.toHaveBeenCalled();

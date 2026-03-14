@@ -4,7 +4,7 @@ interface QuickEntryDraft {
   amountText: string;
   description: string;
   categoryId: string | null;
-  accountId: string | null;
+  paymentMethodId: string | null;
   type: "expense" | "income";
   transactionDate: number;
 }
@@ -24,7 +24,7 @@ const initialState: QuickEntryDraft = {
   amountText: "",
   description: "",
   categoryId: null,
-  accountId: null,
+  paymentMethodId: null,
   type: "expense",
   transactionDate: Date.now(),
 };
