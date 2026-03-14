@@ -8,6 +8,12 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
+coverage/
+
+# AI / local assistant artifacts
+.agents/
+memories/
+AGENTS.md
 
 # Native
 .kotlin/
@@ -35,6 +41,7 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+.eslintcache
 
 # generated native folders
 /ios
