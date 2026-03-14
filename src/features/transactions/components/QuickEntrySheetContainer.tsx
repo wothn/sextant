@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { listAccounts } from "@/src/features/transactions/account.service";
-import {
-  createTransaction,
-  listCategories,
-} from "@/src/features/transactions/transaction.service";
+import { createTransaction, listCategories } from "@/src/features/transactions/transaction.service";
 import QuickEntrySheetForm, {
   type QuickEntryFormValue,
 } from "@/src/features/transactions/components/QuickEntrySheetForm";
@@ -28,16 +25,12 @@ export default function QuickEntrySheetContainer({
   const [message, setMessage] = useState("");
 
   const quickEntry = useUIStore((state) => state.quickEntry);
-  const quickEntrySheetVisible = useUIStore(
-    (state) => state.quickEntrySheetVisible,
-  );
+  const quickEntrySheetVisible = useUIStore((state) => state.quickEntrySheetVisible);
   const setQuickEntry = useUIStore((state) => state.setQuickEntry);
   const resetQuickEntry = useUIStore((state) => state.resetQuickEntry);
   const bumpRefreshKey = useUIStore((state) => state.bumpRefreshKey);
   const openQuickEntrySheet = useUIStore((state) => state.openQuickEntrySheet);
-  const closeQuickEntrySheet = useUIStore(
-    (state) => state.closeQuickEntrySheet,
-  );
+  const closeQuickEntrySheet = useUIStore((state) => state.closeQuickEntrySheet);
 
   const resolvedVisible = visible ?? quickEntrySheetVisible;
 
@@ -59,21 +52,16 @@ export default function QuickEntrySheetContainer({
   const syncDefaults = useCallback(
     (accountRows: Account[], categoryRows: Category[]) => {
       const nextAccountId =
-        quickEntry.accountId &&
-        accountRows.some((item) => item.id === quickEntry.accountId)
+        quickEntry.accountId && accountRows.some((item) => item.id === quickEntry.accountId)
           ? quickEntry.accountId
           : (accountRows[0]?.id ?? null);
 
       const nextCategoryId =
-        quickEntry.categoryId &&
-        categoryRows.some((item) => item.id === quickEntry.categoryId)
+        quickEntry.categoryId && categoryRows.some((item) => item.id === quickEntry.categoryId)
           ? quickEntry.categoryId
           : (categoryRows[0]?.id ?? null);
 
-      if (
-        nextAccountId !== quickEntry.accountId ||
-        nextCategoryId !== quickEntry.categoryId
-      ) {
+      if (nextAccountId !== quickEntry.accountId || nextCategoryId !== quickEntry.categoryId) {
         setQuickEntry({
           accountId: nextAccountId,
           categoryId: nextCategoryId,
@@ -119,12 +107,7 @@ export default function QuickEntrySheetContainer({
   const handleSubmit = useCallback(async () => {
     const amount = Number(quickEntry.amountText);
 
-    if (
-      !quickEntry.accountId ||
-      !quickEntry.categoryId ||
-      !amount ||
-      amount <= 0
-    ) {
+    if (!quickEntry.accountId || !quickEntry.categoryId || !amount || amount <= 0) {
       setMessage("请先补全账户、分类和金额");
       return;
     }

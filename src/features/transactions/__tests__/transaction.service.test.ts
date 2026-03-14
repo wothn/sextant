@@ -150,9 +150,7 @@ describe("transaction.service", () => {
   });
 
   it("rejects invalid transfer input before hitting the database", async () => {
-    await expect(createTransfer("acc-1", "acc-1", 50)).rejects.toThrow(
-      "转入转出账户不能相同",
-    );
+    await expect(createTransfer("acc-1", "acc-1", 50)).rejects.toThrow("转入转出账户不能相同");
     await expect(createTransfer("acc-1", "acc-2", -10)).rejects.toThrow("金额必须为正数");
     expect(mockGetDb).not.toHaveBeenCalled();
   });

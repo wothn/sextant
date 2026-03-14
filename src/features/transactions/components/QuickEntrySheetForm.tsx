@@ -27,15 +27,7 @@ interface QuickEntrySheetFormProps {
   onSubmit: () => void;
 }
 
-const WEEKDAY_LABELS = [
-  "周日",
-  "周一",
-  "周二",
-  "周三",
-  "周四",
-  "周五",
-  "周六",
-] as const;
+const WEEKDAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"] as const;
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -73,11 +65,7 @@ function setDatePart(baseTimestamp: number, sourceTimestamp: number): number {
   ).getTime();
 }
 
-function setTimePart(
-  baseTimestamp: number,
-  hours: number,
-  minutes: number,
-): number {
+function setTimePart(baseTimestamp: number, hours: number, minutes: number): number {
   const base = new Date(baseTimestamp);
 
   return new Date(
@@ -132,9 +120,7 @@ export default function QuickEntrySheetForm({
 }: QuickEntrySheetFormProps) {
   const theme = useTheme();
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
-  const [calendarMonth, setCalendarMonth] = useState<Date>(
-    new Date(value.transactionDate),
-  );
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date(value.transactionDate));
 
   useEffect(() => {
     if (visible) {
@@ -150,10 +136,7 @@ export default function QuickEntrySheetForm({
     () => categories.find((item) => item.id === value.categoryId) ?? null,
     [categories, value.categoryId],
   );
-  const monthMatrix = useMemo(
-    () => getMonthMatrix(calendarMonth),
-    [calendarMonth],
-  );
+  const monthMatrix = useMemo(() => getMonthMatrix(calendarMonth), [calendarMonth]);
   const hourOptions = useMemo(() => buildHourOptions(), []);
   const minuteOptions = useMemo(() => buildMinuteOptions(), []);
 
@@ -230,21 +213,13 @@ export default function QuickEntrySheetForm({
 
   const handleSelectHour = (hour: string): void => {
     onChange({
-      transactionDate: setTimePart(
-        value.transactionDate,
-        Number(hour),
-        Number(selectedMinute),
-      ),
+      transactionDate: setTimePart(value.transactionDate, Number(hour), Number(selectedMinute)),
     });
   };
 
   const handleSelectMinute = (minute: string): void => {
     onChange({
-      transactionDate: setTimePart(
-        value.transactionDate,
-        Number(selectedHour),
-        Number(minute),
-      ),
+      transactionDate: setTimePart(value.transactionDate, Number(selectedHour), Number(minute)),
     });
   };
 
@@ -257,11 +232,7 @@ export default function QuickEntrySheetForm({
 
   return (
     <Portal>
-      <Modal
-        visible={visible}
-        onDismiss={onDismiss}
-        contentContainerStyle={styles.modalContainer}
-      >
+      <Modal visible={visible} onDismiss={onDismiss} contentContainerStyle={styles.modalContainer}>
         <Surface
           style={[
             styles.sheet,
@@ -354,10 +325,7 @@ export default function QuickEntrySheetForm({
               },
             ]}
           >
-            <Text
-              variant="labelLarge"
-              style={{ color: theme.colors.textMuted }}
-            >
+            <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
               金额
             </Text>
             <Text
@@ -382,10 +350,7 @@ export default function QuickEntrySheetForm({
 
           <View style={styles.metaRow}>
             <View style={styles.metaField}>
-              <Text
-                variant="labelSmall"
-                style={{ color: theme.colors.textMuted }}
-              >
+              <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
                 日期
               </Text>
               <Button
@@ -403,10 +368,7 @@ export default function QuickEntrySheetForm({
             </View>
 
             <View style={styles.metaField}>
-              <Text
-                variant="labelSmall"
-                style={{ color: theme.colors.textMuted }}
-              >
+              <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
                 时间
               </Text>
               <Button
@@ -434,14 +396,9 @@ export default function QuickEntrySheetForm({
               <Text
                 variant="bodyMedium"
                 numberOfLines={1}
-                style={[
-                  styles.categoryHint,
-                  { color: theme.colors.textMuted },
-                ]}
+                style={[styles.categoryHint, { color: theme.colors.textMuted }]}
               >
-                {selectedCategory
-                  ? `已选分类：${selectedCategory.name}`
-                  : "请选择分类"}
+                {selectedCategory ? `已选分类：${selectedCategory.name}` : "请选择分类"}
               </Text>
             </View>
 
@@ -481,7 +438,7 @@ export default function QuickEntrySheetForm({
                           },
                           pressed ? { transform: [{ scale: 0.98 }] } : null,
                         ]}
-                    >
+                      >
                         <MaterialCommunityIcons
                           name="backspace-outline"
                           size={24}
@@ -504,7 +461,12 @@ export default function QuickEntrySheetForm({
                           borderWidth: 1,
                           borderColor: theme.colors.borderStrong,
                         },
-                        pressed ? { transform: [{ scale: 0.98 }], backgroundColor: theme.colors.surfaceAlt } : null,
+                        pressed
+                          ? {
+                              transform: [{ scale: 0.98 }],
+                              backgroundColor: theme.colors.surfaceAlt,
+                            }
+                          : null,
                       ]}
                     >
                       <Text
@@ -557,11 +519,7 @@ export default function QuickEntrySheetForm({
               compact
               onPress={() =>
                 setCalendarMonth(
-                  new Date(
-                    calendarMonth.getFullYear(),
-                    calendarMonth.getMonth() - 1,
-                    1,
-                  ),
+                  new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1),
                 )
               }
             >
@@ -574,11 +532,7 @@ export default function QuickEntrySheetForm({
               compact
               onPress={() =>
                 setCalendarMonth(
-                  new Date(
-                    calendarMonth.getFullYear(),
-                    calendarMonth.getMonth() + 1,
-                    1,
-                  ),
+                  new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1),
                 )
               }
             >
@@ -591,10 +545,7 @@ export default function QuickEntrySheetForm({
               <Text
                 key={label}
                 variant="labelMedium"
-                style={[
-                  styles.weekCell,
-                  { color: theme.colors.textMuted },
-                ]}
+                style={[styles.weekCell, { color: theme.colors.textMuted }]}
               >
                 {label.replace("周", "")}
               </Text>
@@ -604,8 +555,7 @@ export default function QuickEntrySheetForm({
           {monthMatrix.map((week, index) => (
             <View key={`week-${index}`} style={styles.weekRow}>
               {week.map((day) => {
-                const isCurrentMonth =
-                  day.getMonth() === calendarMonth.getMonth();
+                const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
                 const isSelected =
                   day.getFullYear() === selectedDate.getFullYear() &&
                   day.getMonth() === selectedDate.getMonth() &&
@@ -619,9 +569,7 @@ export default function QuickEntrySheetForm({
                     onPress={() => handleSelectDate(day)}
                     style={[
                       styles.dayCell,
-                      isSelected
-                        ? { backgroundColor: theme.colors.accent }
-                        : null,
+                      isSelected ? { backgroundColor: theme.colors.accent } : null,
                     ]}
                   >
                     <Text
@@ -655,11 +603,7 @@ export default function QuickEntrySheetForm({
         <Dialog.Title accessibilityLabel="时间弹窗标题">选择时间</Dialog.Title>
         <Dialog.Content>
           <View style={styles.timePreviewRow}>
-            <MaterialCommunityIcons
-              name="clock-outline"
-              size={18}
-              color={theme.colors.accent}
-            />
+            <MaterialCommunityIcons name="clock-outline" size={18} color={theme.colors.accent} />
             <Text variant="titleMedium" style={{ fontWeight: "700" }}>
               {getTimeLabel(value.transactionDate)}
             </Text>
@@ -667,10 +611,7 @@ export default function QuickEntrySheetForm({
 
           <View style={styles.timePickerContent}>
             <View style={styles.timeColumn}>
-              <Text
-                variant="labelMedium"
-                style={{ color: theme.colors.textMuted }}
-              >
+              <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
                 小时
               </Text>
               <ScrollView style={styles.timeScrollArea}>
@@ -691,10 +632,7 @@ export default function QuickEntrySheetForm({
             </View>
 
             <View style={styles.timeColumn}>
-              <Text
-                variant="labelMedium"
-                style={{ color: theme.colors.textMuted }}
-              >
+              <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
                 分钟
               </Text>
               <ScrollView style={styles.timeScrollArea}>

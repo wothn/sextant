@@ -104,7 +104,9 @@ export default function SettingsScreen() {
       {message ? (
         <Card mode="contained">
           <Card.Content>
-            <Text style={{ color: message.includes("失败") ? theme.colors.danger : theme.colors.text }}>
+            <Text
+              style={{ color: message.includes("失败") ? theme.colors.danger : theme.colors.text }}
+            >
               {message}
             </Text>
           </Card.Content>

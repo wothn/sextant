@@ -15,9 +15,7 @@ function assertNonEmpty(value: string, label: string): void {
 
 export async function listTags(): Promise<TagListItem[]> {
   const db = await getDb();
-  return db.getAllAsync<TagListItem>(
-    "SELECT id, name, color FROM tags ORDER BY name ASC",
-  );
+  return db.getAllAsync<TagListItem>("SELECT id, name, color FROM tags ORDER BY name ASC");
 }
 
 export async function createTag(name: string, color = "#8E8E93"): Promise<string> {

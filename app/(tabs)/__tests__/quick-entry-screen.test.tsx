@@ -126,17 +126,11 @@ describe("QuickEntryScreen", () => {
     fireEvent.press(screen.getByLabelText("时间"));
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText("时间弹窗标题", { includeHiddenElements: true }),
-      ).toBeTruthy();
+      expect(screen.getByLabelText("时间弹窗标题", { includeHiddenElements: true })).toBeTruthy();
     });
 
-    fireEvent.press(
-      screen.getAllByText("09", { includeHiddenElements: true })[0],
-    );
-    fireEvent.press(
-      screen.getAllByText("30", { includeHiddenElements: true })[0],
-    );
+    fireEvent.press(screen.getAllByText("09", { includeHiddenElements: true })[0]);
+    fireEvent.press(screen.getAllByText("30", { includeHiddenElements: true })[0]);
     fireEvent.press(screen.getByText("完成", { includeHiddenElements: true }));
 
     fireEvent.press(screen.getByLabelText("保存本次记账"));

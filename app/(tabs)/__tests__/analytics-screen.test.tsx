@@ -8,7 +8,7 @@ const mockGetMonthlyTrend = jest.fn();
 const mockGetCurrentMonthCategoryBreakdown = jest.fn();
 const mockGetCurrentMonthAccountSummaries = jest.fn();
 const mockListCurrentMonthBudgetProgress = jest.fn();
-const mockTrendLineChart = jest.fn(() => null);
+const mockTrendLineChart = jest.fn<void, [TrendLineChartProps]>();
 
 interface TrendLineChartProps {
   points: Array<{ label: string; value: number }>;
