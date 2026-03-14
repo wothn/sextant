@@ -19,6 +19,7 @@ import {
 import { useAsyncData } from "@/src/hooks/use-async-data";
 import { formatCompactPercent, formatCurrency, formatSignedCurrency } from "@/src/lib/format";
 import { useUIStore } from "@/src/store/ui.store";
+import { getAccountTypeLabel } from "@/src/types/domain";
 import { Button, Card, ProgressBar, Screen, Text, useTheme } from "@/src/ui";
 
 interface AnalyticsScreenData {
@@ -356,7 +357,7 @@ export default function AnalyticsScreen() {
                 <View>
                   <Text variant="titleSmall">{account.accountName}</Text>
                   <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
-                    {account.accountType} · {account.transactionCount} 笔
+                    {getAccountTypeLabel(account.accountType)} · {account.transactionCount} 笔
                   </Text>
                 </View>
                 <Text variant="titleSmall" tabularNums>

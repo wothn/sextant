@@ -1,4 +1,4 @@
-import type { Category, TransactionType } from "@/src/types/domain";
+import type { AccountType, Category, TransactionType } from "@/src/types/domain";
 
 import { getDb } from "@/src/db/client";
 import { getDateKey, getDayRange, getMonthKey, getMonthRange } from "@/src/lib/date";
@@ -58,7 +58,7 @@ export interface CategoryBreakdownItem {
 export interface AccountMonthlySummary {
   accountId: string;
   accountName: string;
-  accountType: string;
+  accountType: AccountType;
   balance: number;
   income: number;
   expense: number;

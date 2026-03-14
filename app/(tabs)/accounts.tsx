@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 
 import { createAccount, listAccounts } from "@/src/features/transactions/account.service";
+import { ACCOUNT_TYPE_OPTIONS, getAccountTypeLabel } from "@/src/types/domain";
 import type { Account } from "@/src/types/domain";
 import { Button, Card, Chip, Screen, Text, TextInput, useTheme } from "@/src/ui";
 
-const ACCOUNT_TYPES: Account["type"][] = ["cash", "wallet", "bank", "card"];
+const ACCOUNT_TYPES: Account["type"][] = ACCOUNT_TYPE_OPTIONS;
 
 export default function AccountsScreen() {
   const theme = useTheme();
@@ -44,12 +45,12 @@ export default function AccountsScreen() {
                 selected={type === accountType}
                 onPress={() => setType(accountType)}
               >
-                {accountType}
+                {getAccountTypeLabel(accountType)}
               </Chip>
             ))}
           </View>
 
-          <Text variant="bodyMedium">当前类型：{type}</Text>
+          <Text variant="bodyMedium">当前类型：{getAccountTypeLabel(type)}</Text>
 
           <Button mode="contained" onPress={handleCreate}>
             新增账户
@@ -73,7 +74,7 @@ export default function AccountsScreen() {
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text variant="titleLarge">{account.name}</Text>
                   <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }} tabularNums>
-                    {`${account.type} · 余额 ¥${account.balance.toFixed(2)}`}
+                    {`${getAccountTypeLabel(account.type)} · 余额 ¥${account.balance.toFixed(2)}`}
                   </Text>
                 </View>
                 <View
@@ -87,7 +88,7 @@ export default function AccountsScreen() {
                   }}
                 >
                   <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
-                    {account.type.toUpperCase()}
+                    {getAccountTypeLabel(account.type)}
                   </Text>
                 </View>
               </View>
