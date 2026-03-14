@@ -197,7 +197,11 @@ export default function AnalyticsScreen() {
             ) : null}
           </View>
 
-          <View onLayout={handleTrendChartLayout} style={{ width: "100%" }} testID="trend-chart-container">
+          <View
+            onLayout={handleTrendChartLayout}
+            style={{ width: "100%" }}
+            testID="trend-chart-container"
+          >
             {loading && !error ? <Text>正在生成趋势图…</Text> : null}
             {!loading && !error && trend.length > 0 && trendChartWidth > 0 ? (
               <TrendLineChart
@@ -220,19 +224,19 @@ export default function AnalyticsScreen() {
           >
             {trend.slice(-3).map((item) => (
               <View key={item.monthKey} style={{ minWidth: 88, gap: 4 }}>
-              <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
-                {item.label}
-              </Text>
-              <Text variant="bodyMedium" tabularNums>
-                收入 {formatCurrency(item.income)}
-              </Text>
-              <Text variant="bodyMedium" tabularNums>
-                支出 {formatCurrency(item.expense)}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </Card.Content>
+                <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
+                  {item.label}
+                </Text>
+                <Text variant="bodyMedium" tabularNums>
+                  收入 {formatCurrency(item.income)}
+                </Text>
+                <Text variant="bodyMedium" tabularNums>
+                  支出 {formatCurrency(item.expense)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </Card.Content>
       </Card>
 
       <Card style={{ borderRadius: 18 }}>
@@ -246,39 +250,35 @@ export default function AnalyticsScreen() {
               <View style={{ flex: 1, gap: 10 }}>
                 {categories.slice(0, 5).map((item) => (
                   <View key={item.categoryName} style={{ gap: 4 }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
-                      <View
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                        <View
                           style={{
                             width: 10,
                             height: 10,
                             borderRadius: 5,
                             backgroundColor: item.categoryColor,
                           }}
-                      />
-                      <Text variant="bodyMedium">{item.categoryName}</Text>
+                        />
+                        <Text variant="bodyMedium">{item.categoryName}</Text>
+                      </View>
+                      <Text variant="labelLarge" tabularNums>
+                        {formatCompactPercent(item.share)}
+                      </Text>
                     </View>
-                    <Text variant="labelLarge" tabularNums>
-                      {formatCompactPercent(item.share)}
-                    </Text>
-                  </View>
-                    <Text
-                      variant="bodySmall"
-                      style={{ color: theme.colors.textMuted }}
-                      tabularNums
-                    >
+                    <Text variant="bodySmall" style={{ color: theme.colors.textMuted }} tabularNums>
                       {formatCurrency(item.amount)} · {item.transactionCount} 笔
                     </Text>
-                </View>
-              ))}
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
           )}
         </Card.Content>
       </Card>
@@ -310,9 +310,7 @@ export default function AnalyticsScreen() {
             />
           </View>
 
-          {!error && budgets.length === 0 ? (
-            <Text>当前还没有预算，先去设置页添加。</Text>
-          ) : null}
+          {!error && budgets.length === 0 ? <Text>当前还没有预算，先去设置页添加。</Text> : null}
           {budgets.map((item) => {
             const progress = item.budgetAmount > 0 ? item.expenseAmount / item.budgetAmount : 0;
             const over = progress >= item.alertThreshold;
@@ -321,7 +319,9 @@ export default function AnalyticsScreen() {
               <View key={item.categoryId} style={nestedCardStyle}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                   <Text>{item.categoryName}</Text>
-                  <Text tabularNums>{`${formatCurrency(item.expenseAmount)} / ${formatCurrency(item.budgetAmount)}`}</Text>
+                  <Text
+                    tabularNums
+                  >{`${formatCurrency(item.expenseAmount)} / ${formatCurrency(item.budgetAmount)}`}</Text>
                 </View>
                 <ProgressBar
                   progress={Math.min(progress, 1)}

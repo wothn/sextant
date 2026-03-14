@@ -189,11 +189,7 @@ export default function HomeScreen() {
                   <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
                     净变化
                   </Text>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: theme.colors.textMuted }}
-                    tabularNums
-                  >
+                  <Text variant="bodySmall" style={{ color: theme.colors.textMuted }} tabularNums>
                     {formatSignedCurrency(todaySummary.net)}
                   </Text>
                 </View>
@@ -315,10 +311,7 @@ export default function HomeScreen() {
                         <View style={{ flex: 1, gap: description ? 2 : 1 }}>
                           <Text variant="titleMedium">{categoryName}</Text>
                           {description ? (
-                            <Text
-                              variant="bodyMedium"
-                              style={{ color: theme.colors.textMuted }}
-                            >
+                            <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
                               {description}
                             </Text>
                           ) : null}
@@ -344,10 +337,7 @@ export default function HomeScreen() {
                               item.type === "expense" ? -item.amount : item.amount,
                             )}
                           </Text>
-                          <Text
-                            variant="bodyMedium"
-                            style={{ color: theme.colors.textMuted }}
-                          >
+                          <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
                             {new Date(item.transactionDate).toLocaleTimeString("zh-CN", {
                               hour: "2-digit",
                               minute: "2-digit",

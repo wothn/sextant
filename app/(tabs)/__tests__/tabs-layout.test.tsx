@@ -10,21 +10,16 @@ jest.mock("@expo/vector-icons", () => ({
 }));
 
 jest.mock("@/src/store/ui.store", () => ({
-  useUIStore: (
-    selector: (state: { openQuickEntrySheet: () => void }) => unknown,
-  ) =>
+  useUIStore: (selector: (state: { openQuickEntrySheet: () => void }) => unknown) =>
     selector({
       openQuickEntrySheet: mockOpenQuickEntrySheet,
     }),
 }));
 
-jest.mock(
-  "@/src/features/transactions/components/QuickEntrySheetContainer",
-  () => ({
-    __esModule: true,
-    default: () => null,
-  }),
-);
+jest.mock("@/src/features/transactions/components/QuickEntrySheetContainer", () => ({
+  __esModule: true,
+  default: () => null,
+}));
 
 jest.mock("expo-router", () => {
   const React = require("react");

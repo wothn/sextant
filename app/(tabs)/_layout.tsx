@@ -50,11 +50,7 @@ export default function TabsLayout() {
           options={{
             title: "首页",
             tabBarIcon: ({ color, size }) => (
-              <MaterialCommunityIcons
-                name="home-outline"
-                color={color}
-                size={size}
-              />
+              <MaterialCommunityIcons name="home-outline" color={color} size={size} />
             ),
           }}
         />
@@ -63,11 +59,7 @@ export default function TabsLayout() {
           options={{
             title: "账户",
             tabBarIcon: ({ color, size }) => (
-              <MaterialCommunityIcons
-                name="wallet-outline"
-                color={color}
-                size={size}
-              />
+              <MaterialCommunityIcons name="wallet-outline" color={color} size={size} />
             ),
           }}
         />
@@ -76,11 +68,7 @@ export default function TabsLayout() {
           options={{
             title: "记账",
             tabBarIcon: ({ size }) => (
-              <MaterialCommunityIcons
-                name="plus"
-                color={theme.colors.onAccent}
-                size={size + 6}
-              />
+              <MaterialCommunityIcons name="plus" color={theme.colors.onAccent} size={size + 6} />
             ),
             tabBarButton: (props) => (
               <TouchableOpacity
@@ -117,11 +105,7 @@ export default function TabsLayout() {
           options={{
             title: "分析",
             tabBarIcon: ({ color, size }) => (
-              <MaterialCommunityIcons
-                name="chart-donut"
-                color={color}
-                size={size}
-              />
+              <MaterialCommunityIcons name="chart-donut" color={color} size={size} />
             ),
           }}
         />
@@ -130,11 +114,7 @@ export default function TabsLayout() {
           options={{
             title: "设置",
             tabBarIcon: ({ color, size }) => (
-              <MaterialCommunityIcons
-                name="cog-outline"
-                color={color}
-                size={size}
-              />
+              <MaterialCommunityIcons name="cog-outline" color={color} size={size} />
             ),
           }}
         />

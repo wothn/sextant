@@ -14,7 +14,7 @@ interface AppProvidersProps extends PropsWithChildren {
 export function AppProviders({ children, scheme }: AppProvidersProps) {
   const colorScheme = useColorScheme();
   const resolvedScheme = useMemo<ThemeScheme>(
-    () => (scheme ?? colorScheme) === "dark" ? "dark" : "light",
+    () => ((scheme ?? colorScheme) === "dark" ? "dark" : "light"),
     [colorScheme, scheme],
   );
 

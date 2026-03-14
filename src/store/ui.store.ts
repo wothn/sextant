@@ -33,8 +33,7 @@ export const useUIStore = create<UIState>((set) => ({
   quickEntry: initialState,
   refreshKey: 0,
   quickEntrySheetVisible: false,
-  setQuickEntry: (partial) =>
-    set((state) => ({ quickEntry: { ...state.quickEntry, ...partial } })),
+  setQuickEntry: (partial) => set((state) => ({ quickEntry: { ...state.quickEntry, ...partial } })),
   resetQuickEntry: () =>
     set({
       quickEntry: {

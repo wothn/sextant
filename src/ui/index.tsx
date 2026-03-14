@@ -12,12 +12,7 @@ import {
   TextInput as ReactNativeTextInput,
   View,
 } from "react-native";
-import type {
-  KeyboardTypeOptions,
-  StyleProp,
-  TextStyle,
-  ViewStyle,
-} from "react-native";
+import type { KeyboardTypeOptions, StyleProp, TextStyle, ViewStyle } from "react-native";
 import { useTheme as useTamaguiTheme } from "@tamagui/core";
 
 const TEXT_VARIANTS = {
@@ -122,7 +117,9 @@ interface TextProps extends PropsWithChildren {
   accessibilityLabel?: string;
   numberOfLines?: number;
   adjustsFontSizeToFit?: boolean;
+  ellipsizeMode?: "head" | "middle" | "tail" | "clip";
   tabularNums?: boolean;
+  testID?: string;
 }
 
 export function Text({
@@ -191,26 +188,16 @@ export function Screen({
       {scroll ? (
         <ScrollView
           style={styles.screenScroll}
-          contentContainerStyle={[
-            styles.screenContentContainer,
-            contentContainerStyle,
-          ]}
+          contentContainerStyle={[styles.screenContentContainer, contentContainerStyle]}
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View
-            style={[styles.screenContent, animatedStyle, contentStyle]}
-          >
+          <Animated.View style={[styles.screenContent, animatedStyle, contentStyle]}>
             {children}
           </Animated.View>
         </ScrollView>
       ) : (
         <Animated.View
-          style={[
-            styles.screenContent,
-            animatedStyle,
-            contentContainerStyle,
-            contentStyle,
-          ]}
+          style={[styles.screenContent, animatedStyle, contentContainerStyle, contentStyle]}
         >
           {children}
         </Animated.View>
@@ -292,8 +279,7 @@ export function Button({
           shadowColor: colors.shadow,
           shadowOpacity: currentVariant.shadowOpacity,
           shadowRadius: mode === "contained" ? 18 : 0,
-          shadowOffset:
-            mode === "contained" ? { width: 0, height: 8 } : { width: 0, height: 0 },
+          shadowOffset: mode === "contained" ? { width: 0, height: 8 } : { width: 0, height: 0 },
           elevation: mode === "contained" ? 6 : 0,
           transform: [{ scale: pressed ? 0.98 : 1 }],
         },
@@ -313,10 +299,7 @@ export function Button({
         {children ? (
           <Text
             variant="labelLarge"
-            style={[
-              { color: currentVariant.textColor, fontWeight: "700" },
-              labelStyle,
-            ]}
+            style={[{ color: currentVariant.textColor, fontWeight: "700" }, labelStyle]}
           >
             {children}
           </Text>
@@ -404,10 +387,7 @@ export function Chip({ children, selected = false, onPress, style }: ChipProps) 
         style,
       ]}
     >
-      <Text
-        variant="labelLarge"
-        style={{ color: selected ? colors.accentStrong : colors.text }}
-      >
+      <Text variant="labelLarge" style={{ color: selected ? colors.accentStrong : colors.text }}>
         {children}
       </Text>
     </Pressable>
@@ -421,6 +401,9 @@ interface TextInputProps {
   mode?: "outlined";
   keyboardType?: KeyboardTypeOptions;
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
+  placeholder?: string;
+  testID?: string;
 }
 
 export function TextInput({
@@ -429,6 +412,9 @@ export function TextInput({
   onChangeText,
   keyboardType,
   style,
+  accessibilityLabel,
+  placeholder,
+  testID,
 }: TextInputProps) {
   const { colors } = useTheme();
 
@@ -442,7 +428,11 @@ export function TextInput({
       <ReactNativeTextInput
         value={value}
         onChangeText={onChangeText}
+        accessibilityLabel={accessibilityLabel}
         keyboardType={keyboardType}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textSubtle}
+        testID={testID}
         style={[
           styles.input,
           {
@@ -477,9 +467,7 @@ export function ProgressBar({ progress, color, style }: ProgressBarProps) {
   const clampedProgress = Math.max(0, Math.min(progress, 1));
 
   return (
-    <View
-      style={[styles.progressTrack, { backgroundColor: colors.surfaceStrong }, style]}
-    >
+    <View style={[styles.progressTrack, { backgroundColor: colors.surfaceStrong }, style]}>
       <View
         style={[
           styles.progressFill,
@@ -531,12 +519,7 @@ export function Modal({ children, visible, onDismiss, contentContainerStyle }: M
   const { colors } = useTheme();
 
   return (
-    <ReactNativeModal
-      transparent
-      visible={visible}
-      animationType="fade"
-      onRequestClose={onDismiss}
-    >
+    <ReactNativeModal transparent visible={visible} animationType="fade" onRequestClose={onDismiss}>
       <View style={StyleSheet.absoluteFill}>
         <Pressable
           style={[styles.backdrop, { backgroundColor: colors.overlay }]}
@@ -560,12 +543,7 @@ function DialogBase({ children, visible, onDismiss, style }: DialogProps) {
   const { colors } = useTheme();
 
   return (
-    <ReactNativeModal
-      transparent
-      visible={visible}
-      animationType="fade"
-      onRequestClose={onDismiss}
-    >
+    <ReactNativeModal transparent visible={visible} animationType="fade" onRequestClose={onDismiss}>
       <View style={styles.dialogOverlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
         <View
@@ -586,7 +564,10 @@ function DialogBase({ children, visible, onDismiss, style }: DialogProps) {
   );
 }
 
-function DialogTitle({ children, accessibilityLabel }: PropsWithChildren<{ accessibilityLabel?: string }>) {
+function DialogTitle({
+  children,
+  accessibilityLabel,
+}: PropsWithChildren<{ accessibilityLabel?: string }>) {
   return (
     <View style={styles.dialogTitleWrap}>
       <Text variant="titleLarge" accessibilityLabel={accessibilityLabel}>
