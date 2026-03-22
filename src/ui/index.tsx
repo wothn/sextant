@@ -1,4 +1,3 @@
-export { AnimatedEntranceView } from "@/src/ui/AnimatedEntranceView";
 export { BottomSheetModal } from "@/src/ui/BottomSheetModal";
 export { Button } from "@/src/ui/Button";
 export { Card } from "@/src/ui/Card";

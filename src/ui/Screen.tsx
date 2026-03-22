@@ -3,7 +3,6 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AnimatedEntranceView } from "@/src/ui/AnimatedEntranceView";
 import { useTheme } from "@/src/ui/theme";
 
 type ScreenSafeAreaEdge = "top" | "right" | "bottom" | "left";
@@ -116,16 +115,12 @@ export function Screen({
           scrollIndicatorInsets={scrollIndicatorInsets}
           showsVerticalScrollIndicator={false}
         >
-          <AnimatedEntranceView style={[styles.screenContent, contentStyle]}>
-            {children}
-          </AnimatedEntranceView>
+          <View style={[styles.screenContent, contentStyle]}>{children}</View>
         </ScrollView>
       ) : (
-        <AnimatedEntranceView
-          style={[styles.screenContent, resolvedContentContainerStyle, contentStyle]}
-        >
+        <View style={[styles.screenContent, resolvedContentContainerStyle, contentStyle]}>
           {children}
-        </AnimatedEntranceView>
+        </View>
       )}
     </View>
   );
