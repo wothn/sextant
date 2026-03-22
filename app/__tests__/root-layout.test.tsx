@@ -18,8 +18,15 @@ jest.mock("@/src/db/client", () => ({
 }));
 
 describe("RootLayout", () => {
+  let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
+
   beforeEach(() => {
     mockGetDb.mockReset();
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   it("shows the router only after database initialization succeeds", async () => {
@@ -51,6 +58,8 @@ describe("RootLayout", () => {
       expect(screen.getByText("数据库初始化失败")).toBeTruthy();
       expect(screen.getByText("boom")).toBeTruthy();
     });
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith("Database init failed", expect.any(Error));
 
     fireEvent.press(screen.getByText("重试"));
 

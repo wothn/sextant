@@ -68,4 +68,20 @@ describe("SettingsScreen", () => {
       expect(screen.getByText("导出成功：file:///documents/export.csv")).toBeTruthy();
     });
   });
+
+  it("saves a valid monthly budget", async () => {
+    renderWithProviders(<SettingsScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("餐饮")).toBeTruthy();
+    });
+
+    fireEvent.changeText(screen.getByLabelText("预算金额"), "256.8");
+    fireEvent.press(screen.getByText("保存预算"));
+
+    await waitFor(() => {
+      expect(mockUpsertMonthlyBudget).toHaveBeenCalledWith("cat-1", 256.8, 0.8);
+      expect(screen.getByText("预算已保存：餐饮 ¥256.80")).toBeTruthy();
+    });
+  });
 });

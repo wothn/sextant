@@ -2,6 +2,7 @@ import type { PropsWithChildren } from "react";
 import { useMemo } from "react";
 import { useColorScheme } from "react-native";
 import { TamaguiProvider, Theme } from "@tamagui/core";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import tamaguiConfig from "@/src/tamagui.config";
 
@@ -19,8 +20,10 @@ export function AppProviders({ children, scheme }: AppProvidersProps) {
   );
 
   return (
-    <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedScheme}>
-      <Theme name={resolvedScheme}>{children}</Theme>
-    </TamaguiProvider>
+    <SafeAreaProvider>
+      <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedScheme}>
+        <Theme name={resolvedScheme}>{children}</Theme>
+      </TamaguiProvider>
+    </SafeAreaProvider>
   );
 }

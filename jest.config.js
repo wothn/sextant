@@ -25,6 +25,6 @@ module.exports = {
     },
   },
   transformIgnorePatterns: [
-    "node_modules/(?!(jest-)?react-native|@react-native|react-native|expo(nent)?|@expo(nent)?/.*|@expo/.*|expo-router|@unimodules/.*|unimodules|tamagui|@tamagui/.*|react-native-svg|@react-navigation/.*)",
+    "node_modules/(?!(jest-)?react-native|@react-native|react-native|expo(nent)?|@expo(nent)?/.*|@expo/.*|expo-router|@unimodules/.*|unimodules|tamagui|@tamagui/.*|react-native-svg|@react-navigation/.*|react-native-reanimated|react-native-worklets)",
   ],
 };

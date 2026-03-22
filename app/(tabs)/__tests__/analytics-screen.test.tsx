@@ -99,6 +99,28 @@ describe("AnalyticsScreen", () => {
     });
   });
 
+  it("shows warning copy when a budget reaches the alert threshold", async () => {
+    mockGetCurrentMonthSummary.mockResolvedValueOnce({ income: 3000, expense: 1200, net: 1800 });
+    mockGetMonthlyTrend.mockResolvedValueOnce([]);
+    mockGetCurrentMonthCategoryBreakdown.mockResolvedValueOnce([]);
+    mockListCurrentMonthBudgetProgress.mockResolvedValueOnce([
+      {
+        categoryId: "cat-1",
+        categoryName: "餐饮",
+        budgetAmount: 1000,
+        alertThreshold: 0.8,
+        expenseAmount: 900,
+      },
+    ]);
+
+    renderWithProviders(<AnalyticsScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("1 个分类接近超支")).toBeTruthy();
+      expect(screen.getByText("已达到预警阈值 80%")).toBeTruthy();
+    });
+  });
+
   it("sizes trend chart to container width", async () => {
     mockGetCurrentMonthSummary.mockResolvedValueOnce({ income: 3000, expense: 800, net: 2200 });
     mockGetMonthlyTrend.mockResolvedValueOnce([

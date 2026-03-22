@@ -14,6 +14,7 @@ coverage/
 .agents/
 memories/
 AGENTS.md
+skills-lock.json
 
 # Native
 .kotlin/

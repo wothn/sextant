@@ -9,9 +9,15 @@ type DonutChartProps = {
   size?: number;
   strokeWidth?: number;
   segments: DonutChartSegment[];
+  trackColor: string;
 };
 
-export function DonutChart({ size = 164, strokeWidth = 22, segments }: DonutChartProps) {
+export function DonutChart({
+  size = 164,
+  strokeWidth = 22,
+  segments,
+  trackColor,
+}: DonutChartProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = segments.reduce((sum, item) => sum + item.value, 0);
@@ -23,7 +29,7 @@ export function DonutChart({ size = 164, strokeWidth = 22, segments }: DonutChar
         cx={size / 2}
         cy={size / 2}
         r={radius}
-        stroke="#E7EAF0"
+        stroke={trackColor}
         strokeWidth={strokeWidth}
         fill="none"
       />

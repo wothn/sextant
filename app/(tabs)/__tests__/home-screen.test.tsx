@@ -154,4 +154,15 @@ describe("HomeScreen", () => {
       expect(screen.getByText("今天已经花了")).toBeTruthy();
     });
   });
+
+  it("shows the empty state when no grouped transactions are available", async () => {
+    mockListTransactionGroupsByDay.mockResolvedValueOnce([]);
+
+    renderWithProviders(<HomeScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText("还没有记录")).toBeTruthy();
+      expect(screen.getByText("记一笔后，这里会按日期排好最近的明细。")).toBeTruthy();
+    });
+  });
 });

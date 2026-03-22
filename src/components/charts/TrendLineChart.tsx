@@ -9,16 +9,20 @@ type TrendLineChartProps = {
   points: TrendPoint[];
   width?: number;
   height?: number;
-  color?: string;
-  fillColor?: string;
+  color: string;
+  fillColor: string;
+  axisColor: string;
+  labelColor: string;
 };
 
 export function TrendLineChart({
   points,
   width = 320,
   height = 180,
-  color = "#6750A4",
-  fillColor = "rgba(103, 80, 164, 0.14)",
+  color,
+  fillColor,
+  axisColor,
+  labelColor,
 }: TrendLineChartProps) {
   const paddingX = 18;
   const paddingTop = 16;
@@ -49,7 +53,7 @@ export function TrendLineChart({
       </Defs>
       <Path
         d={`M ${paddingX} ${paddingTop + chartHeight} H ${paddingX + chartWidth}`}
-        stroke="#D0D7E2"
+        stroke={axisColor}
         strokeWidth={1}
         fill="none"
       />
@@ -61,7 +65,7 @@ export function TrendLineChart({
           x={point.x}
           y={height - 6}
           fontSize="11"
-          fill="#67758A"
+          fill={labelColor}
           textAnchor="middle"
         >
           {point.label}
