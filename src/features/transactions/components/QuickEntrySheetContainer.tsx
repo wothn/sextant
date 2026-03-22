@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createTransaction,
@@ -10,6 +10,17 @@ import QuickEntrySheetForm, {
 } from "@/src/features/transactions/components/QuickEntrySheetForm";
 import { useUIStore } from "@/src/store/ui.store";
 import type { Category, PaymentMethod } from "@/src/types/domain";
+import { MOTION_DURATION_BASE } from "@/src/ui";
+
+interface QuickEntryMessageState {
+  text: string;
+  tone: "error" | "success";
+}
+
+const EMPTY_MESSAGE: QuickEntryMessageState = {
+  text: "",
+  tone: "error",
+};
 
 interface QuickEntrySheetContainerProps {
   visible?: boolean;
@@ -25,7 +36,10 @@ export default function QuickEntrySheetContainer({
   const [categories, setCategories] = useState<Category[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<QuickEntryMessageState>(EMPTY_MESSAGE);
+  const [controlledVisible, setControlledVisible] = useState(Boolean(visible));
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldResetOnCloseRef = useRef(false);
 
   const quickEntry = useUIStore((state) => state.quickEntry);
   const quickEntrySheetVisible = useUIStore((state) => state.quickEntrySheetVisible);
@@ -35,7 +49,7 @@ export default function QuickEntrySheetContainer({
   const openQuickEntrySheet = useUIStore((state) => state.openQuickEntrySheet);
   const closeQuickEntrySheet = useUIStore((state) => state.closeQuickEntrySheet);
 
-  const resolvedVisible = visible ?? quickEntrySheetVisible;
+  const resolvedVisible = visible === undefined ? quickEntrySheetVisible : controlledVisible;
 
   useEffect(() => {
     if (!visible) {
@@ -51,6 +65,14 @@ export default function QuickEntrySheetContainer({
       openQuickEntrySheet();
     }
   }, [onMount, openQuickEntrySheet, quickEntrySheetVisible, visible]);
+
+  useEffect(() => {
+    if (visible === undefined) {
+      return;
+    }
+
+    setControlledVisible(visible);
+  }, [visible]);
 
   const syncDefaults = useCallback(
     (categoryRows: Category[], paymentMethodRows: PaymentMethod[]) => {
@@ -97,15 +119,53 @@ export default function QuickEntrySheetContainer({
     void loadData();
   }, [loadData, resolvedVisible]);
 
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearCloseTimer = useCallback((): void => {
+    if (!closeTimerRef.current) {
+      return;
+    }
+
+    clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }, []);
+
   const handleDismiss = useCallback(() => {
-    closeQuickEntrySheet();
-    setMessage("");
+    clearCloseTimer();
+    shouldResetOnCloseRef.current = false;
+    if (visible === undefined) {
+      closeQuickEntrySheet();
+    } else {
+      setControlledVisible(false);
+    }
+    setMessage(EMPTY_MESSAGE);
+  }, [clearCloseTimer, closeQuickEntrySheet, visible]);
+
+  const handleAfterDismiss = useCallback(() => {
+    clearCloseTimer();
+
+    if (shouldResetOnCloseRef.current) {
+      shouldResetOnCloseRef.current = false;
+      resetQuickEntry();
+      setMessage(EMPTY_MESSAGE);
+    }
+
+    if (visible !== undefined) {
+      setControlledVisible(true);
+    }
+
     onDismiss?.();
-  }, [closeQuickEntrySheet, onDismiss]);
+  }, [clearCloseTimer, onDismiss, resetQuickEntry, visible]);
 
   const handleChange = useCallback(
     (partial: Partial<QuickEntryFormValue>) => {
-      setMessage("");
+      setMessage(EMPTY_MESSAGE);
       setQuickEntry(partial);
     },
     [setQuickEntry],
@@ -115,12 +175,15 @@ export default function QuickEntrySheetContainer({
     const amount = Number(quickEntry.amountText);
 
     if (!quickEntry.categoryId || !amount || amount <= 0) {
-      setMessage("请先补全分类和金额");
+      setMessage({
+        text: "请先补全分类和金额",
+        tone: "error",
+      });
       return;
     }
 
     setSaving(true);
-    setMessage("");
+    setMessage(EMPTY_MESSAGE);
 
     try {
       await createTransaction({
@@ -133,24 +196,44 @@ export default function QuickEntrySheetContainer({
       });
 
       bumpRefreshKey();
-      closeQuickEntrySheet();
-      resetQuickEntry();
-      setMessage("");
-      onDismiss?.();
+      shouldResetOnCloseRef.current = true;
+      setMessage({
+        text: "已保存这笔记账",
+        tone: "success",
+      });
+      clearCloseTimer();
+      closeTimerRef.current = setTimeout(() => {
+        if (visible === undefined) {
+          closeQuickEntrySheet();
+          return;
+        }
+
+        setControlledVisible(false);
+      }, MOTION_DURATION_BASE);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error && error.message
+          ? `保存失败：${error.message}`
+          : "保存失败，请稍后重试";
+
+      setMessage({
+        text: errorMessage,
+        tone: "error",
+      });
     } finally {
       setSaving(false);
     }
   }, [
     bumpRefreshKey,
+    clearCloseTimer,
     closeQuickEntrySheet,
-    onDismiss,
     quickEntry.amountText,
     quickEntry.categoryId,
     quickEntry.description,
     quickEntry.paymentMethodId,
     quickEntry.transactionDate,
     quickEntry.type,
-    resetQuickEntry,
+    visible,
   ]);
 
   return (
@@ -159,16 +242,19 @@ export default function QuickEntrySheetContainer({
       categories={categories}
       paymentMethods={paymentMethods}
       saving={saving}
-      message={message}
+      message={message.text}
+      messageTone={message.tone}
       value={{
         type: quickEntry.type,
         amountText: quickEntry.amountText,
+        description: quickEntry.description,
         categoryId: quickEntry.categoryId,
         paymentMethodId: quickEntry.paymentMethodId,
         transactionDate: quickEntry.transactionDate,
       }}
       onChange={handleChange}
       onDismiss={handleDismiss}
+      onAfterDismiss={handleAfterDismiss}
       onSubmit={handleSubmit}
     />
   );

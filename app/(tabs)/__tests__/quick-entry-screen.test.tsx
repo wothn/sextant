@@ -1,8 +1,25 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import QuickEntryScreen from "@/app/(tabs)/quick-entry";
 import { renderWithProviders } from "@/src/test/render";
 import { useUIStore } from "@/src/store/ui.store";
+
+interface CreatedTransactionPayload {
+  categoryId: string;
+  paymentMethodId: string | null;
+  amount: number;
+  type: "expense" | "income";
+  description: string;
+  transactionDate: number;
+}
+
+function isCreatedTransactionPayload(value: unknown): value is CreatedTransactionPayload {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  return "transactionDate" in value && typeof value.transactionDate === "number";
+}
 
 const mockReplace = jest.fn();
 const mockListCategories = jest.fn();
@@ -92,36 +109,49 @@ describe("QuickEntryScreen", () => {
     renderWithProviders(<QuickEntryScreen />);
 
     await waitFor(() => {
+      expect(screen.getByText("快速记账")).toBeTruthy();
       expect(screen.getByText("支出")).toBeTruthy();
       expect(screen.getByText("收入")).toBeTruthy();
-      expect(screen.getByText("分类")).toBeTruthy();
-      expect(screen.getByText("餐饮")).toBeTruthy();
+      expect(screen.getByText("支付方式")).toBeTruthy();
+      expect(screen.getAllByText("分类").length).toBeGreaterThan(0);
+      expect(screen.getByLabelText("备注")).toBeTruthy();
+      expect(screen.getAllByText("餐饮").length).toBeGreaterThan(0);
     });
 
     expect(useUIStore.getState().quickEntry.type).toBe("expense");
-    expect(screen.getByText(/今天/)).toBeTruthy();
+    expect(screen.getAllByText(/今天/).length).toBeGreaterThan(0);
     expect(screen.getByText(/:15$/)).toBeTruthy();
+    expect(screen.getAllByText("不设置").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^已选 /)).toBeNull();
   });
 
   it("supports keypad input, type switching, popup time selection, and saving", async () => {
     renderWithProviders(<QuickEntryScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText("餐饮")).toBeTruthy();
+      expect(screen.getAllByText("餐饮").length).toBeGreaterThan(0);
     });
 
     fireEvent.press(screen.getByText("收入"));
 
     await waitFor(() => {
       expect(mockListCategories).toHaveBeenLastCalledWith("income");
-      expect(screen.getByText("工资")).toBeTruthy();
+      expect(screen.getAllByText("工资").length).toBeGreaterThan(0);
     });
 
-    fireEvent.press(screen.getByText("工资"));
+    fireEvent.press(screen.getByLabelText("选择分类工资"));
     fireEvent.press(screen.getByText("1"));
     fireEvent.press(screen.getByText("2"));
     fireEvent.press(screen.getByText("."));
     fireEvent.press(screen.getByText("5"));
+    fireEvent.press(screen.getByLabelText("备注"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("在此输入备注...")).toBeTruthy();
+    });
+
+    fireEvent.changeText(screen.getByPlaceholderText("在此输入备注..."), "工资到账");
+    fireEvent.press(screen.getByText("确定"));
 
     fireEvent.press(screen.getByLabelText("时间"));
 
@@ -139,27 +169,35 @@ describe("QuickEntryScreen", () => {
       expect(mockCreateTransaction).toHaveBeenCalledTimes(1);
     });
 
-    const payload = mockCreateTransaction.mock.calls[0]?.[0] as {
-      categoryId: string;
-      paymentMethodId: string | null;
-      amount: number;
-      type: "expense" | "income";
-      description?: string;
-      transactionDate: number;
-    };
-
-    expect(payload).toMatchObject({
-      categoryId: "cat-2",
-      paymentMethodId: null,
-      amount: 12.5,
-      type: "income",
-      description: "",
+    act(() => {
+      jest.runAllTimers();
     });
+
+    const payload: unknown = mockCreateTransaction.mock.calls[0]?.[0];
+
+    expect(payload).toEqual(
+      expect.objectContaining({
+        categoryId: "cat-2",
+        paymentMethodId: null,
+        amount: 12.5,
+        type: "income",
+        description: "工资到账",
+      }),
+    );
+
+    expect(payload).toBeDefined();
+    expect(isCreatedTransactionPayload(payload)).toBe(true);
+
+    if (!isCreatedTransactionPayload(payload)) {
+      throw new Error("missing transaction payload");
+    }
 
     const savedDate = new Date(payload.transactionDate);
     expect(savedDate.getHours()).toBe(9);
     expect(savedDate.getMinutes()).toBe(30);
-    expect(mockReplace).toHaveBeenCalledWith("/(tabs)");
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/(tabs)");
+    });
     expect(useUIStore.getState().refreshKey).toBe(1);
   });
 
@@ -167,14 +205,15 @@ describe("QuickEntryScreen", () => {
     renderWithProviders(<QuickEntryScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText("餐饮")).toBeTruthy();
+      expect(screen.getAllByText("餐饮").length).toBeGreaterThan(0);
     });
 
     fireEvent.press(screen.getByText("5"));
     fireEvent.press(screen.getByText("0"));
     fireEvent.press(screen.getByLabelText("删除金额"));
 
-    expect(screen.getByText("¥5")).toBeTruthy();
+    expect(screen.getByLabelText("金额").props.children).toBe("5");
+    expect(screen.getAllByText("¥").length).toBeGreaterThan(0);
     expect(useUIStore.getState().quickEntry.amountText).toBe("5");
   });
 
@@ -182,10 +221,11 @@ describe("QuickEntryScreen", () => {
     renderWithProviders(<QuickEntryScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText("餐饮")).toBeTruthy();
+      expect(screen.getAllByText("餐饮").length).toBeGreaterThan(0);
     });
 
-    fireEvent.press(screen.getByText("保存本次记账"));
+    fireEvent.press(screen.getByLabelText("清空金额"));
+    fireEvent.press(screen.getByLabelText("保存本次记账"));
 
     await waitFor(() => {
       expect(screen.getByText("请先补全分类和金额")).toBeTruthy();

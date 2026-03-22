@@ -1,15 +1,14 @@
 import * as Sharing from "expo-sharing";
 import { useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
 
+import { SettingsScreenContent } from "@/src/components/screens/settings/SettingsScreenContent";
 import { upsertMonthlyBudget } from "@/src/features/budgets/budget.service";
 import { listCategories } from "@/src/features/transactions/transaction.service";
 import { exportTransactionsCsv } from "@/src/lib/backup/backup.service";
 import type { Category } from "@/src/types/domain";
-import { Button, Card, Chip, Screen, Text, TextInput, useTheme } from "@/src/ui";
+import { Screen } from "@/src/ui";
 
 export default function SettingsScreen() {
-  const theme = useTheme();
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [budgetText, setBudgetText] = useState("");
@@ -36,11 +35,11 @@ export default function SettingsScreen() {
   }, []);
 
   const selectedName = useMemo(
-    () => categories.find((c) => c.id === selectedCategory)?.name ?? "未选择",
+    () => categories.find((category) => category.id === selectedCategory)?.name ?? "未选择",
     [categories, selectedCategory],
   );
 
-  const handleBudgetSave = async () => {
+  const handleBudgetSave = async (): Promise<void> => {
     const amount = Number(budgetText);
     if (!selectedCategory || !amount || amount <= 0) {
       setMessage("请输入有效预算金额");
@@ -51,7 +50,7 @@ export default function SettingsScreen() {
     setBudgetText("");
   };
 
-  const handleExportCsv = async () => {
+  const handleExportCsv = async (): Promise<void> => {
     try {
       const path = await exportTransactionsCsv();
       if (await Sharing.isAvailableAsync()) {
@@ -65,54 +64,17 @@ export default function SettingsScreen() {
 
   return (
     <Screen contentContainerStyle={{ paddingBottom: 132 }}>
-      <Card>
-        <Card.Content style={{ gap: 10 }}>
-          <Text variant="titleMedium">本月预算设置</Text>
-          <Text variant="bodyMedium">当前分类：{selectedName}</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {categories.map((item) => (
-              <Chip
-                key={item.id}
-                selected={selectedCategory === item.id}
-                onPress={() => setSelectedCategory(item.id)}
-              >
-                {item.name}
-              </Chip>
-            ))}
-          </View>
-          <TextInput
-            mode="outlined"
-            label="预算金额"
-            keyboardType="numeric"
-            value={budgetText}
-            onChangeText={setBudgetText}
-          />
-          <Button mode="contained" onPress={handleBudgetSave}>
-            保存预算
-          </Button>
-        </Card.Content>
-      </Card>
-
-      <Card>
-        <Card.Content style={{ gap: 10 }}>
-          <Text variant="titleMedium">数据管理</Text>
-          <Button mode="outlined" onPress={handleExportCsv}>
-            导出交易 CSV
-          </Button>
-        </Card.Content>
-      </Card>
-
-      {message ? (
-        <Card mode="contained">
-          <Card.Content>
-            <Text
-              style={{ color: message.includes("失败") ? theme.colors.danger : theme.colors.text }}
-            >
-              {message}
-            </Text>
-          </Card.Content>
-        </Card>
-      ) : null}
+      <SettingsScreenContent
+        categories={categories}
+        selectedCategory={selectedCategory}
+        selectedName={selectedName}
+        budgetText={budgetText}
+        message={message}
+        onSelectCategory={setSelectedCategory}
+        onChangeBudgetText={setBudgetText}
+        onSaveBudget={handleBudgetSave}
+        onExportCsv={handleExportCsv}
+      />
     </Screen>
   );
 }

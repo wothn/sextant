@@ -51,7 +51,6 @@ pnpm install
 pnpm start
 pnpm android
 pnpm ios
-pnpm web
 ```
 
 ## 常用命令
