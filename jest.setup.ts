@@ -37,9 +37,14 @@ jest.mock("react-native-safe-area-context", () => {
   };
 });
 
-jest.mock("@expo/vector-icons", () => ({
-  MaterialCommunityIcons: () => null,
-}));
+jest.mock("@expo/vector-icons", () => {
+  const MaterialCommunityIcons = () => null;
+  MaterialCommunityIcons.loadFont = () => Promise.resolve();
+
+  return {
+    MaterialCommunityIcons,
+  };
+});
 
 jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => ({
   __esModule: true,

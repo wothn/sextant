@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import RootLayout from "@/app/_layout";
 
 const mockGetDb = jest.fn();
+const mockLoadIconFont = jest.fn();
 
 jest.mock("expo-router", () => {
   const React = require("react");
@@ -17,11 +18,22 @@ jest.mock("@/src/db/client", () => ({
   getDb: () => mockGetDb(),
 }));
 
+jest.mock("@expo/vector-icons", () => {
+  const MaterialCommunityIcons = () => null;
+  MaterialCommunityIcons.loadFont = () => mockLoadIconFont();
+
+  return {
+    MaterialCommunityIcons,
+  };
+});
+
 describe("RootLayout", () => {
   let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
 
   beforeEach(() => {
     mockGetDb.mockReset();
+    mockLoadIconFont.mockReset();
+    mockLoadIconFont.mockResolvedValue(undefined);
     consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
@@ -31,10 +43,17 @@ describe("RootLayout", () => {
 
   it("shows the router only after database initialization succeeds", async () => {
     let resolvePromise: () => void = () => undefined;
+    let resolveIconFontPromise: () => void = () => undefined;
     mockGetDb.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
           resolvePromise = resolve;
+        }),
+    );
+    mockLoadIconFont.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveIconFontPromise = resolve;
         }),
     );
 
@@ -43,6 +62,11 @@ describe("RootLayout", () => {
     expect(screen.queryByText("router-stack")).toBeNull();
 
     resolvePromise();
+    await waitFor(() => {
+      expect(screen.queryByText("router-stack")).toBeNull();
+    });
+
+    resolveIconFontPromise();
 
     await waitFor(() => {
       expect(screen.getByText("router-stack")).toBeTruthy();
@@ -55,16 +79,17 @@ describe("RootLayout", () => {
     render(<RootLayout />);
 
     await waitFor(() => {
-      expect(screen.getByText("数据库初始化失败")).toBeTruthy();
+      expect(screen.getByText("应用初始化失败")).toBeTruthy();
       expect(screen.getByText("boom")).toBeTruthy();
     });
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith("Database init failed", expect.any(Error));
+    expect(consoleErrorSpy).toHaveBeenCalledWith("App init failed", expect.any(Error));
 
     fireEvent.press(screen.getByText("重试"));
 
     await waitFor(() => {
       expect(mockGetDb).toHaveBeenCalledTimes(2);
+      expect(mockLoadIconFont).toHaveBeenCalledTimes(2);
       expect(screen.getByText("router-stack")).toBeTruthy();
     });
   });
