@@ -1,12 +1,16 @@
-import { KeyboardAvoidingView, Platform, Pressable, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Keyboard, Platform, Pressable, View } from "react-native";
 import type { RefObject } from "react";
-import type { TextInput as ReactNativeTextInput } from "react-native";
+import type {
+  KeyboardEvent as ReactNativeKeyboardEvent,
+  TextInput as ReactNativeTextInput,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
-import { Button, Surface, Text, TextInput, useTheme } from "@/src/ui";
+import { BottomSheetModal, Button, Surface, Text, TextInput, useTheme } from "@/src/ui";
 
 interface NoteEditorSheetProps {
   visible: boolean;
@@ -29,28 +33,54 @@ export function NoteEditorSheet({
 }: NoteEditorSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  const focusInput = useCallback((): void => {
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }, [inputRef]);
+
+  useEffect(() => {
+    const showEventName = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEventName = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const handleKeyboardShow = (event: ReactNativeKeyboardEvent): void => {
+      setKeyboardOffset(Math.max(event.endCoordinates.height - insets.bottom, 0));
+    };
+
+    const handleKeyboardHide = (): void => {
+      setKeyboardOffset(0);
+    };
+
+    const showSubscription = Keyboard.addListener(showEventName, handleKeyboardShow);
+    const hideSubscription = Keyboard.addListener(hideEventName, handleKeyboardHide);
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [insets.bottom]);
 
   if (!visible) {
     return null;
   }
 
   return (
-    <View pointerEvents="box-none" style={styles.noteSheetOverlay}>
-      <Pressable
-        onPress={onClose}
-        style={[styles.noteSheetBackdrop, { backgroundColor: theme.colors.overlay }]}
-      />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        enabled={visible}
-        style={[
-          styles.noteSheetContainer,
-          {
-            paddingTop: Math.max(insets.top, 16),
-            paddingHorizontal: Math.max(insets.left, insets.right),
-          },
-        ]}
-      >
+    <BottomSheetModal
+      visible={visible}
+      onDismiss={onClose}
+      contentContainerStyle={[
+        styles.modalContainer,
+        {
+          paddingTop: Math.max(insets.top, 16),
+          paddingHorizontal: Math.max(insets.left, insets.right),
+          paddingBottom: keyboardOffset,
+        },
+      ]}
+      onShow={focusInput}
+    >
+      <View style={styles.noteSheetContainer}>
         <Surface
           style={[
             styles.sheet,
@@ -88,7 +118,6 @@ export function NoteEditorSheet({
 
           <TextInput
             ref={inputRef}
-            autoFocus
             value={note}
             onChangeText={onChangeNote}
             onLayout={onInputLayout}
@@ -102,7 +131,7 @@ export function NoteEditorSheet({
             确定
           </Button>
         </Surface>
-      </KeyboardAvoidingView>
-    </View>
+      </View>
+    </BottomSheetModal>
   );
 }

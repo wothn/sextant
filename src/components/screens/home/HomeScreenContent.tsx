@@ -5,7 +5,7 @@ import type {
   TransactionListItem,
   TodaySummary,
 } from "@/src/features/transactions/transaction.service";
-import { Text, useTheme } from "@/src/ui";
+import { Text } from "@/src/ui";
 import { AsyncStateCard } from "@/src/components/screens/shared/AsyncStateCard";
 import { EmptyStateCard } from "@/src/components/screens/shared/EmptyStateCard";
 import { HomeGreetingSection } from "@/src/components/screens/home/HomeGreetingSection";
@@ -50,8 +50,6 @@ export function HomeScreenContent({
   selectedTransactionSummary,
   onDismissTransaction,
 }: HomeScreenContentProps) {
-  const theme = useTheme();
-
   return (
     <>
       <View style={{ gap: 4 }}>

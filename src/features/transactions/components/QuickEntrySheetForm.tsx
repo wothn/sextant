@@ -21,10 +21,8 @@ import type {
   QuickEntryFormValue,
 } from "@/src/features/transactions/components/quick-entry/types";
 import {
-  buildDateShortcutOptions,
   buildHourOptions,
   buildMinuteOptions,
-  buildTimePresetOptions,
   getKeypadRows,
   getMonthMatrix,
   pad,
@@ -125,10 +123,8 @@ export default function QuickEntrySheetForm({
 
   const amountDisplay = value.amountText || "0";
   const monthMatrix = useMemo(() => getMonthMatrix(calendarMonth), [calendarMonth]);
-  const dateShortcutOptions = useMemo(() => buildDateShortcutOptions(), []);
   const hourOptions = useMemo(() => buildHourOptions(), []);
   const minuteOptions = useMemo(() => buildMinuteOptions(), []);
-  const timePresetOptions = useMemo(() => buildTimePresetOptions(), []);
   const keypadRows = useMemo(() => getKeypadRows(), []);
 
   const selectedDate = new Date(value.transactionDate);
@@ -252,7 +248,6 @@ export default function QuickEntrySheetForm({
         calendarMonth={calendarMonth}
         selectedDate={selectedDate}
         monthMatrix={monthMatrix}
-        shortcutOptions={dateShortcutOptions}
         onDismiss={() => setPickerMode(null)}
         onChangeCalendarMonth={setCalendarMonth}
         onSelectDate={(nextDate) => {
@@ -268,7 +263,6 @@ export default function QuickEntrySheetForm({
         selectedMinute={selectedMinute}
         hourOptions={hourOptions}
         minuteOptions={minuteOptions}
-        presetOptions={timePresetOptions}
         onDismiss={() => setPickerMode(null)}
         onSelectHour={(hour) =>
           onChange({
@@ -286,11 +280,6 @@ export default function QuickEntrySheetForm({
               Number(selectedHour),
               Number(minute),
             ),
-          })
-        }
-        onSelectTime={(hours, minutes) =>
-          onChange({
-            transactionDate: setTimePart(value.transactionDate, hours, minutes),
           })
         }
       />

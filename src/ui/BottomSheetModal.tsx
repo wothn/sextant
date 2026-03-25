@@ -6,11 +6,11 @@ import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   createAnimatedComponent,
   interpolate,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 
 import {
   getEnterTimingConfig,
@@ -26,6 +26,7 @@ interface BottomSheetModalProps extends PropsWithChildren {
   visible: boolean;
   onDismiss?: () => void;
   onExited?: () => void;
+  onShow?: () => void;
   contentContainerStyle?: StyleProp<ViewStyle>;
 }
 
@@ -36,6 +37,7 @@ export function BottomSheetModal({
   visible,
   onDismiss,
   onExited,
+  onShow,
   contentContainerStyle,
 }: BottomSheetModalProps) {
   const { colors } = useTheme();
@@ -73,7 +75,7 @@ export function BottomSheetModal({
       getExitTimingConfig(MOTION_DURATION_SHEET_EXIT, reduceMotion),
       (finished) => {
         if (finished) {
-          runOnJS(handleExited)();
+          scheduleOnRN(handleExited);
         }
       },
     );
@@ -105,6 +107,7 @@ export function BottomSheetModal({
       visible
       animationType="none"
       onRequestClose={onDismiss}
+      onShow={onShow}
       statusBarTranslucent
     >
       <View style={StyleSheet.absoluteFill}>
@@ -122,6 +125,10 @@ export function BottomSheetModal({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
 });

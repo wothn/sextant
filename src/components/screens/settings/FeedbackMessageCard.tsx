@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 
 import Animated, {
   interpolate,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 
 import { Card, Text, useTheme } from "@/src/ui";
 import {
@@ -40,7 +40,7 @@ export function FeedbackMessageCard({ message }: FeedbackMessageCardProps) {
       getExitTimingConfig(MOTION_DURATION_FAST, reduceMotion),
       (finished) => {
         if (finished) {
-          runOnJS(setDisplayMessage)("");
+          scheduleOnRN(setDisplayMessage, "");
         }
       },
     );

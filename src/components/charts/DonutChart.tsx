@@ -48,9 +48,7 @@ export function DonutChart({
             strokeDashoffset={-offset}
             strokeLinecap="round"
             fill="none"
-            originX={size / 2}
-            originY={size / 2}
-            rotation={-90}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
           />
         );
         offset += portion * circumference;
