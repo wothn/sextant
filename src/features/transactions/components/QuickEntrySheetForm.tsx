@@ -258,7 +258,6 @@ export default function QuickEntrySheetForm({
 
       <TimePickerDialog
         visible={visible && pickerMode === "time"}
-        transactionDate={value.transactionDate}
         selectedHour={selectedHour}
         selectedMinute={selectedMinute}
         hourOptions={hourOptions}

@@ -156,7 +156,7 @@ describe("QuickEntryScreen", () => {
     fireEvent.press(screen.getByLabelText("时间"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("时间弹窗标题", { includeHiddenElements: true })).toBeTruthy();
+      expect(screen.getByLabelText("选择小时09", { includeHiddenElements: true })).toBeTruthy();
     });
 
     fireEvent.press(screen.getByLabelText("选择小时09", { includeHiddenElements: true }));

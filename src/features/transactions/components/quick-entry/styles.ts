@@ -355,6 +355,7 @@ export const styles = StyleSheet.create({
     height: 48,
     borderRadius: 16,
     borderWidth: 1,
+    backgroundColor: "transparent",
     zIndex: 1,
   },
   timeWheelContent: {

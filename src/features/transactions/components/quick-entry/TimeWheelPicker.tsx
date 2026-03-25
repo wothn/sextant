@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -13,6 +13,7 @@ import { Text, useTheme } from "@/src/ui";
 const VISIBLE_ROWS = 5;
 const ITEM_HEIGHT = 48;
 const WHEEL_PADDING = ((VISIBLE_ROWS - 1) / 2) * ITEM_HEIGHT;
+const LOOP_REPEAT_COUNT = 7;
 
 interface TimeWheelPickerProps {
   label: string;
@@ -35,6 +36,14 @@ function clampIndex(index: number, maxIndex: number): number {
   return index;
 }
 
+function getLoopedIndex(index: number, length: number): number {
+  if (length === 0) {
+    return 0;
+  }
+
+  return ((index % length) + length) % length;
+}
+
 export function TimeWheelPicker({
   label,
   accessibilityPrefix,
@@ -45,11 +54,24 @@ export function TimeWheelPicker({
 }: TimeWheelPickerProps) {
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
+  const isMomentumScrollingRef = useRef<boolean>(false);
+  const [previewValue, setPreviewValue] = useState<string>(selectedValue);
+  const loopedOptions = useMemo(
+    () =>
+      Array.from(
+        { length: options.length * LOOP_REPEAT_COUNT },
+        (_, index) => options[index % options.length],
+      ),
+    [options],
+  );
+  const centerLoopStartIndex = Math.floor(LOOP_REPEAT_COUNT / 2) * options.length;
 
   const selectedIndex = Math.max(
     0,
     options.findIndex((option) => option === selectedValue),
   );
+  const centeredSelectedIndex = centerLoopStartIndex + selectedIndex;
+  const displayedValue = previewValue || selectedValue;
 
   const syncToIndex = useCallback((index: number, animated: boolean): void => {
     scrollRef.current?.scrollTo({
@@ -58,31 +80,83 @@ export function TimeWheelPicker({
     });
   }, []);
 
+  const finalizeSelection = useCallback(
+    (offsetY: number): void => {
+      const rawIndex = clampIndex(Math.round(offsetY / ITEM_HEIGHT), loopedOptions.length - 1);
+      const nextIndex = getLoopedIndex(rawIndex, options.length);
+      const nextValue = options[nextIndex];
+      const alignedIndex = centerLoopStartIndex + nextIndex;
+      const alignedOffsetY = alignedIndex * ITEM_HEIGHT;
+
+      if (nextValue) {
+        setPreviewValue(nextValue);
+      }
+
+      if (Math.abs(alignedOffsetY - offsetY) > 1) {
+        syncToIndex(alignedIndex, false);
+      }
+
+      if (nextValue && nextValue !== selectedValue) {
+        onSelect(nextValue);
+      }
+    },
+    [centerLoopStartIndex, loopedOptions.length, onSelect, options, selectedValue, syncToIndex],
+  );
+
   useEffect(() => {
     if (!visible) {
       return;
     }
 
     const handle = requestAnimationFrame(() => {
-      syncToIndex(selectedIndex, false);
+      syncToIndex(centeredSelectedIndex, false);
     });
 
     return () => cancelAnimationFrame(handle);
-  }, [selectedIndex, syncToIndex, visible]);
+  }, [centeredSelectedIndex, syncToIndex, visible]);
 
-  const handleScrollComplete = useCallback(
+  useEffect(() => {
+    setPreviewValue(selectedValue);
+  }, [selectedValue]);
+
+  const handleMomentumScrollBegin = useCallback((): void => {
+    isMomentumScrollingRef.current = true;
+  }, []);
+
+  const handleScrollEndDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
-      const offsetY = event.nativeEvent.contentOffset.y;
-      const nextIndex = clampIndex(Math.round(offsetY / ITEM_HEIGHT), options.length - 1);
-      const nextValue = options[nextIndex];
+      const velocityY = Math.abs(event.nativeEvent.velocity?.y ?? 0);
 
-      syncToIndex(nextIndex, true);
+      if (velocityY > 0.05 || isMomentumScrollingRef.current) {
+        return;
+      }
 
-      if (nextValue && nextValue !== selectedValue) {
-        onSelect(nextValue);
+      finalizeSelection(event.nativeEvent.contentOffset.y);
+    },
+    [finalizeSelection],
+  );
+
+  const handleMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      isMomentumScrollingRef.current = false;
+      finalizeSelection(event.nativeEvent.contentOffset.y);
+    },
+    [finalizeSelection],
+  );
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      const rawIndex = clampIndex(
+        Math.round(event.nativeEvent.contentOffset.y / ITEM_HEIGHT),
+        loopedOptions.length - 1,
+      );
+      const nextValue = options[getLoopedIndex(rawIndex, options.length)];
+
+      if (nextValue && nextValue !== previewValue) {
+        setPreviewValue(nextValue);
       }
     },
-    [onSelect, options, selectedValue, syncToIndex],
+    [loopedOptions.length, options, previewValue],
   );
 
   return (
@@ -103,11 +177,11 @@ export function TimeWheelPicker({
         ]}
       >
         <View
+          testID={`${accessibilityPrefix}-focus-band`}
           pointerEvents="none"
           style={[
             styles.timeWheelFocusBand,
             {
-              backgroundColor: theme.colors.surface,
               borderColor: theme.colors.accentMuted,
             },
           ]}
@@ -119,21 +193,31 @@ export function TimeWheelPicker({
           snapToInterval={ITEM_HEIGHT}
           decelerationRate="fast"
           contentContainerStyle={styles.timeWheelContent}
-          onMomentumScrollEnd={handleScrollComplete}
-          onScrollEndDrag={handleScrollComplete}
+          scrollEventThrottle={16}
+          onScroll={handleScroll}
+          onMomentumScrollBegin={handleMomentumScrollBegin}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
+          onScrollEndDrag={handleScrollEndDrag}
         >
           <View style={{ height: WHEEL_PADDING }} />
-          {options.map((option) => {
-            const isSelected = option === selectedValue;
+          {loopedOptions.map((option, index) => {
+            const isCenterCopy =
+              index >= centerLoopStartIndex && index < centerLoopStartIndex + options.length;
+            const isSelected = option === displayedValue;
 
             return (
               <Pressable
-                key={option}
-                accessibilityRole="button"
-                accessibilityLabel={`选择${accessibilityPrefix}${option}`}
+                key={`${option}-${index}`}
+                accessibilityRole={isCenterCopy ? "button" : undefined}
+                accessibilityLabel={
+                  isCenterCopy ? `选择${accessibilityPrefix}${option}` : undefined
+                }
+                accessibilityElementsHidden={!isCenterCopy}
+                importantForAccessibility={isCenterCopy ? "auto" : "no-hide-descendants"}
                 onPress={() => {
                   const nextIndex = options.findIndex((item) => item === option);
-                  syncToIndex(nextIndex, true);
+                  setPreviewValue(option);
+                  syncToIndex(centerLoopStartIndex + nextIndex, true);
                   onSelect(option);
                 }}
                 style={styles.timeWheelOption}

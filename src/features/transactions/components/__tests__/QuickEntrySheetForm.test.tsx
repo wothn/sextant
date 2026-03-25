@@ -132,8 +132,11 @@ describe("QuickEntrySheetForm", () => {
     fireEvent.press(screen.getByLabelText("日期"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("日期弹窗标题", { includeHiddenElements: true })).toBeTruthy();
+      expect(screen.getByLabelText("回到今天", { includeHiddenElements: true })).toBeTruthy();
     });
+
+    expect(screen.queryByText("记账日期", { includeHiddenElements: true })).toBeNull();
+    expect(screen.queryByText("当前记账日期", { includeHiddenElements: true })).toBeNull();
 
     fireEvent.press(screen.getByLabelText("选择2026年3月7日", { includeHiddenElements: true }));
 
@@ -149,8 +152,11 @@ describe("QuickEntrySheetForm", () => {
     fireEvent.press(screen.getByLabelText("时间"));
 
     await waitFor(() => {
-      expect(screen.getByLabelText("时间弹窗标题", { includeHiddenElements: true })).toBeTruthy();
+      expect(screen.getByLabelText("选择小时09", { includeHiddenElements: true })).toBeTruthy();
     });
+
+    expect(screen.queryByText("记账时间", { includeHiddenElements: true })).toBeNull();
+    expect(screen.queryByText("当前记账时间", { includeHiddenElements: true })).toBeNull();
 
     fireEvent.press(screen.getByLabelText("选择小时09", { includeHiddenElements: true }));
     fireEvent.press(screen.getByLabelText("选择分钟30", { includeHiddenElements: true }));
