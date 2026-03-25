@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import type { MaterialCommunityIcons } from "@expo/vector-icons";
 
 export type EntryType = "expense" | "income";
 export type PickerMode = "date" | "time" | null;

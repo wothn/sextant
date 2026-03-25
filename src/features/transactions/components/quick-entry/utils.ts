@@ -18,15 +18,12 @@ export function isSameDay(left: Date, right: Date): boolean {
 
 export function getDateLabel(timestamp: number): string {
   const date = new Date(timestamp);
-  const now = new Date();
-  const base = `${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAY_LABELS[date.getDay()]}`;
-
-  return isSameDay(date, now) ? `今天 · ${base}` : `${date.getFullYear()}年${base}`;
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${WEEKDAY_LABELS[date.getDay()]}`;
 }
 
 export function getDateChipLabel(timestamp: number): string {
   const date = new Date(timestamp);
-  return isSameDay(date, new Date()) ? "今天" : `${date.getMonth() + 1}月${date.getDate()}日`;
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
 export function getTimeLabel(timestamp: number): string {
@@ -89,107 +86,7 @@ export function buildHourOptions(): string[] {
 }
 
 export function buildMinuteOptions(): string[] {
-  return Array.from({ length: 12 }, (_, index) => pad(index * 5));
-}
-
-export interface DateShortcutOption {
-  key: "yesterday" | "today" | "tomorrow";
-  label: string;
-  hint: string;
-  value: Date;
-}
-
-export function buildDateShortcutOptions(baseDate: Date = new Date()): DateShortcutOption[] {
-  const current = new Date(
-    baseDate.getFullYear(),
-    baseDate.getMonth(),
-    baseDate.getDate(),
-    baseDate.getHours(),
-    baseDate.getMinutes(),
-    0,
-    0,
-  );
-
-  const yesterday = new Date(current);
-  yesterday.setDate(current.getDate() - 1);
-
-  const tomorrow = new Date(current);
-  tomorrow.setDate(current.getDate() + 1);
-
-  return [
-    {
-      key: "yesterday",
-      label: "昨天",
-      hint: `${yesterday.getMonth() + 1}月${yesterday.getDate()}日`,
-      value: yesterday,
-    },
-    {
-      key: "today",
-      label: "今天",
-      hint: `${current.getMonth() + 1}月${current.getDate()}日`,
-      value: current,
-    },
-    {
-      key: "tomorrow",
-      label: "明天",
-      hint: `${tomorrow.getMonth() + 1}月${tomorrow.getDate()}日`,
-      value: tomorrow,
-    },
-  ];
-}
-
-export interface TimePresetOption {
-  key: "now" | "morning" | "lunch" | "afterWork" | "night";
-  label: string;
-  hint: string;
-  hours: number;
-  minutes: number;
-  icon: MaterialIconName;
-}
-
-export function buildTimePresetOptions(baseDate: Date = new Date()): TimePresetOption[] {
-  return [
-    {
-      key: "now",
-      label: "现在",
-      hint: getTimeLabel(baseDate.getTime()),
-      hours: baseDate.getHours(),
-      minutes: baseDate.getMinutes(),
-      icon: "clock-check-outline",
-    },
-    {
-      key: "morning",
-      label: "上班前",
-      hint: "09:00",
-      hours: 9,
-      minutes: 0,
-      icon: "white-balance-sunny",
-    },
-    {
-      key: "lunch",
-      label: "午间",
-      hint: "12:30",
-      hours: 12,
-      minutes: 30,
-      icon: "food-outline",
-    },
-    {
-      key: "afterWork",
-      label: "下班后",
-      hint: "18:00",
-      hours: 18,
-      minutes: 0,
-      icon: "briefcase-outline",
-    },
-    {
-      key: "night",
-      label: "晚间",
-      hint: "21:00",
-      hours: 21,
-      minutes: 0,
-      icon: "weather-night",
-    },
-  ];
+  return Array.from({ length: 60 }, (_, index) => pad(index));
 }
 
 export function getKeypadRows(): string[][] {

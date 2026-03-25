@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Pressable, Text as ReactNativeText, View } from "react-native";
+import { Pressable, Text as ReactNativeText } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Animated, {

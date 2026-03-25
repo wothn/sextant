@@ -2,10 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { Modal as ReactNativeModal } from "react-native";
 
 import QuickEntrySheetForm from "@/src/features/transactions/components/QuickEntrySheetForm";
-import {
-  setDatePart,
-  setTimePart,
-} from "@/src/features/transactions/components/quick-entry/utils";
+import { setDatePart, setTimePart } from "@/src/features/transactions/components/quick-entry/utils";
 import { renderWithProviders } from "@/src/test/render";
 
 const animationScope = globalThis;
@@ -68,7 +65,7 @@ describe("QuickEntrySheetForm", () => {
     animationScope.cancelAnimationFrame = originalCancelAnimationFrame;
   });
 
-  it("opens the note sheet without creating another native modal", () => {
+  it("opens the note sheet in a native modal above the quick entry sheet", () => {
     const handleChange = jest.fn();
     const view = renderQuickEntryForm(handleChange);
 
@@ -77,15 +74,14 @@ describe("QuickEntrySheetForm", () => {
     fireEvent.press(screen.getByLabelText("备注"));
 
     expect(screen.getByPlaceholderText("在此输入备注...")).toBeTruthy();
-    expect(view.UNSAFE_root.findAllByType(ReactNativeModal)).toHaveLength(nativeModalCount);
+    expect(view.UNSAFE_root.findAllByType(ReactNativeModal)).toHaveLength(nativeModalCount + 1);
   });
 
   it("schedules note focus with requestAnimationFrame", () => {
     renderQuickEntryForm();
 
     const requestAnimationFrame: typeof animationScope.requestAnimationFrame = jest.fn(
-      (callback: FrameRequestCallback): number => {
-        callback(0);
+      (_callback: FrameRequestCallback): number => {
         return 1;
       },
     );
@@ -129,7 +125,7 @@ describe("QuickEntrySheetForm", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(9);
   });
 
-  it("updates transaction date from shortcut selections", async () => {
+  it("updates transaction date from calendar selections", async () => {
     const handleChange = jest.fn();
     renderQuickEntryForm(handleChange);
 
@@ -139,14 +135,14 @@ describe("QuickEntrySheetForm", () => {
       expect(screen.getByLabelText("日期弹窗标题", { includeHiddenElements: true })).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByLabelText("选择昨天", { includeHiddenElements: true }));
+    fireEvent.press(screen.getByLabelText("选择2026年3月7日", { includeHiddenElements: true }));
 
     expect(handleChange).toHaveBeenCalledWith({
       transactionDate: setDatePart(baseTransactionDate, new Date(2026, 2, 7).getTime()),
     });
   });
 
-  it("updates transaction time from preset selections", async () => {
+  it("updates transaction time from wheel item selections", async () => {
     const handleChange = jest.fn();
     renderQuickEntryForm(handleChange);
 
@@ -156,10 +152,14 @@ describe("QuickEntrySheetForm", () => {
       expect(screen.getByLabelText("时间弹窗标题", { includeHiddenElements: true })).toBeTruthy();
     });
 
-    fireEvent.press(screen.getByLabelText("选择常用时间上班前", { includeHiddenElements: true }));
+    fireEvent.press(screen.getByLabelText("选择小时09", { includeHiddenElements: true }));
+    fireEvent.press(screen.getByLabelText("选择分钟30", { includeHiddenElements: true }));
 
-    expect(handleChange).toHaveBeenCalledWith({
-      transactionDate: setTimePart(baseTransactionDate, 9, 0),
+    expect(handleChange).toHaveBeenNthCalledWith(1, {
+      transactionDate: setTimePart(baseTransactionDate, 9, 15),
+    });
+    expect(handleChange).toHaveBeenNthCalledWith(2, {
+      transactionDate: setTimePart(baseTransactionDate, 18, 30),
     });
   });
 });

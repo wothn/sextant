@@ -105,7 +105,7 @@ describe("QuickEntryScreen", () => {
     jest.useRealTimers();
   });
 
-  it("renders default expense mode with today date and current time", async () => {
+  it("renders default expense mode with explicit date and current time", async () => {
     renderWithProviders(<QuickEntryScreen />);
 
     await waitFor(() => {
@@ -119,7 +119,7 @@ describe("QuickEntryScreen", () => {
     });
 
     expect(useUIStore.getState().quickEntry.type).toBe("expense");
-    expect(screen.getAllByText(/今天/).length).toBeGreaterThan(0);
+    expect(screen.getByText("3月8日")).toBeTruthy();
     expect(screen.getByText(/:15$/)).toBeTruthy();
     expect(screen.getAllByText("不设置").length).toBeGreaterThan(0);
     expect(screen.queryByText(/^已选 /)).toBeNull();
@@ -159,8 +159,8 @@ describe("QuickEntryScreen", () => {
       expect(screen.getByLabelText("时间弹窗标题", { includeHiddenElements: true })).toBeTruthy();
     });
 
-    fireEvent.press(screen.getAllByText("09", { includeHiddenElements: true })[0]);
-    fireEvent.press(screen.getAllByText("30", { includeHiddenElements: true })[0]);
+    fireEvent.press(screen.getByLabelText("选择小时09", { includeHiddenElements: true }));
+    fireEvent.press(screen.getByLabelText("选择分钟30", { includeHiddenElements: true }));
     fireEvent.press(screen.getByText("完成", { includeHiddenElements: true }));
 
     fireEvent.press(screen.getByLabelText("保存本次记账"));

@@ -3,7 +3,6 @@ import { Pressable, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
-import type { DateShortcutOption } from "@/src/features/transactions/components/quick-entry/utils";
 import {
   WEEKDAY_LABELS,
   getDateLabel,
@@ -16,7 +15,6 @@ interface DatePickerDialogProps {
   calendarMonth: Date;
   selectedDate: Date;
   monthMatrix: Date[][];
-  shortcutOptions: DateShortcutOption[];
   onDismiss: () => void;
   onChangeCalendarMonth: (date: Date) => void;
   onSelectDate: (date: Date) => void;
@@ -27,7 +25,6 @@ export function DatePickerDialog({
   calendarMonth,
   selectedDate,
   monthMatrix,
-  shortcutOptions,
   onDismiss,
   onChangeCalendarMonth,
   onSelectDate,
@@ -75,50 +72,6 @@ export function DatePickerDialog({
           </View>
         </View>
 
-        <View style={styles.dialogSection}>
-          <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
-            快捷选择
-          </Text>
-          <View style={styles.shortcutRow}>
-            {shortcutOptions.map((option) => {
-              const isSelected = isSameDay(option.value, selectedDate);
-
-              return (
-                <Pressable
-                  key={option.key}
-                  accessibilityRole="button"
-                  accessibilityLabel={`选择${option.label}`}
-                  onPress={() => onSelectDate(option.value)}
-                  style={({ pressed }) => [
-                    styles.shortcutCard,
-                    {
-                      backgroundColor: isSelected
-                        ? theme.colors.accentSoft
-                        : theme.colors.surfaceAlt,
-                      borderColor: isSelected
-                        ? theme.colors.accentMuted
-                        : theme.colors.borderStrong,
-                      opacity: pressed ? 0.92 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    variant="titleSmall"
-                    style={{
-                      color: isSelected ? theme.colors.accentStrong : theme.colors.text,
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                  <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
-                    {option.hint}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
         <View
           style={[
             styles.calendarPanel,
@@ -146,11 +99,7 @@ export function DatePickerDialog({
                 },
               ]}
             >
-              <MaterialCommunityIcons
-                name="chevron-left"
-                size={18}
-                color={theme.colors.text}
-              />
+              <MaterialCommunityIcons name="chevron-left" size={18} color={theme.colors.text} />
             </Pressable>
             <Text variant="titleMedium" style={{ fontWeight: "700" }}>
               {calendarMonth.getFullYear()}年{calendarMonth.getMonth() + 1}月
@@ -172,11 +121,34 @@ export function DatePickerDialog({
                 },
               ]}
             >
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={18}
-                color={theme.colors.text}
-              />
+              <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.text} />
+            </Pressable>
+          </View>
+
+          <View style={styles.calendarMetaRow}>
+            <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
+              直接点选日期，保持当前时间不变
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="回到今天"
+              onPress={() => {
+                const todayDate = new Date();
+                onChangeCalendarMonth(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+                onSelectDate(todayDate);
+              }}
+              style={({ pressed }) => [
+                styles.calendarTodayButton,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.borderStrong,
+                  opacity: pressed ? 0.92 : 1,
+                },
+              ]}
+            >
+              <Text variant="labelLarge" style={{ color: theme.colors.text }}>
+                今天
+              </Text>
             </Pressable>
           </View>
 
@@ -203,7 +175,7 @@ export function DatePickerDialog({
                   <Pressable
                     key={day.toISOString()}
                     accessibilityRole="button"
-                    accessibilityLabel={`选择${day.getMonth() + 1}月${day.getDate()}日`}
+                    accessibilityLabel={`选择${day.getFullYear()}年${day.getMonth() + 1}月${day.getDate()}日`}
                     onPress={() => onSelectDate(day)}
                     style={({ pressed }) => [
                       styles.dayCell,
@@ -237,10 +209,7 @@ export function DatePickerDialog({
                     </Text>
                     {isToday && !isSelected ? (
                       <View
-                        style={[
-                          styles.todayMarker,
-                          { backgroundColor: theme.colors.accentStrong },
-                        ]}
+                        style={[styles.todayMarker, { backgroundColor: theme.colors.accentStrong }]}
                       />
                     ) : null}
                   </Pressable>

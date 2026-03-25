@@ -4,16 +4,11 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "repair:worklets-babel": "node ./scripts/repair-worklets-babel-preset.cjs",
-    "postinstall": "node ./scripts/repair-worklets-babel-preset.cjs",
-    "prestart": "node ./scripts/repair-worklets-babel-preset.cjs",
-    "preandroid": "node ./scripts/repair-worklets-babel-preset.cjs",
-    "preios": "node ./scripts/repair-worklets-babel-preset.cjs",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "oxlint --type-aware --tsconfig tsconfig.oxlint.json .",
+    "lint:fix": "oxlint --type-aware --tsconfig tsconfig.oxlint.json --fix .",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
@@ -46,20 +41,18 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "^55.0.10",
-    "eslint": "^9.39.4",
-    "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
     "jest": "^29.7.0",
     "jest-expo": "^55.0.9",
     "oxfmt": "^0.36.0",
+    "oxlint": "^1.57.0",
+    "oxlint-tsgolint": "^0.17.3",
     "react-test-renderer": "^19.2.0",
-    "typescript": "~5.9.2",
-    "typescript-eslint": "^8.56.1"
+    "typescript": "~5.9.2"
   },
   "packageManager": "pnpm@10.17.1"
 }
