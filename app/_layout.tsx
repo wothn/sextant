@@ -1,4 +1,5 @@
 import { Stack } from "expo-router";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 
@@ -16,16 +17,16 @@ export default function RootLayout() {
     setReady(false);
     setError(null);
 
-    getDb()
+    Promise.all([getDb(), MaterialCommunityIcons.loadFont()])
       .then(() => {
         if (mounted) {
           setReady(true);
         }
       })
-      .catch((dbError) => {
-        console.error("Database init failed", dbError);
+      .catch((initError) => {
+        console.error("App init failed", initError);
         if (mounted) {
-          setError(dbError instanceof Error ? dbError : new Error(String(dbError)));
+          setError(initError instanceof Error ? initError : new Error(String(initError)));
         }
       });
 
@@ -40,7 +41,7 @@ export default function RootLayout() {
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           {error ? (
             <View style={{ alignItems: "center", gap: 12, paddingHorizontal: 24 }}>
-              <Text variant="titleMedium">数据库初始化失败</Text>
+              <Text variant="titleMedium">应用初始化失败</Text>
               <Text variant="bodyMedium" style={{ textAlign: "center" }}>
                 {error.message || "请稍后重试"}
               </Text>
