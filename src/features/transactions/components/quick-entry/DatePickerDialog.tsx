@@ -5,7 +5,6 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
 import {
   WEEKDAY_LABELS,
-  getDateLabel,
   isSameDay,
 } from "@/src/features/transactions/components/quick-entry/utils";
 import { Button, Dialog, Text, useTheme } from "@/src/ui";
@@ -38,40 +37,7 @@ export function DatePickerDialog({
       onDismiss={onDismiss}
       style={{ backgroundColor: theme.colors.surface }}
     >
-      <Dialog.Title accessibilityLabel="日期弹窗标题">记账日期</Dialog.Title>
       <Dialog.Content>
-        <View
-          style={[
-            styles.dialogHeroCard,
-            {
-              backgroundColor: theme.colors.backgroundSoft,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.dialogHeroIcon,
-              { backgroundColor: theme.colors.accentSoft, borderColor: theme.colors.accentMuted },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="calendar-check-outline"
-              size={20}
-              color={theme.colors.accentStrong}
-            />
-          </View>
-          <View style={styles.dialogHeroCopy}>
-            <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
-              当前记账日期
-            </Text>
-            <Text variant="headlineSmall">{`${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日`}</Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
-              {getDateLabel(selectedDate.getTime())}
-            </Text>
-          </View>
-        </View>
-
         <View
           style={[
             styles.calendarPanel,
