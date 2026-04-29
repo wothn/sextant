@@ -182,8 +182,6 @@ function QuickEntryFabButton({ children, isOpen, onPress }: QuickEntryFabButtonP
             height: 56,
             borderRadius: 18,
             backgroundColor: theme.colors.accentStrong,
-            borderWidth: 2,
-            borderColor: theme.colors.surface,
             alignItems: "center",
             justifyContent: "center",
             shadowColor: theme.colors.shadow,
