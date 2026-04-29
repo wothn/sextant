@@ -69,7 +69,6 @@ export default function QuickEntrySheetForm({
   const [noteDialogVisible, setNoteDialogVisible] = useState(false);
   const [tempNote, setTempNote] = useState(value.description);
   const noteInputRef = useRef<ReactNativeTextInput>(null);
-  const noteFocusFrameRef = useRef<number | null>(null);
   const noteSheetVisible = visible && noteDialogVisible;
 
   useEffect(() => {
@@ -81,45 +80,11 @@ export default function QuickEntrySheetForm({
     setPickerMode(null);
   }, [value.transactionDate, visible]);
 
-  const clearNoteFocusSchedule = useCallback((): void => {
-    if (noteFocusFrameRef.current === null) {
-      return;
-    }
-
-    cancelAnimationFrame(noteFocusFrameRef.current);
-    noteFocusFrameRef.current = null;
-  }, []);
-
-  const focusNoteInput = useCallback((): void => {
-    clearNoteFocusSchedule();
-    noteFocusFrameRef.current = requestAnimationFrame(() => {
-      noteFocusFrameRef.current = null;
-      noteInputRef.current?.focus();
-    });
-  }, [clearNoteFocusSchedule]);
-
   useEffect(() => {
     if (!visible) {
       setNoteDialogVisible(false);
     }
   }, [visible]);
-
-  useEffect(() => {
-    if (!noteSheetVisible) {
-      clearNoteFocusSchedule();
-      return;
-    }
-
-    focusNoteInput();
-
-    return clearNoteFocusSchedule;
-  }, [clearNoteFocusSchedule, focusNoteInput, noteSheetVisible]);
-
-  const handleNoteInputLayout = useCallback((): void => {
-    if (noteSheetVisible) {
-      focusNoteInput();
-    }
-  }, [focusNoteInput, noteSheetVisible]);
 
   const amountDisplay = value.amountText || "0";
   const monthMatrix = useMemo(() => getMonthMatrix(calendarMonth), [calendarMonth]);
@@ -240,7 +205,6 @@ export default function QuickEntrySheetForm({
           onChange({ description: tempNote.trim() });
           setNoteDialogVisible(false);
         }}
-        onInputLayout={handleNoteInputLayout}
       />
 
       <DatePickerDialog

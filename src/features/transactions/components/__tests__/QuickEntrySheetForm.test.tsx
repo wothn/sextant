@@ -78,7 +78,7 @@ describe("QuickEntrySheetForm", () => {
   });
 
   it("schedules note focus with requestAnimationFrame", () => {
-    renderQuickEntryForm();
+    const view = renderQuickEntryForm();
 
     const requestAnimationFrame: typeof animationScope.requestAnimationFrame = jest.fn(
       (_callback: FrameRequestCallback): number => {
@@ -96,13 +96,20 @@ describe("QuickEntrySheetForm", () => {
     animationScope.cancelAnimationFrame = cancelAnimationFrame;
 
     fireEvent.press(screen.getByLabelText("备注"));
+    const noteModal = view.UNSAFE_root
+      .findAllByType(ReactNativeModal)
+      .find((modal: { props: { onShow?: unknown } }) => typeof modal.props.onShow === "function");
+    noteModal?.props.onShow();
+    fireEvent(screen.getByPlaceholderText("在此输入备注..."), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 84 } },
+    });
 
     expect(screen.getByPlaceholderText("在此输入备注...")).toBeTruthy();
     expect(requestAnimationFrame).toHaveBeenCalled();
   });
 
   it("cancels pending note focus frame when note sheet closes", () => {
-    renderQuickEntryForm();
+    const view = renderQuickEntryForm();
 
     const requestAnimationFrame: typeof animationScope.requestAnimationFrame = jest.fn(
       (_callback: FrameRequestCallback): number => {
@@ -120,6 +127,13 @@ describe("QuickEntrySheetForm", () => {
     animationScope.cancelAnimationFrame = cancelAnimationFrame;
 
     fireEvent.press(screen.getByLabelText("备注"));
+    const noteModal = view.UNSAFE_root
+      .findAllByType(ReactNativeModal)
+      .find((modal: { props: { onShow?: unknown } }) => typeof modal.props.onShow === "function");
+    noteModal?.props.onShow();
+    fireEvent(screen.getByPlaceholderText("在此输入备注..."), "layout", {
+      nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 84 } },
+    });
     fireEvent.press(screen.getByLabelText("关闭备注弹窗"));
 
     expect(cancelAnimationFrame).toHaveBeenCalledWith(9);

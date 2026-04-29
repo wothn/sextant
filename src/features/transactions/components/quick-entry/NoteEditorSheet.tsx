@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Keyboard, Platform, Pressable, View } from "react-native";
 import type { RefObject } from "react";
 import type {
@@ -19,7 +19,7 @@ interface NoteEditorSheetProps {
   onChangeNote: (value: string) => void;
   onClose: () => void;
   onConfirm: () => void;
-  onInputLayout: () => void;
+  onInputLayout?: () => void;
 }
 
 export function NoteEditorSheet({
@@ -34,22 +34,104 @@ export function NoteEditorSheet({
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const focusFrameRef = useRef<number | null>(null);
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputLaidOutRef = useRef(false);
+  const modalShownRef = useRef(false);
+  const sheetEnteredRef = useRef(false);
+  const inputFocusedRef = useRef(false);
+  const visibleRef = useRef(visible);
 
-  const focusInput = useCallback((): void => {
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
+  const clearFocusSchedule = useCallback((): void => {
+    if (focusFrameRef.current !== null) {
+      cancelAnimationFrame(focusFrameRef.current);
+      focusFrameRef.current = null;
+    }
+
+    if (focusTimerRef.current === null) {
+      return;
+    }
+
+    clearTimeout(focusTimerRef.current);
+    focusTimerRef.current = null;
+  }, []);
+
+  const scheduleFocusInput = useCallback((): void => {
+    if (
+      !visibleRef.current ||
+      !modalShownRef.current ||
+      !inputLaidOutRef.current ||
+      inputFocusedRef.current
+    ) {
+      return;
+    }
+
+    clearFocusSchedule();
+
+    focusFrameRef.current = requestAnimationFrame(() => {
+      focusFrameRef.current = null;
+
+      focusTimerRef.current = setTimeout(() => {
+        focusTimerRef.current = null;
+
+        if (!visibleRef.current || inputFocusedRef.current) {
+          return;
+        }
+
+        inputRef.current?.focus();
+
+        if (!sheetEnteredRef.current) {
+          return;
+        }
+
+        focusTimerRef.current = setTimeout(() => {
+          focusTimerRef.current = null;
+          if (!visibleRef.current || inputFocusedRef.current) {
+            return;
+          }
+
+          inputRef.current?.focus();
+        }, 80);
+      }, 40);
     });
-  }, [inputRef]);
+  }, [clearFocusSchedule, inputRef]);
+
+  const handleModalShow = useCallback((): void => {
+    modalShownRef.current = true;
+    scheduleFocusInput();
+  }, [scheduleFocusInput]);
+
+  const handleSheetEntered = useCallback((): void => {
+    sheetEnteredRef.current = true;
+    scheduleFocusInput();
+  }, [scheduleFocusInput]);
+
+  const handleInputLayout = useCallback((): void => {
+    inputLaidOutRef.current = true;
+    onInputLayout?.();
+    scheduleFocusInput();
+  }, [onInputLayout, scheduleFocusInput]);
+
+  const handleInputFocus = useCallback((): void => {
+    inputFocusedRef.current = true;
+    clearFocusSchedule();
+  }, [clearFocusSchedule]);
+
+  const handleInputBlur = useCallback((): void => {
+    inputFocusedRef.current = false;
+  }, []);
 
   useEffect(() => {
     const showEventName = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEventName = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
 
     const handleKeyboardShow = (event: ReactNativeKeyboardEvent): void => {
+      Keyboard.scheduleLayoutAnimation(event);
       setKeyboardOffset(Math.max(event.endCoordinates.height - insets.bottom, 0));
     };
 
-    const handleKeyboardHide = (): void => {
+    const handleKeyboardHide = (event: ReactNativeKeyboardEvent): void => {
+      Keyboard.scheduleLayoutAnimation(event);
       setKeyboardOffset(0);
     };
 
@@ -61,6 +143,21 @@ export function NoteEditorSheet({
       hideSubscription.remove();
     };
   }, [insets.bottom]);
+
+  useEffect(() => {
+    visibleRef.current = visible;
+
+    if (visible) {
+      inputLaidOutRef.current = false;
+      modalShownRef.current = false;
+      sheetEnteredRef.current = false;
+      inputFocusedRef.current = false;
+      setKeyboardOffset(0);
+      return;
+    }
+
+    clearFocusSchedule();
+  }, [clearFocusSchedule, visible]);
 
   if (!visible) {
     return null;
@@ -78,7 +175,8 @@ export function NoteEditorSheet({
           paddingBottom: keyboardOffset,
         },
       ]}
-      onShow={focusInput}
+      onShow={handleModalShow}
+      onEntered={handleSheetEntered}
     >
       <View style={styles.noteSheetContainer}>
         <Surface
@@ -120,10 +218,13 @@ export function NoteEditorSheet({
             ref={inputRef}
             value={note}
             onChangeText={onChangeNote}
-            onLayout={onInputLayout}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
+            onLayout={handleInputLayout}
             placeholder="在此输入备注..."
             maxLength={100}
             multiline
+            showSoftInputOnFocus
             inputStyle={styles.noteSheetInput}
           />
 

@@ -25,6 +25,7 @@ import { useTheme } from "@/src/ui/theme";
 interface BottomSheetModalProps extends PropsWithChildren {
   visible: boolean;
   onDismiss?: () => void;
+  onEntered?: () => void;
   onExited?: () => void;
   onShow?: () => void;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -36,6 +37,7 @@ export function BottomSheetModal({
   children,
   visible,
   onDismiss,
+  onEntered,
   onExited,
   onShow,
   contentContainerStyle,
@@ -49,6 +51,10 @@ export function BottomSheetModal({
     setRendered(false);
     onExited?.();
   }, [onExited]);
+
+  const handleEntered = useCallback((): void => {
+    onEntered?.();
+  }, [onEntered]);
 
   useEffect(() => {
     if (visible) {
@@ -66,6 +72,11 @@ export function BottomSheetModal({
       progress.value = withTiming(
         1,
         getEnterTimingConfig(MOTION_DURATION_SHEET_ENTER, reduceMotion),
+        (finished) => {
+          if (finished) {
+            scheduleOnRN(handleEntered);
+          }
+        },
       );
       return;
     }
@@ -79,7 +90,7 @@ export function BottomSheetModal({
         }
       },
     );
-  }, [handleExited, progress, reduceMotion, rendered, visible]);
+  }, [handleEntered, handleExited, progress, reduceMotion, rendered, visible]);
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 1], [0, 1]),
