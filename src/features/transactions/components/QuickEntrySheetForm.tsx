@@ -67,7 +67,6 @@ export default function QuickEntrySheetForm({
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date(value.transactionDate));
   const [noteDialogVisible, setNoteDialogVisible] = useState(false);
-  const [tempNote, setTempNote] = useState(value.description);
   const noteInputRef = useRef<FocusableInputRef>(null);
   const noteSheetVisible = visible && noteDialogVisible;
 
@@ -179,7 +178,6 @@ export default function QuickEntrySheetForm({
             <NoteTrigger
               description={value.description}
               onPress={() => {
-                setTempNote(value.description);
                 setNoteDialogVisible(true);
               }}
             />
@@ -197,14 +195,10 @@ export default function QuickEntrySheetForm({
 
       <NoteEditorSheet
         visible={noteSheetVisible}
-        note={tempNote}
+        note={value.description}
         inputRef={noteInputRef}
-        onChangeNote={setTempNote}
+        onChangeNote={(description) => onChange({ description })}
         onClose={() => setNoteDialogVisible(false)}
-        onConfirm={() => {
-          onChange({ description: tempNote.trim() });
-          setNoteDialogVisible(false);
-        }}
       />
 
       <DatePickerDialog

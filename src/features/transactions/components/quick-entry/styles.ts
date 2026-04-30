@@ -39,6 +39,9 @@ export const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 10,
   },
+  sheetBody: {
+    gap: 12,
+  },
   dragHandleWrap: {
     alignItems: "center",
     justifyContent: "center",
@@ -55,6 +58,24 @@ export const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 8,
   },
+  noteHeaderRow: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  noteHeaderCloseButton: {
+    position: "absolute",
+    right: 0,
+    top: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   iconButton: {
     width: 36,
     height: 36,
@@ -67,7 +88,7 @@ export const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 10,
   },
   typeSwitch: {
     flexDirection: "row",
@@ -105,7 +126,7 @@ export const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     gap: 8,
   },
   amountRow: {
@@ -165,7 +186,7 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
   },
   footerBlock: {
-    gap: 8,
+    gap: 10,
   },
   paymentMethodRow: {
     gap: 8,

@@ -66,7 +66,7 @@ function SheetBody({ children, visible }: SheetSectionProps) {
     ],
   }));
 
-  return <Animated.View style={animatedStyle}>{children}</Animated.View>;
+  return <Animated.View style={[styles.sheetBody, animatedStyle]}>{children}</Animated.View>;
 }
 
 export function QuickEntrySheetLayout({
