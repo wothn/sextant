@@ -127,6 +127,16 @@ describe("QuickEntrySheetForm", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(9);
   });
 
+  it("updates the note as text changes", () => {
+    const handleChange = jest.fn();
+    renderQuickEntryForm(handleChange);
+
+    fireEvent.press(screen.getByLabelText("备注"));
+    fireEvent.changeText(screen.getByPlaceholderText("在此输入备注..."), "午饭");
+
+    expect(handleChange).toHaveBeenCalledWith({ description: "午饭" });
+  });
+
   it("updates transaction date from calendar selections", async () => {
     const handleChange = jest.fn();
     renderQuickEntryForm(handleChange);
