@@ -6,7 +6,7 @@ import { upsertMonthlyBudget } from "@/src/features/budgets/budget.service";
 import { listCategories } from "@/src/features/transactions/transaction.service";
 import { exportTransactionsCsv } from "@/src/lib/backup/backup.service";
 import type { Category } from "@/src/types/domain";
-import { Screen } from "@/src/ui";
+import { AppScreen } from "@/src/components/layout/AppScreen";
 
 export default function SettingsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -63,7 +63,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <Screen contentContainerStyle={{ paddingBottom: 132 }}>
+    <AppScreen contentContainerStyle={{ paddingBottom: 132 }}>
       <SettingsScreenContent
         categories={categories}
         selectedCategory={selectedCategory}
@@ -75,6 +75,6 @@ export default function SettingsScreen() {
         onSaveBudget={handleBudgetSave}
         onExportCsv={handleExportCsv}
       />
-    </Screen>
+    </AppScreen>
   );
 }

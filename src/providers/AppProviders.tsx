@@ -1,8 +1,8 @@
 import type { PropsWithChildren } from "react";
 import { useMemo } from "react";
 import { useColorScheme } from "react-native";
-import { TamaguiProvider, Theme } from "@tamagui/core";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { TamaguiProvider, Theme } from "tamagui";
 
 import tamaguiConfig from "@/src/tamagui.config";
 

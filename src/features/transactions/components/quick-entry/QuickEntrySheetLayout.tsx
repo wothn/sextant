@@ -1,7 +1,7 @@
 import type { PropsWithChildren } from "react";
-import { useEffect } from "react";
-import { Pressable, View } from "react-native";
+import { useEffect, useRef } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button, Sheet, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, {
@@ -13,16 +13,15 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 import {
-  BottomSheetModal,
-  Surface,
-  Text,
   getEnterTimingConfig,
-  useTheme,
   MOTION_DURATION_BASE,
+  MOTION_DURATION_SHEET_EXIT,
   MOTION_STAGGER_DELAY,
   useReducedMotion,
-} from "@/src/ui";
+} from "@/src/lib/motion";
 
 interface QuickEntrySheetLayoutProps extends PropsWithChildren {
   visible: boolean;
@@ -78,62 +77,84 @@ export function QuickEntrySheetLayout({
   sheetHeight,
   children,
 }: QuickEntrySheetLayoutProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const insets = useSafeAreaInsets();
+  const wasVisibleRef = useRef(visible);
+
+  useEffect(() => {
+    if (!visible && wasVisibleRef.current) {
+      const timer = setTimeout(() => {
+        onExited?.();
+      }, MOTION_DURATION_SHEET_EXIT);
+
+      wasVisibleRef.current = visible;
+      return () => clearTimeout(timer);
+    }
+
+    wasVisibleRef.current = visible;
+    return undefined;
+  }, [onExited, visible]);
 
   return (
-    <BottomSheetModal
-      visible={visible}
-      onDismiss={onDismiss}
-      onExited={onExited}
-      contentContainerStyle={[
-        styles.modalContainer,
-        {
-          paddingTop: Math.max(insets.top, 16),
-          paddingHorizontal: Math.max(insets.left, insets.right),
-        },
-      ]}
+    <Sheet
+      open={visible}
+      onOpenChange={(open: boolean) => {
+        if (!open) {
+          onDismiss();
+        }
+      }}
+      modal
+      dismissOnOverlayPress
+      snapPoints={[sheetHeight]}
+      snapPointsMode="constant"
+      disableDrag
     >
-      <Surface
+      <Sheet.Overlay backgroundColor={colors.overlay} />
+      <Sheet.Frame
         style={[
           styles.sheet,
           {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
             maxHeight: sheetHeight,
             paddingBottom: 24 + insets.bottom,
           },
         ]}
+        marginHorizontal={Math.max(insets.left, insets.right)}
+        alignSelf="center"
         elevation={2}
       >
-        <View style={styles.dragHandleWrap}>
-          <View style={[styles.dragHandle, { backgroundColor: theme.colors.borderStrong }]} />
-        </View>
+        <YStack style={styles.dragHandleWrap}>
+          <YStack style={[styles.dragHandle, { backgroundColor: colors.borderStrong }]} />
+        </YStack>
 
-        <View style={styles.headerRow}>
-          <Text variant="titleSmall" style={{ color: theme.colors.textMuted, fontWeight: "700" }}>
+        <XStack style={styles.headerRow}>
+          <Text
+            style={[
+              TEXT_VARIANTS.titleSmall,
+              { color: colors.textMuted, fontWeight: "700" },
+            ]}
+          >
             快速记账
           </Text>
-          <Pressable
+          <Button
+            unstyled
             accessibilityRole="button"
             accessibilityLabel="关闭记账弹窗"
             disabled={saving}
             onPress={onDismiss}
-            style={({ pressed }) => [
-              styles.iconButton,
-              {
-                backgroundColor: theme.colors.surfaceAlt,
-                borderColor: theme.colors.border,
-                opacity: saving ? 0.45 : pressed ? 0.9 : 1,
-              },
-            ]}
+            style={styles.iconButton}
+            backgroundColor={colors.surfaceAlt}
+            borderColor={colors.border}
+            opacity={saving ? 0.45 : 1}
+            pressStyle={{ opacity: 0.9 }}
           >
-            <MaterialCommunityIcons name="close" size={22} color={theme.colors.text} />
-          </Pressable>
-        </View>
+            <MaterialCommunityIcons name="close" size={22} color={colors.text} />
+          </Button>
+        </XStack>
 
         <SheetBody visible={visible}>{children}</SheetBody>
-      </Surface>
-    </BottomSheetModal>
+      </Sheet.Frame>
+    </Sheet>
   );
 }

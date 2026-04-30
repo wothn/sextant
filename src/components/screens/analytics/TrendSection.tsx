@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { type LayoutChangeEvent, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
+import { Button, Card, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { TrendLineChart } from "@/src/components/charts/TrendLineChart";
 import type { MonthlyTrendPoint } from "@/src/features/transactions/transaction.service";
 import { formatCurrency } from "@/src/lib/format";
-import { Button, Card, Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface TrendSectionProps {
   trend: MonthlyTrendPoint[];
@@ -21,7 +23,7 @@ export function TrendSection({
   onReload,
   topSpendingCategoryName,
 }: TrendSectionProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const [trendChartWidth, setTrendChartWidth] = useState<number>(0);
   const trendChartPoints = trend.map((item) => ({
     label: item.label,
@@ -36,97 +38,95 @@ export function TrendSection({
   };
 
   return (
-    <Card style={{ borderRadius: 18 }}>
-      <Card.Content style={{ gap: 12 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <Text variant="titleMedium">近 6 月趋势</Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
+    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+      <YStack gap={12}>
+        <XStack justifyContent="space-between" alignItems="center" gap={12}>
+          <YStack flex={1} minWidth={0} gap={4}>
+            <Text style={TEXT_VARIANTS.titleMedium}>近 6 月趋势</Text>
+            <Text style={[TEXT_VARIANTS.bodySmall, { color: colors.textMuted }]}>
               看清每个月收支变化，不靠月底的记忆力补账。
             </Text>
-          </View>
+          </YStack>
           {topSpendingCategoryName ? (
-            <View style={{ alignItems: "flex-end", gap: 2, maxWidth: "45%", flexShrink: 1 }}>
-              <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
+            <YStack alignItems="flex-end" gap={2} maxWidth="45%" flexShrink={1}>
+              <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>
                 本月最高支出
               </Text>
               <Text
-                variant="titleSmall"
                 numberOfLines={1}
                 ellipsizeMode="tail"
-                style={{ textAlign: "right" }}
+                style={[TEXT_VARIANTS.titleSmall, { textAlign: "right" }]}
                 testID="top-spending-category"
               >
                 {topSpendingCategoryName}
               </Text>
-            </View>
+            </YStack>
           ) : null}
-        </View>
+        </XStack>
 
         {error ? (
-          <View style={{ gap: 10 }}>
-            <Text variant="titleMedium">数据加载失败</Text>
-            <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+          <YStack gap={10}>
+            <Text style={TEXT_VARIANTS.titleMedium}>数据加载失败</Text>
+            <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
               {error.message || "请稍后重试"}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.textMuted }}>
+            <Text style={[TEXT_VARIANTS.bodySmall, { color: colors.textMuted }]}>
               当前展示已有数据（如有）。
             </Text>
-            <Button mode="outlined" onPress={onReload}>
+            <Button
+              unstyled
+              alignSelf="flex-start"
+              minHeight={44}
+              borderRadius={12}
+              borderWidth={1.25}
+              borderColor={colors.borderStrong}
+              backgroundColor={colors.surface}
+              paddingHorizontal={16}
+              paddingVertical={10}
+              onPress={onReload}
+            >
               重新加载
             </Button>
-          </View>
+          </YStack>
         ) : null}
 
-        <View
+        <YStack
           onLayout={handleTrendChartLayout}
-          style={{ width: "100%" }}
+          width="100%"
           testID="trend-chart-container"
         >
-          {loading && !error ? <Text>正在生成趋势图…</Text> : null}
+          {loading && !error ? <Text style={TEXT_VARIANTS.bodyMedium}>正在生成趋势图...</Text> : null}
           {!loading && !error && trend.length > 0 && trendChartWidth > 0 ? (
             <TrendLineChart
               points={trendChartPoints}
               width={trendChartWidth}
-              color={theme.colors.accent}
-              fillColor={theme.colors.accentSoft}
-              axisColor={theme.colors.borderStrong}
-              labelColor={theme.colors.textMuted}
+              color={colors.accent}
+              fillColor={colors.accentSoft}
+              axisColor={colors.borderStrong}
+              labelColor={colors.textMuted}
             />
           ) : null}
-          {!loading && !error && trend.length === 0 ? <Text>暂无趋势数据</Text> : null}
-        </View>
+          {!loading && !error && trend.length === 0 ? (
+            <Text style={TEXT_VARIANTS.bodyMedium}>暂无趋势数据</Text>
+          ) : null}
+        </YStack>
 
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+        <XStack justifyContent="space-between" gap={12} flexWrap="wrap">
           {trend.slice(-3).map((item) => (
-            <View key={item.monthKey} style={{ minWidth: 88, gap: 4 }}>
-              <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
+            <YStack key={item.monthKey} minWidth={88} gap={4}>
+              <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>
                 {item.label}
               </Text>
-              <Text variant="bodyMedium" tabularNums>
+              <Text style={[TEXT_VARIANTS.bodyMedium, { fontVariant: ["tabular-nums"] }]}>
                 收入 {formatCurrency(item.income)}
               </Text>
-              <Text variant="bodyMedium" tabularNums>
+              <Text style={[TEXT_VARIANTS.bodyMedium, { fontVariant: ["tabular-nums"] }]}>
                 支出 {formatCurrency(item.expense)}
               </Text>
-            </View>
+            </YStack>
           ))}
-        </View>
-      </Card.Content>
+        </XStack>
+      </YStack>
     </Card>
   );
 }

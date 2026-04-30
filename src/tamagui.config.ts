@@ -1,4 +1,5 @@
 import { createFont, createTamagui, createTokens } from "@tamagui/core";
+import { createAnimations } from "@tamagui/animations-react-native";
 
 const headingFont = createFont({
   family: "Avenir Next",
@@ -34,13 +35,13 @@ const headingFont = createFont({
   letterSpacing: {
     1: 0,
     2: 0,
-    3: -0.1,
-    4: -0.2,
-    5: -0.3,
-    6: -0.4,
-    7: -0.5,
-    8: -0.6,
-    9: -0.7,
+    3: 0,
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+    9: 0,
   },
 });
 
@@ -78,13 +79,13 @@ const bodyFont = createFont({
   letterSpacing: {
     1: 0,
     2: 0,
-    3: -0.05,
-    4: -0.1,
-    5: -0.1,
-    6: -0.15,
-    7: -0.2,
-    8: -0.25,
-    9: -0.3,
+    3: 0,
+    4: 0,
+    5: 0,
+    6: 0,
+    7: 0,
+    8: 0,
+    9: 0,
   },
 });
 
@@ -204,10 +205,26 @@ const themes = {
   },
 } as const;
 
+const animations = createAnimations({
+  fast: {
+    type: "timing",
+    duration: 120,
+  },
+  medium: {
+    type: "timing",
+    duration: 180,
+  },
+  slow: {
+    type: "timing",
+    duration: 320,
+  },
+});
+
 const tamaguiConfig = createTamagui({
   defaultTheme: "light",
   tokens,
   themes,
+  animations,
   fonts: {
     body: bodyFont,
     heading: headingFont,

@@ -12,7 +12,7 @@ import {
 } from "@/src/features/transactions/transaction.service";
 import { useAsyncData } from "@/src/hooks/use-async-data";
 import { useUIStore } from "@/src/store/ui.store";
-import { Screen } from "@/src/ui";
+import { AppScreen } from "@/src/components/layout/AppScreen";
 
 interface AnalyticsScreenData {
   summary: {
@@ -61,7 +61,7 @@ export default function AnalyticsScreen() {
   });
 
   return (
-    <Screen contentContainerStyle={{ paddingBottom: 132 }}>
+    <AppScreen contentContainerStyle={{ paddingBottom: 132 }}>
       <AnalyticsScreenContent
         summary={data.summary}
         trend={data.trend}
@@ -71,6 +71,6 @@ export default function AnalyticsScreen() {
         error={error}
         onReload={reload}
       />
-    </Screen>
+    </AppScreen>
   );
 }

@@ -1,4 +1,4 @@
-import { Pressable, View } from "react-native";
+import { Button, Text, XStack, useTheme } from "tamagui";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -7,7 +7,8 @@ import {
   getDateChipLabel,
   getTimeLabel,
 } from "@/src/features/transactions/components/quick-entry/utils";
-import { Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface EntryMetaBarProps {
   transactionDate: number;
@@ -16,45 +17,39 @@ interface EntryMetaBarProps {
 }
 
 export function EntryMetaBar({ transactionDate, onOpenDate, onOpenTime }: EntryMetaBarProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
 
   return (
-    <View style={styles.metaControlRow}>
-      <Pressable
+    <XStack style={styles.metaControlRow}>
+      <Button
+        unstyled
         accessibilityRole="button"
         accessibilityLabel="日期"
         onPress={onOpenDate}
-        style={[
-          styles.metaChip,
-          {
-            backgroundColor: theme.colors.surfaceAlt,
-            borderColor: theme.colors.border,
-          },
-        ]}
+        style={styles.metaChip}
+        backgroundColor={colors.surfaceAlt}
+        borderColor={colors.border}
       >
-        <Text variant="labelLarge" style={{ fontWeight: "700" }}>
+        <Text style={[TEXT_VARIANTS.labelLarge, { fontWeight: "700" }]}>
           {getDateChipLabel(transactionDate)}
         </Text>
-        <MaterialCommunityIcons name="chevron-down" size={16} color={theme.colors.textMuted} />
-      </Pressable>
+        <MaterialCommunityIcons name="chevron-down" size={16} color={colors.textMuted} />
+      </Button>
 
-      <Pressable
+      <Button
+        unstyled
         accessibilityRole="button"
         accessibilityLabel="时间"
         onPress={onOpenTime}
-        style={[
-          styles.metaChip,
-          {
-            backgroundColor: theme.colors.surfaceAlt,
-            borderColor: theme.colors.border,
-          },
-        ]}
+        style={styles.metaChip}
+        backgroundColor={colors.surfaceAlt}
+        borderColor={colors.border}
       >
-        <Text variant="labelLarge" style={{ fontWeight: "700" }}>
+        <Text style={[TEXT_VARIANTS.labelLarge, { fontWeight: "700" }]}>
           {getTimeLabel(transactionDate)}
         </Text>
-        <MaterialCommunityIcons name="chevron-down" size={16} color={theme.colors.textMuted} />
-      </Pressable>
-    </View>
+        <MaterialCommunityIcons name="chevron-down" size={16} color={colors.textMuted} />
+      </Button>
+    </XStack>
   );
 }

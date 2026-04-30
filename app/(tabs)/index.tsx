@@ -12,7 +12,9 @@ import {
 import { useAsyncData } from "@/src/hooks/use-async-data";
 import { formatSignedCurrency } from "@/src/lib/format";
 import { useUIStore } from "@/src/store/ui.store";
-import { Screen, useTheme } from "@/src/ui";
+import { AppScreen } from "@/src/components/layout/AppScreen";
+import { getThemeColors } from "@/src/lib/theme";
+import { useTheme } from "tamagui";
 
 interface HomeScreenData {
   todaySummary: TodaySummary;
@@ -74,7 +76,7 @@ function getTransactionTypeLabel(item: TransactionListItem): string {
 }
 
 export default function HomeScreen() {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionListItem | null>(null);
   const refreshKey = useUIStore((state) => state.refreshKey);
   const { data, loading, error, reload } = useAsyncData<HomeScreenData>({
@@ -114,13 +116,13 @@ export default function HomeScreen() {
 
   const selectedTransactionTone =
     selectedTransaction?.type === "expense"
-      ? theme.colors.danger
+      ? colors.danger
       : selectedTransaction?.type === "income"
-        ? theme.colors.success
-        : theme.colors.accent;
+        ? colors.success
+        : colors.accent;
 
   return (
-    <Screen contentContainerStyle={{ paddingBottom: 132 }}>
+    <AppScreen contentContainerStyle={{ paddingBottom: 132 }}>
       <HomeScreenContent
         groups={data.groups}
         monthSummary={data.monthSummary}
@@ -133,6 +135,6 @@ export default function HomeScreen() {
         selectedTransactionSummary={selectedTransactionSummary}
         onDismissTransaction={() => setSelectedTransaction(null)}
       />
-    </Screen>
+    </AppScreen>
   );
 }

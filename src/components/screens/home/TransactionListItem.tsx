@@ -1,8 +1,9 @@
-import { Pressable, View } from "react-native";
+import { Text, XStack, YStack, useTheme } from "tamagui";
 
 import { formatSignedCurrency } from "@/src/lib/format";
 import type { TransactionListItem } from "@/src/features/transactions/transaction.service";
-import { Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 function getTransactionCategoryLabel(item: TransactionListItem): string {
   if (item.categoryName) {
@@ -18,63 +19,61 @@ interface TransactionListItemProps {
 }
 
 export function TransactionListItem({ item, onPress }: TransactionListItemProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const categoryName = getTransactionCategoryLabel(item);
   const description = item.description.trim();
   const paymentMethodName = item.paymentMethodName?.trim() ?? "";
 
   return (
-    <Pressable
+    <YStack
       accessibilityRole="button"
       accessibilityLabel={`${categoryName} 交易详情`}
       onPress={() => onPress(item)}
-      style={({ pressed }) => [
-        {
-          borderRadius: 12,
-          paddingVertical: 6,
-          paddingHorizontal: 4,
-        },
-        pressed ? { backgroundColor: theme.colors.surfaceAlt } : null,
-      ]}
+      borderRadius={12}
+      paddingVertical={6}
+      paddingHorizontal={4}
+      pressStyle={{ backgroundColor: colors.surfaceAlt }}
     >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-        <View style={{ flex: 1, gap: description ? 2 : 1 }}>
-          <Text variant="titleMedium">{categoryName}</Text>
+      <XStack justifyContent="space-between" gap={12}>
+        <YStack flex={1} gap={description ? 2 : 1}>
+          <Text style={TEXT_VARIANTS.titleMedium}>{categoryName}</Text>
           {description ? (
-            <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+            <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
               {description}
             </Text>
           ) : null}
           {paymentMethodName ? (
-            <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+            <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
               {paymentMethodName}
             </Text>
           ) : null}
-        </View>
-        <View style={{ alignItems: "flex-end", gap: 4 }}>
+        </YStack>
+        <YStack alignItems="flex-end" gap={4}>
           <Text
-            variant="titleMedium"
-            style={{
-              color:
-                item.type === "expense"
-                  ? theme.colors.danger
-                  : item.type === "income"
-                    ? theme.colors.success
-                    : theme.colors.accent,
-              fontWeight: "700",
-            }}
-            tabularNums
+            style={[
+              TEXT_VARIANTS.titleMedium,
+              {
+                color:
+                  item.type === "expense"
+                    ? colors.danger
+                    : item.type === "income"
+                      ? colors.success
+                      : colors.accent,
+                fontWeight: "700",
+                fontVariant: ["tabular-nums"],
+              },
+            ]}
           >
             {formatSignedCurrency(item.type === "expense" ? -item.amount : item.amount)}
           </Text>
-          <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+          <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
             {new Date(item.transactionDate).toLocaleTimeString("zh-CN", {
               hour: "2-digit",
               minute: "2-digit",
             })}
           </Text>
-        </View>
-      </View>
-    </Pressable>
+        </YStack>
+      </XStack>
+    </YStack>
   );
 }

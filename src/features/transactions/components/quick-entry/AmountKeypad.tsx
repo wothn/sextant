@@ -1,9 +1,10 @@
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { Button, Spinner, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
-import { Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface AmountKeypadProps {
   keypadRows: string[][];
@@ -22,111 +23,101 @@ export function AmountKeypad({
   onClear,
   onSubmit,
 }: AmountKeypadProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
 
   return (
-    <View style={styles.keypadLayout}>
-      <View style={styles.keypadGrid}>
+    <XStack style={styles.keypadLayout}>
+      <YStack style={styles.keypadGrid}>
         {keypadRows.map((row, rowIndex) => (
-          <View key={`row-${rowIndex}`} style={styles.keypadRow}>
+          <XStack key={`row-${rowIndex}`} style={styles.keypadRow}>
             {row.map((key) => {
               if (key === "spacer") {
-                return <View key={key} style={styles.keypadSpacer} />;
+                return <YStack key={key} style={styles.keypadSpacer} />;
               }
 
               return (
-                <Pressable
+                <Button
+                  unstyled
                   key={key}
                   accessibilityRole="button"
                   accessibilityLabel={key}
                   onPress={() => onPressDigit(key)}
-                  style={({ pressed }) => [
-                    styles.keypadButton,
-                    {
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.borderStrong,
-                      opacity: pressed ? 0.9 : 1,
-                    },
-                  ]}
+                  style={styles.keypadButton}
+                  backgroundColor={colors.surface}
+                  borderColor={colors.borderStrong}
+                  pressStyle={{ opacity: 0.9 }}
                 >
                   <Text
-                    variant="headlineSmall"
-                    style={{ color: theme.colors.text, fontWeight: "700" }}
+                    style={[TEXT_VARIANTS.headlineSmall, { color: colors.text, fontWeight: "700" }]}
                   >
                     {key}
                   </Text>
-                </Pressable>
+                </Button>
               );
             })}
-          </View>
+          </XStack>
         ))}
-      </View>
+      </YStack>
 
-      <View style={styles.keypadRail}>
-        <Pressable
+      <YStack style={styles.keypadRail}>
+        <Button
+          unstyled
           accessibilityRole="button"
           accessibilityLabel="删除金额"
           onPress={onDelete}
-          style={({ pressed }) => [
-            styles.railButton,
-            {
-              backgroundColor: theme.colors.surfaceAlt,
-              borderColor: theme.colors.borderStrong,
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
+          style={styles.railButton}
+          backgroundColor={colors.surfaceAlt}
+          borderColor={colors.borderStrong}
+          pressStyle={{ opacity: 0.9 }}
         >
           <MaterialCommunityIcons
             name="backspace-outline"
             size={24}
-            color={theme.colors.textMuted}
+            color={colors.textMuted}
           />
-        </Pressable>
+        </Button>
 
-        <Pressable
+        <Button
+          unstyled
           accessibilityRole="button"
           accessibilityLabel="清空金额"
           onPress={onClear}
-          style={({ pressed }) => [
-            styles.railButton,
-            {
-              backgroundColor: theme.colors.surfaceAlt,
-              borderColor: theme.colors.borderStrong,
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
+          style={styles.railButton}
+          backgroundColor={colors.surfaceAlt}
+          borderColor={colors.borderStrong}
+          pressStyle={{ opacity: 0.9 }}
         >
-          <Text variant="titleSmall" style={{ fontWeight: "700", color: theme.colors.text }}>
+          <Text style={[TEXT_VARIANTS.titleSmall, { fontWeight: "700", color: colors.text }]}>
             清空
           </Text>
-        </Pressable>
+        </Button>
 
-        <Pressable
+        <Button
+          unstyled
           accessibilityRole="button"
           accessibilityLabel="保存本次记账"
           disabled={saving}
           onPress={onSubmit}
-          style={({ pressed }) => [
-            styles.saveButton,
-            {
-              backgroundColor: theme.colors.accent,
-              borderColor: theme.colors.accent,
-              opacity: saving ? 0.7 : pressed ? 0.9 : 1,
-            },
-          ]}
+          style={styles.saveButton}
+          backgroundColor={colors.accent}
+          borderColor={colors.accent}
+          opacity={saving ? 0.7 : 1}
+          pressStyle={{ opacity: 0.9 }}
         >
           {saving ? (
-            <ActivityIndicator size="small" color={theme.colors.onAccent} />
+            <Spinner size="small" color={colors.onAccent} />
           ) : (
             <Text
-              variant="headlineSmall"
-              style={{ color: theme.colors.onAccent, fontWeight: "800" }}
+              style={[
+                TEXT_VARIANTS.headlineSmall,
+                { color: colors.onAccent, fontWeight: "800" },
+              ]}
             >
               保存
             </Text>
           )}
-        </Pressable>
-      </View>
-    </View>
+        </Button>
+      </YStack>
+    </XStack>
   );
 }

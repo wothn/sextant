@@ -1,13 +1,14 @@
 import type { PropsWithChildren } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ScrollView, YStack, useTheme } from "tamagui";
 
-import { useTheme } from "@/src/ui/theme";
+import { getThemeColors } from "@/src/lib/theme";
 
 type ScreenSafeAreaEdge = "top" | "right" | "bottom" | "left";
 
-interface ScreenProps extends PropsWithChildren {
+interface AppScreenProps extends PropsWithChildren {
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
@@ -51,9 +52,7 @@ function withSafeAreaInsets(
     return flattenedStyle;
   }
 
-  const nextStyle: ViewStyle = {
-    ...flattenedStyle,
-  };
+  const nextStyle: ViewStyle = { ...flattenedStyle };
 
   if (safeAreaEdges.includes("top")) {
     nextStyle.paddingTop = getPaddingValue(flattenedStyle, "top") + insets.top;
@@ -74,15 +73,15 @@ function withSafeAreaInsets(
   return nextStyle;
 }
 
-export function Screen({
+export function AppScreen({
   children,
   style,
   contentContainerStyle,
   contentStyle,
   scroll = true,
   safeAreaEdges = ["top", "right", "bottom", "left"],
-}: ScreenProps) {
-  const { colors } = useTheme();
+}: AppScreenProps) {
+  const colors = getThemeColors(useTheme());
   const insets = useSafeAreaInsets();
   const resolvedContentContainerStyle = withSafeAreaInsets(
     [styles.screenContentContainer, contentContainerStyle],
@@ -97,67 +96,55 @@ export function Screen({
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }, style]}>
-      <View
+    <YStack flex={1} position="relative" backgroundColor={colors.background} style={style}>
+      <YStack
         pointerEvents="none"
-        style={[styles.screenGlowTop, { backgroundColor: colors.accentSoft }]}
+        position="absolute"
+        top={-160}
+        right={-120}
+        width={280}
+        height={280}
+        borderRadius={140}
+        opacity={0.28}
+        backgroundColor={colors.accentSoft}
       />
-      <View
+      <YStack
         pointerEvents="none"
-        style={[styles.screenGlowBottom, { backgroundColor: colors.info }]}
+        position="absolute"
+        bottom={-200}
+        left={-160}
+        width={300}
+        height={300}
+        borderRadius={150}
+        opacity={0.12}
+        backgroundColor={colors.info}
       />
       {scroll ? (
         <ScrollView
-          style={styles.screenScroll}
+          flex={1}
           automaticallyAdjustContentInsets={false}
-          contentContainerStyle={resolvedContentContainerStyle}
+          contentContainerStyle={resolvedContentContainerStyle as never}
           contentInsetAdjustmentBehavior="never"
           scrollIndicatorInsets={scrollIndicatorInsets}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.screenContent, contentStyle]}>{children}</View>
+          <YStack gap={16} style={contentStyle}>
+            {children}
+          </YStack>
         </ScrollView>
       ) : (
-        <View style={[styles.screenContent, resolvedContentContainerStyle, contentStyle]}>
+        <YStack gap={16} style={[resolvedContentContainerStyle, contentStyle]}>
           {children}
-        </View>
+        </YStack>
       )}
-    </View>
+    </YStack>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    position: "relative",
-  },
-  screenScroll: {
-    flex: 1,
-  },
   screenContentContainer: {
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 120,
-  },
-  screenContent: {
-    gap: 16,
-  },
-  screenGlowTop: {
-    position: "absolute",
-    top: -160,
-    right: -120,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    opacity: 0.28,
-  },
-  screenGlowBottom: {
-    position: "absolute",
-    bottom: -200,
-    left: -160,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    opacity: 0.12,
   },
 });

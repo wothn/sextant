@@ -1,4 +1,7 @@
-import { Button, Card, Text, useTheme } from "@/src/ui";
+import { Button, Card, Text, YStack, useTheme } from "tamagui";
+
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface AsyncStateCardProps {
   title: string;
@@ -8,21 +11,32 @@ interface AsyncStateCardProps {
 }
 
 export function AsyncStateCard({ title, description, actionLabel, onAction }: AsyncStateCardProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
 
   return (
-    <Card style={{ borderRadius: 18 }}>
-      <Card.Content style={{ gap: 10 }}>
-        <Text variant="titleMedium">{title}</Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16} gap={10}>
+      <YStack gap={10}>
+        <Text style={TEXT_VARIANTS.titleMedium}>{title}</Text>
+        <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
           {description}
         </Text>
         {actionLabel && onAction ? (
-          <Button mode="outlined" onPress={onAction}>
+          <Button
+            unstyled
+            alignSelf="flex-start"
+            minHeight={44}
+            borderRadius={12}
+            borderWidth={1.25}
+            borderColor={colors.borderStrong}
+            backgroundColor={colors.surface}
+            paddingHorizontal={16}
+            paddingVertical={10}
+            onPress={onAction}
+          >
             {actionLabel}
           </Button>
         ) : null}
-      </Card.Content>
+      </YStack>
     </Card>
   );
 }

@@ -1,7 +1,8 @@
-import { Pressable } from "react-native";
+import { Button, Text, useTheme } from "tamagui";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
-import { Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface NoteTriggerProps {
   description: string;
@@ -9,33 +10,32 @@ interface NoteTriggerProps {
 }
 
 export function NoteTrigger({ description, onPress }: NoteTriggerProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
 
   return (
-    <Pressable
+    <Button
+      unstyled
       accessibilityRole="button"
       accessibilityLabel="备注"
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.noteDisplay,
-        {
-          backgroundColor: theme.colors.surfaceAlt,
-          borderColor: theme.colors.borderStrong,
-          opacity: pressed ? 0.92 : 1,
-        },
-      ]}
+      style={styles.noteDisplay}
+      backgroundColor={colors.surfaceAlt}
+      borderColor={colors.borderStrong}
+      pressStyle={{ opacity: 0.92 }}
     >
       <Text
-        variant="labelLarge"
         numberOfLines={1}
-        style={{
-          color: description ? theme.colors.text : theme.colors.textMuted,
-          flex: 1,
-          fontWeight: "500",
-        }}
+        style={[
+          TEXT_VARIANTS.labelLarge,
+          {
+            color: description ? colors.text : colors.textMuted,
+            flex: 1,
+            fontWeight: "500",
+          },
+        ]}
       >
         {description || "添加备注（选填）"}
       </Text>
-    </Pressable>
+    </Button>
   );
 }

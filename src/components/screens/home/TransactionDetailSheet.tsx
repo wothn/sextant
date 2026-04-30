@@ -1,6 +1,7 @@
-import { View } from "react-native";
+import { Button, Sheet, Text, XStack, YStack, useTheme } from "tamagui";
 
-import { BottomSheetModal, Button, Portal, Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface TransactionDetailSummary {
   categoryName: string;
@@ -25,52 +26,59 @@ export function TransactionDetailSheet({
   summary,
   onDismiss,
 }: TransactionDetailSheetProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
 
   return (
-    <Portal>
-      <BottomSheetModal
-        visible={visible}
-        onDismiss={onDismiss}
-        contentContainerStyle={{ flex: 1, justifyContent: "flex-end" }}
+    <Sheet
+      open={visible}
+      onOpenChange={(open: boolean) => {
+        if (!open) {
+          onDismiss();
+        }
+      }}
+      modal
+      dismissOnOverlayPress
+      snapPoints={[55]}
+    >
+      <Sheet.Overlay backgroundColor={colors.overlay} />
+      <Sheet.Frame
+        backgroundColor={colors.surface}
+        borderTopLeftRadius={24}
+        borderTopRightRadius={24}
+        borderWidth={1}
+        borderColor={colors.border}
+        padding={20}
+        gap={16}
       >
         {summary ? (
-          <View
-            style={{
-              backgroundColor: theme.colors.surface,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              padding: 20,
-              gap: 16,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <Text variant="titleLarge">交易详情</Text>
-              <Button compact onPress={onDismiss}>
-                关闭
+          <>
+            <XStack justifyContent="space-between" alignItems="center">
+              <Text style={TEXT_VARIANTS.titleLarge}>交易详情</Text>
+              <Button
+                unstyled
+                minHeight={36}
+                borderRadius={12}
+                paddingHorizontal={12}
+                paddingVertical={8}
+                onPress={onDismiss}
+              >
+                <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.accent }]}>关闭</Text>
               </Button>
-            </View>
+            </XStack>
 
-            <View style={{ gap: 4 }}>
-              <Text variant="headlineSmall">{summary.categoryName}</Text>
+            <YStack gap={4}>
+              <Text style={TEXT_VARIANTS.headlineSmall}>{summary.categoryName}</Text>
               <Text
-                variant="titleLarge"
-                style={{ color: amountTone, fontWeight: "700" }}
-                tabularNums
+                style={[
+                  TEXT_VARIANTS.titleLarge,
+                  { color: amountTone, fontWeight: "700", fontVariant: ["tabular-nums"] },
+                ]}
               >
                 {summary.amount}
               </Text>
-            </View>
+            </YStack>
 
-            <View style={{ gap: 12 }}>
+            <YStack gap={12}>
               {[
                 { label: "类型", value: summary.typeLabel },
                 { label: "支付方式", value: summary.paymentMethodName },
@@ -78,17 +86,17 @@ export function TransactionDetailSheet({
                 { label: "时间", value: summary.time },
                 { label: "备注", value: summary.description },
               ].map((item) => (
-                <View key={item.label} style={{ gap: 4 }}>
-                  <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
+                <YStack key={item.label} gap={4}>
+                  <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>
                     {item.label}
                   </Text>
-                  <Text variant="bodyLarge">{item.value}</Text>
-                </View>
+                  <Text style={TEXT_VARIANTS.bodyLarge}>{item.value}</Text>
+                </YStack>
               ))}
-            </View>
-          </View>
+            </YStack>
+          </>
         ) : null}
-      </BottomSheetModal>
-    </Portal>
+      </Sheet.Frame>
+    </Sheet>
   );
 }

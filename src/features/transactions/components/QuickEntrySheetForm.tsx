@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, useWindowDimensions } from "react-native";
-import type { TextInput as ReactNativeTextInput } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { XStack, YStack } from "tamagui";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
 import { AmountKeypad } from "@/src/features/transactions/components/quick-entry/AmountKeypad";
@@ -11,6 +11,7 @@ import { EntryAmountPanel } from "@/src/features/transactions/components/quick-e
 import { EntryMetaBar } from "@/src/features/transactions/components/quick-entry/EntryMetaBar";
 import { EntryTypeSwitch } from "@/src/features/transactions/components/quick-entry/EntryTypeSwitch";
 import { NoteEditorSheet } from "@/src/features/transactions/components/quick-entry/NoteEditorSheet";
+import type { FocusableInputRef } from "@/src/features/transactions/components/quick-entry/NoteEditorSheet";
 import { NoteTrigger } from "@/src/features/transactions/components/quick-entry/NoteTrigger";
 import { PaymentMethodSelectorStrip } from "@/src/features/transactions/components/quick-entry/PaymentMethodSelectorStrip";
 import { QuickEntrySheetLayout } from "@/src/features/transactions/components/quick-entry/QuickEntrySheetLayout";
@@ -30,8 +31,7 @@ import {
   setTimePart,
 } from "@/src/features/transactions/components/quick-entry/utils";
 import type { Category, PaymentMethod } from "@/src/types/domain";
-import { Portal } from "@/src/ui";
-import type { TextVariant } from "@/src/ui/typography";
+import type { TextVariant } from "@/src/lib/typography";
 
 export type { QuickEntryFormValue } from "@/src/features/transactions/components/quick-entry/types";
 
@@ -68,7 +68,7 @@ export default function QuickEntrySheetForm({
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date(value.transactionDate));
   const [noteDialogVisible, setNoteDialogVisible] = useState(false);
   const [tempNote, setTempNote] = useState(value.description);
-  const noteInputRef = useRef<ReactNativeTextInput>(null);
+  const noteInputRef = useRef<FocusableInputRef>(null);
   const noteSheetVisible = visible && noteDialogVisible;
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export default function QuickEntrySheetForm({
   };
 
   return (
-    <Portal>
+    <>
       <QuickEntrySheetLayout
         visible={visible}
         saving={saving}
@@ -141,36 +141,36 @@ export default function QuickEntrySheetForm({
         onExited={onAfterDismiss}
         sheetHeight={sheetHeight}
       >
-        <View>
-          <View style={styles.controlRow}>
+        <YStack>
+          <XStack style={styles.controlRow}>
             <EntryTypeSwitch value={value.type} onChange={handleTypeChange} />
             <EntryMetaBar
               transactionDate={value.transactionDate}
               onOpenDate={() => setPickerMode("date")}
               onOpenTime={() => setPickerMode("time")}
             />
-          </View>
-        </View>
+          </XStack>
+        </YStack>
 
-        <View>
+        <YStack>
           <EntryAmountPanel
             amountDisplay={amountDisplay}
             amountVariant={amountVariant}
             message={message}
             messageTone={messageTone}
           />
-        </View>
+        </YStack>
 
-        <View>
+        <YStack>
           <CategorySelectorStrip
             categories={categories}
             selectedCategoryId={value.categoryId}
             onSelectCategory={(categoryId) => onChange({ categoryId })}
           />
-        </View>
+        </YStack>
 
-        <View>
-          <View style={styles.footerBlock}>
+        <YStack>
+          <YStack style={styles.footerBlock}>
             <PaymentMethodSelectorStrip
               paymentMethods={paymentMethods}
               selectedPaymentMethodId={value.paymentMethodId}
@@ -191,8 +191,8 @@ export default function QuickEntrySheetForm({
               onClear={() => onChange({ amountText: "" })}
               onSubmit={onSubmit}
             />
-          </View>
-        </View>
+          </YStack>
+        </YStack>
       </QuickEntrySheetLayout>
 
       <NoteEditorSheet
@@ -246,6 +246,6 @@ export default function QuickEntrySheetForm({
           })
         }
       />
-    </Portal>
+    </>
   );
 }
