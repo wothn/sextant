@@ -62,7 +62,7 @@ export function BudgetSettingsCard({
             onChangeText={onChangeBudgetText}
             accessibilityLabel="预算金额"
             keyboardType="numeric"
-            minHeight={44}
+            height={48}
             borderWidth={1}
             borderRadius={12}
             borderColor={colors.borderStrong}
@@ -72,17 +72,19 @@ export function BudgetSettingsCard({
             fontFamily="$body"
             fontSize={16}
             paddingHorizontal={12}
-            paddingVertical={10}
           />
         </YStack>
         <Button
           unstyled
           alignSelf="flex-start"
-          minHeight={44}
+          marginTop={8}
+          height={44}
           borderRadius={12}
           backgroundColor={colors.accent}
           paddingHorizontal={16}
-          paddingVertical={10}
+          paddingVertical={0}
+          alignItems="center"
+          justifyContent="center"
           onPress={onSave}
         >
           <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.onAccent }]}>保存预算</Text>
