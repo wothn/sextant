@@ -1,26 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Keyboard, Platform, Pressable, View } from "react-native";
-import type { RefObject } from "react";
-import type {
-  KeyboardEvent as ReactNativeKeyboardEvent,
-  TextInput as ReactNativeTextInput,
+import {
+  Keyboard,
+  Platform,
 } from "react-native";
+import type { ComponentRef, RefObject } from "react";
+import type { KeyboardEvent as ReactNativeKeyboardEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button, Input, Sheet, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
-import { BottomSheetModal, Button, Surface, Text, TextInput, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface NoteEditorSheetProps {
   visible: boolean;
   note: string;
-  inputRef: RefObject<ReactNativeTextInput | null>;
+  inputRef: RefObject<FocusableInputRef | null>;
   onChangeNote: (value: string) => void;
   onClose: () => void;
   onConfirm: () => void;
   onInputLayout?: () => void;
 }
+
+export type FocusableInputRef = ComponentRef<typeof Input>;
 
 export function NoteEditorSheet({
   visible,
@@ -31,14 +35,11 @@ export function NoteEditorSheet({
   onConfirm,
   onInputLayout,
 }: NoteEditorSheetProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const insets = useSafeAreaInsets();
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const focusFrameRef = useRef<number | null>(null);
-  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inputLaidOutRef = useRef(false);
   const modalShownRef = useRef(false);
-  const sheetEnteredRef = useRef(false);
   const inputFocusedRef = useRef(false);
   const visibleRef = useRef(visible);
 
@@ -47,67 +48,29 @@ export function NoteEditorSheet({
       cancelAnimationFrame(focusFrameRef.current);
       focusFrameRef.current = null;
     }
-
-    if (focusTimerRef.current === null) {
-      return;
-    }
-
-    clearTimeout(focusTimerRef.current);
-    focusTimerRef.current = null;
   }, []);
 
   const scheduleFocusInput = useCallback((): void => {
-    if (
-      !visibleRef.current ||
-      !modalShownRef.current ||
-      !inputLaidOutRef.current ||
-      inputFocusedRef.current
-    ) {
+    if (!visibleRef.current || !modalShownRef.current || inputFocusedRef.current) {
       return;
     }
 
     clearFocusSchedule();
 
+    inputRef.current?.focus();
+
     focusFrameRef.current = requestAnimationFrame(() => {
       focusFrameRef.current = null;
 
-      focusTimerRef.current = setTimeout(() => {
-        focusTimerRef.current = null;
+      if (!visibleRef.current || inputFocusedRef.current) {
+        return;
+      }
 
-        if (!visibleRef.current || inputFocusedRef.current) {
-          return;
-        }
-
-        inputRef.current?.focus();
-
-        if (!sheetEnteredRef.current) {
-          return;
-        }
-
-        focusTimerRef.current = setTimeout(() => {
-          focusTimerRef.current = null;
-          if (!visibleRef.current || inputFocusedRef.current) {
-            return;
-          }
-
-          inputRef.current?.focus();
-        }, 80);
-      }, 40);
+      inputRef.current?.focus();
     });
   }, [clearFocusSchedule, inputRef]);
 
-  const handleModalShow = useCallback((): void => {
-    modalShownRef.current = true;
-    scheduleFocusInput();
-  }, [scheduleFocusInput]);
-
-  const handleSheetEntered = useCallback((): void => {
-    sheetEnteredRef.current = true;
-    scheduleFocusInput();
-  }, [scheduleFocusInput]);
-
   const handleInputLayout = useCallback((): void => {
-    inputLaidOutRef.current = true;
     onInputLayout?.();
     scheduleFocusInput();
   }, [onInputLayout, scheduleFocusInput]);
@@ -127,7 +90,7 @@ export function NoteEditorSheet({
 
     const handleKeyboardShow = (event: ReactNativeKeyboardEvent): void => {
       Keyboard.scheduleLayoutAnimation(event);
-      setKeyboardOffset(Math.max(event.endCoordinates.height - insets.bottom, 0));
+      setKeyboardOffset(Math.max(event.endCoordinates.height, 0));
     };
 
     const handleKeyboardHide = (event: ReactNativeKeyboardEvent): void => {
@@ -142,97 +105,115 @@ export function NoteEditorSheet({
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, [insets.bottom]);
+  }, []);
 
   useEffect(() => {
     visibleRef.current = visible;
 
     if (visible) {
-      inputLaidOutRef.current = false;
-      modalShownRef.current = false;
-      sheetEnteredRef.current = false;
+      modalShownRef.current = true;
       inputFocusedRef.current = false;
-      setKeyboardOffset(0);
+      scheduleFocusInput();
       return;
     }
 
+    Keyboard.dismiss();
+    setKeyboardOffset(0);
     clearFocusSchedule();
-  }, [clearFocusSchedule, visible]);
-
-  if (!visible) {
-    return null;
-  }
+  }, [clearFocusSchedule, scheduleFocusInput, visible]);
 
   return (
-    <BottomSheetModal
-      visible={visible}
-      onDismiss={onClose}
-      contentContainerStyle={[
-        styles.modalContainer,
-        {
-          paddingTop: Math.max(insets.top, 16),
-          paddingHorizontal: Math.max(insets.left, insets.right),
-          paddingBottom: keyboardOffset,
-        },
-      ]}
-      onShow={handleModalShow}
-      onEntered={handleSheetEntered}
+    <Sheet
+      open={visible}
+      onOpenChange={(open: boolean) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      modal
+      dismissOnOverlayPress
+      snapPoints={[360]}
+      snapPointsMode="constant"
+      disableDrag
+      unmountChildrenWhenHidden
     >
-      <View style={styles.noteSheetContainer}>
-        <Surface
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              paddingBottom: 24 + insets.bottom,
-            },
-          ]}
-        >
-          <View style={styles.dragHandleWrap}>
-            <View style={[styles.dragHandle, { backgroundColor: theme.colors.borderStrong }]} />
-          </View>
+      <Sheet.Overlay backgroundColor={colors.overlay} />
+      <Sheet.Frame
+        style={[
+          styles.sheet,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            paddingBottom: 24 + insets.bottom + keyboardOffset,
+          },
+        ]}
+        marginHorizontal={Math.max(insets.left, insets.right)}
+        alignSelf="center"
+      >
+        <YStack style={styles.dragHandleWrap}>
+          <YStack style={[styles.dragHandle, { backgroundColor: colors.borderStrong }]} />
+        </YStack>
 
-          <View style={styles.headerRow}>
-            <Text variant="titleMedium" style={{ fontWeight: "700", color: theme.colors.text }}>
-              添加备注
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="关闭备注弹窗"
-              onPress={onClose}
-              style={({ pressed }) => [
-                styles.iconButton,
-                {
-                  backgroundColor: theme.colors.surfaceAlt,
-                  borderColor: theme.colors.border,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <MaterialCommunityIcons name="close" size={22} color={theme.colors.text} />
-            </Pressable>
-          </View>
+              <XStack style={styles.headerRow}>
+                <Text
+                  style={[TEXT_VARIANTS.titleMedium, { fontWeight: "700", color: colors.text }]}
+                >
+                  添加备注
+                </Text>
+                <Button
+                  unstyled
+                  accessibilityRole="button"
+                  accessibilityLabel="关闭备注弹窗"
+                  onPress={onClose}
+                  style={styles.iconButton}
+                  backgroundColor={colors.surfaceAlt}
+                  borderColor={colors.border}
+                  pressStyle={{ opacity: 0.8 }}
+                >
+                  <MaterialCommunityIcons name="close" size={22} color={colors.text} />
+                </Button>
+              </XStack>
 
-          <TextInput
-            ref={inputRef}
-            value={note}
-            onChangeText={onChangeNote}
-            onFocus={handleInputFocus}
-            onBlur={handleInputBlur}
-            onLayout={handleInputLayout}
-            placeholder="在此输入备注..."
-            maxLength={100}
-            multiline
-            showSoftInputOnFocus
-            inputStyle={styles.noteSheetInput}
-          />
+              <Input
+                ref={inputRef}
+                value={note}
+                onChangeText={onChangeNote}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
+                onLayout={handleInputLayout}
+                placeholder="在此输入备注..."
+                maxLength={100}
+                multiline
+                showSoftInputOnFocus
+                minHeight={60}
+                textAlignVertical="top"
+                paddingTop={12}
+                borderWidth={1}
+                borderRadius={12}
+                borderColor={colors.borderStrong}
+                backgroundColor={colors.surface}
+                color={colors.text}
+                placeholderTextColor="$onSurfaceMuted"
+                fontFamily="$body"
+                fontSize={16}
+                paddingHorizontal={12}
+                paddingVertical={10}
+              />
 
-          <Button mode="contained" onPress={onConfirm} style={{ marginTop: 8 }}>
-            确定
-          </Button>
-        </Surface>
-      </View>
-    </BottomSheetModal>
+              <Button
+                unstyled
+                alignSelf="flex-start"
+                minHeight={44}
+                borderRadius={12}
+                backgroundColor={colors.accent}
+                paddingHorizontal={16}
+                paddingVertical={10}
+                onPress={onConfirm}
+                marginTop={8}
+              >
+                <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.onAccent }]}>确定</Text>
+              </Button>
+      </Sheet.Frame>
+    </Sheet>
   );
 }

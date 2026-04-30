@@ -2,8 +2,9 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Pressable, Text as ReactNativeText } from "react-native";
+import { Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Text, useTheme } from "tamagui";
 
 import Animated, {
   createAnimatedComponent,
@@ -15,14 +16,14 @@ import Animated, {
 } from "react-native-reanimated";
 
 import QuickEntrySheetContainer from "@/src/features/transactions/components/QuickEntrySheetContainer";
+import { getThemeColors } from "@/src/lib/theme";
 import { useUIStore } from "@/src/store/ui.store";
 import {
   getSpringConfig,
   getTimingConfig,
   MOTION_DURATION_FAST,
   useReducedMotion,
-  useTheme,
-} from "@/src/ui";
+} from "@/src/lib/motion";
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
 
@@ -118,7 +119,7 @@ function AnimatedTabLabel({ color, focused, label }: AnimatedTabVisualProps) {
 }
 
 function QuickEntryFabButton({ children, isOpen, onPress }: QuickEntryFabButtonProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const reduceMotion = useReducedMotion();
   const openProgress = useSharedValue(isOpen ? 1 : 0);
   const pressedProgress = useSharedValue(0);
@@ -181,10 +182,10 @@ function QuickEntryFabButton({ children, isOpen, onPress }: QuickEntryFabButtonP
             width: 56,
             height: 56,
             borderRadius: 18,
-            backgroundColor: theme.colors.accentStrong,
+            backgroundColor: colors.accentStrong,
             alignItems: "center",
             justifyContent: "center",
-            shadowColor: theme.colors.shadow,
+            shadowColor: colors.shadow,
             shadowOpacity: 0.2,
             shadowRadius: 16,
             shadowOffset: { width: 0, height: 8 },
@@ -212,7 +213,7 @@ function renderTabIcon(name: IconName) {
 }
 
 export default function TabsLayout() {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const insets = useSafeAreaInsets();
   const openQuickEntrySheet = useUIStore((state) => state.openQuickEntrySheet);
   const quickEntrySheetVisible = useUIStore((state) => state.quickEntrySheetVisible);
@@ -223,8 +224,8 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: theme.colors.accent,
-          tabBarInactiveTintColor: theme.colors.tabInactive,
+          tabBarActiveTintColor: colors.accent,
+          tabBarInactiveTintColor: colors.tabInactive,
           tabBarStyle: {
             position: "absolute",
             left: 16,
@@ -235,16 +236,16 @@ export default function TabsLayout() {
             paddingBottom: 8,
             borderWidth: 1,
             borderRadius: 20,
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            shadowColor: theme.colors.shadow,
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            shadowColor: colors.shadow,
             shadowOpacity: 0.05,
             shadowRadius: 10,
             shadowOffset: { width: 0, height: 4 },
             elevation: 6,
           },
           sceneStyle: {
-            backgroundColor: theme.colors.background,
+            backgroundColor: colors.background,
           },
         }}
       >
@@ -261,9 +262,9 @@ export default function TabsLayout() {
           options={{
             title: "记账",
             tabBarIcon: ({ size }) => (
-              <MaterialCommunityIcons name="plus" color={theme.colors.onAccent} size={size + 6} />
+              <MaterialCommunityIcons name="plus" color={colors.onAccent} size={size + 6} />
             ),
-            tabBarLabel: () => <ReactNativeText style={{ display: "none" }} />,
+            tabBarLabel: () => <Text display="none" />,
             tabBarButton: (props) => (
               <QuickEntryFabButton isOpen={quickEntrySheetVisible} onPress={openQuickEntrySheet}>
                 {props.children}

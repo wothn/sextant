@@ -1,6 +1,8 @@
 import type { ViewStyle } from "react-native";
+import { Card, Text, YStack, useTheme } from "tamagui";
 
-import { Card, Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface MetricCardProps {
   label: string;
@@ -11,19 +13,26 @@ interface MetricCardProps {
 }
 
 export function MetricCard({ label, value, tone, align = "start", style }: MetricCardProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const alignItems = align === "end" ? "flex-end" : "flex-start";
 
   return (
-    <Card style={[{ borderRadius: 16 }, style]}>
-      <Card.Content style={{ gap: 8, alignItems }}>
-        <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
+    <Card
+      borderRadius={16}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+      style={style}
+    >
+      <YStack gap={8} alignItems={alignItems}>
+        <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.textMuted }]}>
           {label}
         </Text>
-        <Text variant="titleLarge" tabularNums style={{ color: tone, fontWeight: "700" }}>
+        <Text style={[TEXT_VARIANTS.titleLarge, { color: tone, fontWeight: "700", fontVariant: ["tabular-nums"] }]}>
           {value}
         </Text>
-      </Card.Content>
+      </YStack>
     </Card>
   );
 }

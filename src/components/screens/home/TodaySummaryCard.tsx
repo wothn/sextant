@@ -1,8 +1,9 @@
-import { View } from "react-native";
+import { Card, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { formatCurrency, formatSignedCurrency } from "@/src/lib/format";
 import type { TodaySummary } from "@/src/features/transactions/transaction.service";
-import { Card, Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface MonthSummary {
   income: number;
@@ -16,60 +17,69 @@ interface TodaySummaryCardProps {
 }
 
 export function TodaySummaryCard({ todaySummary, monthSummary }: TodaySummaryCardProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
 
   return (
-    <Card style={{ borderRadius: 22 }}>
-      <Card.Content style={{ gap: 12 }}>
-        <View style={{ gap: 6 }}>
-          <Text variant="labelLarge" style={{ color: theme.colors.textMuted }}>
+    <Card borderRadius={22} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+      <YStack gap={12}>
+        <YStack gap={6}>
+          <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.textMuted }]}>
             今天已经花了
           </Text>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
+          <XStack alignItems="center" justifyContent="space-between" gap={12}>
             <Text
-              variant="headlineSmall"
-              tabularNums
-              style={{ color: theme.colors.danger, fontWeight: "800" }}
+              style={[
+                TEXT_VARIANTS.headlineSmall,
+                { color: colors.danger, fontWeight: "800", fontVariant: ["tabular-nums"] },
+              ]}
             >
               {formatCurrency(todaySummary.expense)}
             </Text>
-            <View style={{ alignItems: "flex-end", gap: 2 }}>
-              <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
+            <YStack alignItems="flex-end" gap={2}>
+              <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>
                 净变化
               </Text>
-              <Text variant="bodySmall" style={{ color: theme.colors.textMuted }} tabularNums>
+              <Text
+                style={[
+                  TEXT_VARIANTS.bodySmall,
+                  { color: colors.textMuted, fontVariant: ["tabular-nums"] },
+                ]}
+              >
                 {formatSignedCurrency(todaySummary.net)}
               </Text>
-            </View>
-          </View>
-        </View>
+            </YStack>
+          </XStack>
+        </YStack>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
+        <XStack alignItems="center" gap={12}>
+          <YStack flex={1} gap={4}>
+            <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>
               本月支出
             </Text>
-            <Text variant="titleMedium" tabularNums style={{ color: theme.colors.danger }}>
+            <Text
+              style={[
+                TEXT_VARIANTS.titleMedium,
+                { color: colors.danger, fontVariant: ["tabular-nums"] },
+              ]}
+            >
               {formatCurrency(monthSummary.expense)}
             </Text>
-          </View>
-          <View style={{ flex: 1, gap: 4, alignItems: "flex-end" }}>
-            <Text variant="labelSmall" style={{ color: theme.colors.textMuted }}>
+          </YStack>
+          <YStack flex={1} gap={4} alignItems="flex-end">
+            <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>
               本月收入
             </Text>
-            <Text variant="titleMedium" tabularNums style={{ color: theme.colors.success }}>
+            <Text
+              style={[
+                TEXT_VARIANTS.titleMedium,
+                { color: colors.success, fontVariant: ["tabular-nums"] },
+              ]}
+            >
               {formatCurrency(monthSummary.income)}
             </Text>
-          </View>
-        </View>
-      </Card.Content>
+          </YStack>
+        </XStack>
+      </YStack>
     </Card>
   );
 }

@@ -7,22 +7,24 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import { Card, Text, YStack, useTheme } from "tamagui";
 
-import { Card, Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 import {
   getEnterTimingConfig,
   getExitTimingConfig,
   MOTION_DURATION_BASE,
   MOTION_DURATION_FAST,
   useReducedMotion,
-} from "@/src/ui";
+} from "@/src/lib/motion";
 
 interface FeedbackMessageCardProps {
   message: string;
 }
 
 export function FeedbackMessageCard({ message }: FeedbackMessageCardProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const reduceMotion = useReducedMotion();
   const [displayMessage, setDisplayMessage] = useState(message);
   const progress = useSharedValue(0);
@@ -61,16 +63,17 @@ export function FeedbackMessageCard({ message }: FeedbackMessageCardProps) {
 
   return (
     <Animated.View style={animatedStyle}>
-      <Card mode="contained">
-        <Card.Content>
+      <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surfaceAlt} padding={16}>
+        <YStack>
           <Text
-            style={{
-              color: displayMessage.includes("失败") ? theme.colors.danger : theme.colors.text,
-            }}
+            style={[
+              TEXT_VARIANTS.bodyMedium,
+              { color: displayMessage.includes("失败") ? colors.danger : colors.text },
+            ]}
           >
             {displayMessage}
           </Text>
-        </Card.Content>
+        </YStack>
       </Card>
     </Animated.View>
   );

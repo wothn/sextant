@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Pressable,
   ScrollView,
-  View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { Text, YStack, useTheme } from "tamagui";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
-import { Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 const VISIBLE_ROWS = 5;
 const ITEM_HEIGHT = 48;
@@ -52,7 +52,7 @@ export function TimeWheelPicker({
   visible,
   onSelect,
 }: TimeWheelPickerProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const scrollRef = useRef<ScrollView>(null);
   const isMomentumScrollingRef = useRef<boolean>(false);
   const [previewValue, setPreviewValue] = useState<string>(selectedValue);
@@ -160,29 +160,29 @@ export function TimeWheelPicker({
   );
 
   return (
-    <View style={styles.timeWheelColumn}>
-      <View style={styles.timeWheelHeader}>
-        <Text variant="labelMedium" style={{ color: theme.colors.textMuted }}>
+    <YStack style={styles.timeWheelColumn}>
+      <YStack style={styles.timeWheelHeader}>
+        <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>
           {label}
         </Text>
-      </View>
+      </YStack>
 
-      <View
+      <YStack
         style={[
           styles.timeWheelFrame,
           {
-            backgroundColor: theme.colors.backgroundSoft,
-            borderColor: theme.colors.border,
+            backgroundColor: colors.backgroundSoft,
+            borderColor: colors.border,
           },
         ]}
       >
-        <View
+        <YStack
           testID={`${accessibilityPrefix}-focus-band`}
           pointerEvents="none"
           style={[
             styles.timeWheelFocusBand,
             {
-              borderColor: theme.colors.accentMuted,
+              borderColor: colors.accentMuted,
             },
           ]}
         />
@@ -199,14 +199,14 @@ export function TimeWheelPicker({
           onMomentumScrollEnd={handleMomentumScrollEnd}
           onScrollEndDrag={handleScrollEndDrag}
         >
-          <View style={{ height: WHEEL_PADDING }} />
+          <YStack height={WHEEL_PADDING} />
           {loopedOptions.map((option, index) => {
             const isCenterCopy =
               index >= centerLoopStartIndex && index < centerLoopStartIndex + options.length;
             const isSelected = option === displayedValue;
 
             return (
-              <Pressable
+              <YStack
                 key={`${option}-${index}`}
                 accessibilityRole={isCenterCopy ? "button" : undefined}
                 accessibilityLabel={
@@ -223,20 +223,22 @@ export function TimeWheelPicker({
                 style={styles.timeWheelOption}
               >
                 <Text
-                  variant={isSelected ? "titleMedium" : "bodyLarge"}
-                  style={{
-                    color: isSelected ? theme.colors.text : theme.colors.textMuted,
-                    fontWeight: isSelected ? "700" : "500",
-                  }}
+                  style={[
+                    isSelected ? TEXT_VARIANTS.titleMedium : TEXT_VARIANTS.bodyLarge,
+                    {
+                      color: isSelected ? colors.text : colors.textMuted,
+                      fontWeight: isSelected ? "700" : "500",
+                    },
+                  ]}
                 >
                   {option}
                 </Text>
-              </Pressable>
+              </YStack>
             );
           })}
-          <View style={{ height: WHEEL_PADDING }} />
+          <YStack height={WHEEL_PADDING} />
         </ScrollView>
-      </View>
-    </View>
+      </YStack>
+    </YStack>
   );
 }

@@ -10,7 +10,7 @@ import QuickEntrySheetForm, {
 } from "@/src/features/transactions/components/QuickEntrySheetForm";
 import { useUIStore } from "@/src/store/ui.store";
 import type { Category, PaymentMethod } from "@/src/types/domain";
-import { MOTION_DURATION_BASE } from "@/src/ui";
+import { MOTION_DURATION_BASE } from "@/src/lib/motion";
 
 interface QuickEntryMessageState {
   text: string;

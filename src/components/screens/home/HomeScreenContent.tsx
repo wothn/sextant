@@ -1,11 +1,11 @@
-import { View } from "react-native";
+import { Text, YStack } from "tamagui";
 
 import type {
   DailyTransactionGroup,
   TransactionListItem,
   TodaySummary,
 } from "@/src/features/transactions/transaction.service";
-import { Text } from "@/src/ui";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 import { AsyncStateCard } from "@/src/components/screens/shared/AsyncStateCard";
 import { EmptyStateCard } from "@/src/components/screens/shared/EmptyStateCard";
 import { HomeGreetingSection } from "@/src/components/screens/home/HomeGreetingSection";
@@ -52,9 +52,9 @@ export function HomeScreenContent({
 }: HomeScreenContentProps) {
   return (
     <>
-      <View style={{ gap: 4 }}>
+      <YStack gap={4}>
         <HomeGreetingSection />
-      </View>
+      </YStack>
 
       <TodaySummaryCard todaySummary={todaySummary} monthSummary={monthSummary} />
 
@@ -67,7 +67,7 @@ export function HomeScreenContent({
         />
       ) : null}
 
-      {loading && !error ? <Text>正在整理你的账本…</Text> : null}
+      {loading && !error ? <Text style={TEXT_VARIANTS.bodyMedium}>正在整理你的账本...</Text> : null}
       {!loading && !error && groups.length === 0 ? (
         <EmptyStateCard title="还没有记录" description="记一笔后，这里会按日期排好最近的明细。" />
       ) : null}

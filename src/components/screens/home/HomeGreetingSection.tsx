@@ -1,4 +1,7 @@
-import { Text, useTheme } from "@/src/ui";
+import { Text, useTheme } from "tamagui";
+
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 const DAILY_LINES = [
   "把今天折成一页",
@@ -63,15 +66,15 @@ function formatDate(): string {
 }
 
 export function HomeGreetingSection() {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const { greeting, mood } = getGreeting();
 
   return (
     <>
-      <Text variant="headlineMedium" style={{ fontWeight: "700", letterSpacing: -0.4 }}>
+      <Text style={[TEXT_VARIANTS.headlineMedium, { fontWeight: "700" }]}>
         {greeting}
       </Text>
-      <Text variant="bodyMedium" style={{ color: theme.colors.textMuted }}>
+      <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
         {formatDate()} · {mood}
       </Text>
     </>

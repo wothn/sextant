@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, View } from "react-native";
+import { Button, ScrollView, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -8,7 +8,8 @@ import {
   getOptionIconName,
 } from "@/src/features/transactions/components/quick-entry/utils";
 import type { Category } from "@/src/types/domain";
-import { Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface CategorySelectorStripProps {
   categories: Category[];
@@ -21,15 +22,15 @@ export function CategorySelectorStrip({
   selectedCategoryId,
   onSelectCategory,
 }: CategorySelectorStripProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
 
   return (
-    <View style={styles.categorySection}>
-      <View style={styles.sectionHeader}>
-        <Text variant="titleSmall" style={{ fontWeight: "700" }}>
+    <YStack style={styles.categorySection}>
+      <XStack style={styles.sectionHeader}>
+        <Text style={[TEXT_VARIANTS.titleSmall, { fontWeight: "700" }]}>
           分类
         </Text>
-      </View>
+      </XStack>
 
       <ScrollView
         horizontal
@@ -42,25 +43,22 @@ export function CategorySelectorStrip({
           const iconName = getOptionIconName(item.icon);
 
           return (
-            <Pressable
+            <Button
+              unstyled
               key={item.id}
               accessibilityRole="button"
               accessibilityLabel={`选择分类${item.name}`}
               onPress={() => onSelectCategory(item.id)}
-              style={({ pressed }) => [
-                styles.categoryChip,
-                {
-                  backgroundColor: selected ? theme.colors.accentSoft : theme.colors.surface,
-                  borderColor: selected ? item.color : theme.colors.borderStrong,
-                  opacity: pressed ? 0.92 : 1,
-                },
-              ]}
+              style={styles.categoryChip}
+              backgroundColor={selected ? colors.accentSoft : colors.surface}
+              borderColor={selected ? item.color : colors.borderStrong}
+              pressStyle={{ opacity: 0.92 }}
             >
-              <View
+              <YStack
                 style={[
                   styles.categoryIconWrapSm,
                   {
-                    backgroundColor: selected ? item.color : theme.colors.surfaceAlt,
+                    backgroundColor: selected ? item.color : colors.surfaceAlt,
                   },
                 ]}
               >
@@ -68,33 +66,31 @@ export function CategorySelectorStrip({
                   <MaterialCommunityIcons
                     name={iconName}
                     size={13}
-                    color={selected ? theme.colors.onAccent : item.color}
+                    color={selected ? colors.onAccent : item.color}
                   />
                 ) : (
                   <Text
-                    variant="labelSmall"
-                    style={{
-                      color: selected ? theme.colors.onAccent : item.color,
-                      fontWeight: "800",
-                    }}
+                    style={[
+                      TEXT_VARIANTS.labelSmall,
+                      { color: selected ? colors.onAccent : item.color, fontWeight: "800" },
+                    ]}
                   >
                     {getInitialLabel(item.name)}
                   </Text>
                 )}
-              </View>
+              </YStack>
               <Text
-                variant="labelMedium"
-                style={{
-                  color: selected ? item.color : theme.colors.text,
-                  fontWeight: "700",
-                }}
+                style={[
+                  TEXT_VARIANTS.labelMedium,
+                  { color: selected ? item.color : colors.text, fontWeight: "700" },
+                ]}
               >
                 {item.name}
               </Text>
-            </Pressable>
+            </Button>
           );
         })}
       </ScrollView>
-    </View>
+    </YStack>
   );
 }

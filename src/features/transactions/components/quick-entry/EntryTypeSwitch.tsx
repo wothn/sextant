@@ -1,8 +1,9 @@
-import { Pressable, View } from "react-native";
+import { Button, Text, XStack, useTheme } from "tamagui";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
 import type { EntryType } from "@/src/features/transactions/components/quick-entry/types";
-import { Text, useTheme } from "@/src/ui";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface EntryTypeSwitchProps {
   value: EntryType;
@@ -10,59 +11,61 @@ interface EntryTypeSwitchProps {
 }
 
 export function EntryTypeSwitch({ value, onChange }: EntryTypeSwitchProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const expenseSelected = value === "expense";
   const incomeSelected = value === "income";
 
   return (
-    <View
+    <XStack
       style={[
         styles.typeSwitch,
         {
-          backgroundColor: theme.colors.surfaceAlt,
-          borderColor: theme.colors.border,
+          backgroundColor: colors.surfaceAlt,
+          borderColor: colors.border,
         },
       ]}
     >
-      <Pressable
+      <Button
+        unstyled
         accessibilityRole="button"
         accessibilityLabel="选择支出"
         onPress={() => onChange("expense")}
-        style={[
-          styles.typeButton,
-          expenseSelected ? { backgroundColor: theme.colors.accentSoft } : null,
-        ]}
+        style={styles.typeButton}
+        backgroundColor={expenseSelected ? colors.accentSoft : "transparent"}
       >
         <Text
-          variant="labelLarge"
-          style={{
-            color: expenseSelected ? theme.colors.accentStrong : theme.colors.textMuted,
-            fontWeight: "700",
-          }}
+          style={[
+            TEXT_VARIANTS.labelLarge,
+            {
+              color: expenseSelected ? colors.accentStrong : colors.textMuted,
+              fontWeight: "700",
+            },
+          ]}
         >
           支出
         </Text>
-      </Pressable>
+      </Button>
 
-      <Pressable
+      <Button
+        unstyled
         accessibilityRole="button"
         accessibilityLabel="选择收入"
         onPress={() => onChange("income")}
-        style={[
-          styles.typeButton,
-          incomeSelected ? { backgroundColor: theme.colors.accentSoft } : null,
-        ]}
+        style={styles.typeButton}
+        backgroundColor={incomeSelected ? colors.accentSoft : "transparent"}
       >
         <Text
-          variant="labelLarge"
-          style={{
-            color: incomeSelected ? theme.colors.accentStrong : theme.colors.textMuted,
-            fontWeight: "700",
-          }}
+          style={[
+            TEXT_VARIANTS.labelLarge,
+            {
+              color: incomeSelected ? colors.accentStrong : colors.textMuted,
+              fontWeight: "700",
+            },
+          ]}
         >
           收入
         </Text>
-      </Pressable>
-    </View>
+      </Button>
+    </XStack>
   );
 }

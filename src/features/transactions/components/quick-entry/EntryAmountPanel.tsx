@@ -1,10 +1,10 @@
-import { View } from "react-native";
+import { Text, XStack, YStack, useTheme } from "tamagui";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
-import { Text, useTheme } from "@/src/ui";
-import type { TextVariant } from "@/src/ui/typography";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS, type TextVariant } from "@/src/lib/typography";
 
 interface EntryAmountPanelProps {
   amountDisplay: string;
@@ -19,56 +19,57 @@ export function EntryAmountPanel({
   message,
   messageTone = "error",
 }: EntryAmountPanelProps) {
-  const theme = useTheme();
+  const colors = getThemeColors(useTheme());
   const isError = messageTone === "error";
-  const bannerColor = isError ? theme.colors.danger : theme.colors.success;
+  const bannerColor = isError ? colors.danger : colors.success;
   const iconName = isError ? "alert-circle-outline" : "check-circle-outline";
 
   return (
-    <View
+    <YStack
       style={[
         styles.amountPanel,
         {
-          backgroundColor: theme.colors.backgroundSoft,
-          borderColor: theme.colors.border,
+          backgroundColor: colors.backgroundSoft,
+          borderColor: colors.border,
         },
       ]}
     >
-      <View style={styles.amountRow}>
+      <XStack style={styles.amountRow}>
         <Text
-          variant="titleLarge"
-          style={[styles.amountCurrency, { color: theme.colors.textMuted }]}
+          style={[TEXT_VARIANTS.titleLarge, styles.amountCurrency, { color: colors.textMuted }]}
         >
           ¥
         </Text>
         <Text
-          variant={amountVariant}
           accessibilityLabel="金额"
           numberOfLines={1}
           adjustsFontSizeToFit
-          tabularNums
-          style={[styles.amountValue, { fontWeight: "800", color: theme.colors.text }]}
+          style={[
+            TEXT_VARIANTS[amountVariant],
+            styles.amountValue,
+            { fontWeight: "800", color: colors.text, fontVariant: ["tabular-nums"] },
+          ]}
         >
           {amountDisplay}
         </Text>
-      </View>
+      </XStack>
 
       {message ? (
-        <View
+        <XStack
           style={[
             styles.messageBanner,
             {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: colors.surface,
               borderColor: bannerColor,
             },
           ]}
         >
           <MaterialCommunityIcons name={iconName} size={16} color={bannerColor} />
-          <Text variant="bodyMedium" style={{ color: bannerColor, flex: 1 }}>
+          <Text style={[TEXT_VARIANTS.bodyMedium, { color: bannerColor, flex: 1 }]}>
             {message}
           </Text>
-        </View>
+        </XStack>
       ) : null}
-    </View>
+    </YStack>
   );
 }
