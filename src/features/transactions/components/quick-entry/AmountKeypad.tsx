@@ -70,11 +70,7 @@ export function AmountKeypad({
           borderColor={colors.borderStrong}
           pressStyle={{ opacity: 0.9 }}
         >
-          <MaterialCommunityIcons
-            name="backspace-outline"
-            size={24}
-            color={colors.textMuted}
-          />
+          <MaterialCommunityIcons name="backspace-outline" size={24} color={colors.textMuted} />
         </Button>
 
         <Button
@@ -108,10 +104,7 @@ export function AmountKeypad({
             <Spinner size="small" color={colors.onAccent} />
           ) : (
             <Text
-              style={[
-                TEXT_VARIANTS.headlineSmall,
-                { color: colors.onAccent, fontWeight: "800" },
-              ]}
+              style={[TEXT_VARIANTS.headlineSmall, { color: colors.onAccent, fontWeight: "800" }]}
             >
               保存
             </Text>

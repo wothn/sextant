@@ -129,12 +129,7 @@ export function QuickEntrySheetLayout({
         </YStack>
 
         <XStack style={styles.headerRow}>
-          <Text
-            style={[
-              TEXT_VARIANTS.titleSmall,
-              { color: colors.textMuted, fontWeight: "700" },
-            ]}
-          >
+          <Text style={[TEXT_VARIANTS.titleSmall, { color: colors.textMuted, fontWeight: "700" }]}>
             快速记账
           </Text>
           <Button

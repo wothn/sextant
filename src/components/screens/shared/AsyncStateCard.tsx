@@ -14,12 +14,17 @@ export function AsyncStateCard({ title, description, actionLabel, onAction }: As
   const colors = getThemeColors(useTheme());
 
   return (
-    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16} gap={10}>
+    <Card
+      borderRadius={18}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+      gap={10}
+    >
       <YStack gap={10}>
         <Text style={TEXT_VARIANTS.titleMedium}>{title}</Text>
-        <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
-          {description}
-        </Text>
+        <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>{description}</Text>
         {actionLabel && onAction ? (
           <Button
             unstyled

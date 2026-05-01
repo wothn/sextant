@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ScrollView,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
+import { ScrollView, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { Text, YStack, useTheme } from "tamagui";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
@@ -162,9 +158,7 @@ export function TimeWheelPicker({
   return (
     <YStack style={styles.timeWheelColumn}>
       <YStack style={styles.timeWheelHeader}>
-        <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>
-          {label}
-        </Text>
+        <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>{label}</Text>
       </YStack>
 
       <YStack

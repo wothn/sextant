@@ -31,7 +31,13 @@ export function BudgetProgressSection({ budgets }: BudgetProgressSectionProps) {
   const totalBudgetExpense = budgets.reduce((sum, item) => sum + item.expenseAmount, 0);
 
   return (
-    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+    <Card
+      borderRadius={18}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+    >
       <YStack gap={12}>
         <XStack justifyContent="space-between" alignItems="center">
           <Text style={TEXT_VARIANTS.titleMedium}>预算进度</Text>
@@ -52,18 +58,23 @@ export function BudgetProgressSection({ budgets }: BudgetProgressSectionProps) {
           </Text>
           <Progress
             value={
-              100 * (totalBudgetAmount > 0 ? Math.min(totalBudgetExpense / totalBudgetAmount, 1) : 0)
+              100 *
+              (totalBudgetAmount > 0 ? Math.min(totalBudgetExpense / totalBudgetAmount, 1) : 0)
             }
             max={100}
             height={6}
             borderRadius={999}
             backgroundColor={colors.surfaceStrong}
           >
-            <Progress.Indicator backgroundColor={riskBudgetCount > 0 ? colors.danger : colors.accent} />
+            <Progress.Indicator
+              backgroundColor={riskBudgetCount > 0 ? colors.danger : colors.accent}
+            />
           </Progress>
         </YStack>
 
-        {budgets.length === 0 ? <Text style={TEXT_VARIANTS.bodyMedium}>当前还没有预算，先去设置页添加。</Text> : null}
+        {budgets.length === 0 ? (
+          <Text style={TEXT_VARIANTS.bodyMedium}>当前还没有预算，先去设置页添加。</Text>
+        ) : null}
         {budgets.map((item) => {
           const progress = item.budgetAmount > 0 ? item.expenseAmount / item.budgetAmount : 0;
           const over = progress >= item.alertThreshold;

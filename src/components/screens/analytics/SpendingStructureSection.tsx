@@ -18,11 +18,19 @@ export function SpendingStructureSection({ categories, error }: SpendingStructur
     .map((item) => ({ value: item.amount, color: item.categoryColor }));
 
   return (
-    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+    <Card
+      borderRadius={18}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+    >
       <YStack gap={14}>
         <Text style={TEXT_VARIANTS.titleMedium}>支出结构</Text>
         {!error && categories.length === 0 ? (
-          <Text style={TEXT_VARIANTS.bodyMedium}>本月还没有支出记录，结构图会在你花第一笔钱后出现。</Text>
+          <Text style={TEXT_VARIANTS.bodyMedium}>
+            本月还没有支出记录，结构图会在你花第一笔钱后出现。
+          </Text>
         ) : (
           <XStack gap={16} alignItems="center">
             <DonutChart segments={donutSegments} trackColor={colors.border} />

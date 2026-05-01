@@ -27,9 +27,7 @@ export function PaymentMethodSelectorStrip({
   return (
     <>
       <XStack style={styles.sectionHeader}>
-        <Text style={[TEXT_VARIANTS.titleSmall, { fontWeight: "700" }]}>
-          支付方式
-        </Text>
+        <Text style={[TEXT_VARIANTS.titleSmall, { fontWeight: "700" }]}>支付方式</Text>
       </XStack>
 
       <ScrollView

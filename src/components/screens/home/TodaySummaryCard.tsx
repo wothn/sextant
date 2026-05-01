@@ -20,12 +20,16 @@ export function TodaySummaryCard({ todaySummary, monthSummary }: TodaySummaryCar
   const colors = getThemeColors(useTheme());
 
   return (
-    <Card borderRadius={22} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+    <Card
+      borderRadius={22}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+    >
       <YStack gap={12}>
         <YStack gap={6}>
-          <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.textMuted }]}>
-            今天已经花了
-          </Text>
+          <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.textMuted }]}>今天已经花了</Text>
           <XStack alignItems="center" justifyContent="space-between" gap={12}>
             <Text
               style={[
@@ -36,9 +40,7 @@ export function TodaySummaryCard({ todaySummary, monthSummary }: TodaySummaryCar
               {formatCurrency(todaySummary.expense)}
             </Text>
             <YStack alignItems="flex-end" gap={2}>
-              <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>
-                净变化
-              </Text>
+              <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>净变化</Text>
               <Text
                 style={[
                   TEXT_VARIANTS.bodySmall,
@@ -53,9 +55,7 @@ export function TodaySummaryCard({ todaySummary, monthSummary }: TodaySummaryCar
 
         <XStack alignItems="center" gap={12}>
           <YStack flex={1} gap={4}>
-            <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>
-              本月支出
-            </Text>
+            <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>本月支出</Text>
             <Text
               style={[
                 TEXT_VARIANTS.titleMedium,
@@ -66,9 +66,7 @@ export function TodaySummaryCard({ todaySummary, monthSummary }: TodaySummaryCar
             </Text>
           </YStack>
           <YStack flex={1} gap={4} alignItems="flex-end">
-            <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>
-              本月收入
-            </Text>
+            <Text style={[TEXT_VARIANTS.labelSmall, { color: colors.textMuted }]}>本月收入</Text>
             <Text
               style={[
                 TEXT_VARIANTS.titleMedium,

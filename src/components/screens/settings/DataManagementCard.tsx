@@ -11,7 +11,13 @@ export function DataManagementCard({ onExportCsv }: DataManagementCardProps) {
   const colors = getThemeColors(useTheme());
 
   return (
-    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+    <Card
+      borderRadius={18}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+    >
       <YStack gap={10}>
         <Text style={TEXT_VARIANTS.titleMedium}>数据管理</Text>
         <Button

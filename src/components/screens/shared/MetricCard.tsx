@@ -26,10 +26,13 @@ export function MetricCard({ label, value, tone, align = "start", style }: Metri
       style={style}
     >
       <YStack gap={8} alignItems={alignItems}>
-        <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.textMuted }]}>
-          {label}
-        </Text>
-        <Text style={[TEXT_VARIANTS.titleLarge, { color: tone, fontWeight: "700", fontVariant: ["tabular-nums"] }]}>
+        <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.textMuted }]}>{label}</Text>
+        <Text
+          style={[
+            TEXT_VARIANTS.titleLarge,
+            { color: tone, fontWeight: "700", fontVariant: ["tabular-nums"] },
+          ]}
+        >
           {value}
         </Text>
       </YStack>

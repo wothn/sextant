@@ -38,7 +38,13 @@ export function TrendSection({
   };
 
   return (
-    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+    <Card
+      borderRadius={18}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+    >
       <YStack gap={12}>
         <XStack justifyContent="space-between" alignItems="center" gap={12}>
           <YStack flex={1} minWidth={0} gap={4}>
@@ -90,12 +96,10 @@ export function TrendSection({
           </YStack>
         ) : null}
 
-        <YStack
-          onLayout={handleTrendChartLayout}
-          width="100%"
-          testID="trend-chart-container"
-        >
-          {loading && !error ? <Text style={TEXT_VARIANTS.bodyMedium}>正在生成趋势图...</Text> : null}
+        <YStack onLayout={handleTrendChartLayout} width="100%" testID="trend-chart-container">
+          {loading && !error ? (
+            <Text style={TEXT_VARIANTS.bodyMedium}>正在生成趋势图...</Text>
+          ) : null}
           {!loading && !error && trend.length > 0 && trendChartWidth > 0 ? (
             <TrendLineChart
               points={trendChartPoints}

@@ -27,9 +27,7 @@ export function CategorySelectorStrip({
   return (
     <YStack style={styles.categorySection}>
       <XStack style={styles.sectionHeader}>
-        <Text style={[TEXT_VARIANTS.titleSmall, { fontWeight: "700" }]}>
-          分类
-        </Text>
+        <Text style={[TEXT_VARIANTS.titleSmall, { fontWeight: "700" }]}>分类</Text>
       </XStack>
 
       <ScrollView
