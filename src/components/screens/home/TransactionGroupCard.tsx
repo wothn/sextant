@@ -18,7 +18,13 @@ export function TransactionGroupCard({ group, onSelectTransaction }: Transaction
   const colors = getThemeColors(useTheme());
 
   return (
-    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+    <Card
+      borderRadius={18}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+    >
       <YStack gap={8}>
         <XStack justifyContent="space-between" alignItems="flex-start">
           <YStack gap={4} flex={1}>
@@ -36,9 +42,7 @@ export function TransactionGroupCard({ group, onSelectTransaction }: Transaction
             >
               支 {formatCurrency(group.totalExpense)}
             </Text>
-            <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>
-              ·
-            </Text>
+            <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>·</Text>
             <Text
               style={[
                 TEXT_VARIANTS.labelMedium,

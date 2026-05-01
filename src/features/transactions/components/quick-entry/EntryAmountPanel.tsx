@@ -65,9 +65,7 @@ export function EntryAmountPanel({
           ]}
         >
           <MaterialCommunityIcons name={iconName} size={16} color={bannerColor} />
-          <Text style={[TEXT_VARIANTS.bodyMedium, { color: bannerColor, flex: 1 }]}>
-            {message}
-          </Text>
+          <Text style={[TEXT_VARIANTS.bodyMedium, { color: bannerColor, flex: 1 }]}>{message}</Text>
         </XStack>
       ) : null}
     </YStack>

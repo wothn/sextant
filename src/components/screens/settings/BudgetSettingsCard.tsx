@@ -26,7 +26,13 @@ export function BudgetSettingsCard({
   const colors = getThemeColors(useTheme());
 
   return (
-    <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surface} padding={16}>
+    <Card
+      borderRadius={18}
+      borderWidth={1}
+      borderColor={colors.border}
+      backgroundColor={colors.surface}
+      padding={16}
+    >
       <YStack gap={10}>
         <Text style={TEXT_VARIANTS.titleMedium}>本月预算设置</Text>
         <Text style={TEXT_VARIANTS.bodyMedium}>当前分类：{selectedName}</Text>

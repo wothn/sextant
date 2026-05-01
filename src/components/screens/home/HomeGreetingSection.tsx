@@ -71,9 +71,7 @@ export function HomeGreetingSection() {
 
   return (
     <>
-      <Text style={[TEXT_VARIANTS.headlineMedium, { fontWeight: "700" }]}>
-        {greeting}
-      </Text>
+      <Text style={[TEXT_VARIANTS.headlineMedium, { fontWeight: "700" }]}>{greeting}</Text>
       <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
         {formatDate()} · {mood}
       </Text>

@@ -63,7 +63,13 @@ export function FeedbackMessageCard({ message }: FeedbackMessageCardProps) {
 
   return (
     <Animated.View style={animatedStyle}>
-      <Card borderRadius={18} borderWidth={1} borderColor={colors.border} backgroundColor={colors.surfaceAlt} padding={16}>
+      <Card
+        borderRadius={18}
+        borderWidth={1}
+        borderColor={colors.border}
+        backgroundColor={colors.surfaceAlt}
+        padding={16}
+      >
         <YStack>
           <Text
             style={[
