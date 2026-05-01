@@ -114,7 +114,7 @@ describe("QuickEntryScreen", () => {
       expect(screen.getByText("收入")).toBeTruthy();
       expect(screen.getByText("支付方式")).toBeTruthy();
       expect(screen.getAllByText("分类").length).toBeGreaterThan(0);
-      expect(screen.getByLabelText("备注")).toBeTruthy();
+      expect(screen.getByLabelText("添加备注")).toBeTruthy();
       expect(screen.getAllByText("餐饮").length).toBeGreaterThan(0);
     });
 
@@ -144,14 +144,17 @@ describe("QuickEntryScreen", () => {
     fireEvent.press(screen.getByText("2"));
     fireEvent.press(screen.getByText("."));
     fireEvent.press(screen.getByText("5"));
-    fireEvent.press(screen.getByLabelText("备注"));
+    fireEvent.press(screen.getByLabelText("添加备注"));
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("在此输入备注...")).toBeTruthy();
+      expect(screen.getByLabelText("备注输入框", { includeHiddenElements: true })).toBeTruthy();
     });
 
-    fireEvent.changeText(screen.getByPlaceholderText("在此输入备注..."), "工资到账");
-    fireEvent.press(screen.getByText("确定"));
+    fireEvent.changeText(
+      screen.getByLabelText("备注输入框", { includeHiddenElements: true }),
+      "工资到账",
+    );
+    fireEvent.press(screen.getByLabelText("完成备注", { includeHiddenElements: true }));
 
     fireEvent.press(screen.getByLabelText("时间"));
 
@@ -161,7 +164,7 @@ describe("QuickEntryScreen", () => {
 
     fireEvent.press(screen.getByLabelText("选择小时09", { includeHiddenElements: true }));
     fireEvent.press(screen.getByLabelText("选择分钟30", { includeHiddenElements: true }));
-    fireEvent.press(screen.getByText("完成", { includeHiddenElements: true }));
+    fireEvent.press(screen.getByLabelText("完成时间选择", { includeHiddenElements: true }));
 
     fireEvent.press(screen.getByLabelText("保存本次记账"));
 

@@ -50,40 +50,42 @@ export function TimePickerDialog({
           paddingVertical={18}
           gap={12}
         >
-        <XStack style={styles.timePickerContent}>
-          <TimeWheelPicker
-            label="小时"
-            accessibilityPrefix="小时"
-            options={hourOptions}
-            selectedValue={selectedHour}
-            visible={visible}
-            onSelect={onSelectHour}
-          />
+          <XStack style={styles.timePickerContent}>
+            <TimeWheelPicker
+              label="小时"
+              accessibilityPrefix="小时"
+              options={hourOptions}
+              selectedValue={selectedHour}
+              visible={visible}
+              onSelect={onSelectHour}
+            />
 
-          <TimeWheelPicker
-            label="分钟"
-            accessibilityPrefix="分钟"
-            options={minuteOptions}
-            selectedValue={selectedMinute}
-            visible={visible}
-            onSelect={onSelectMinute}
-          />
-        </XStack>
-        <XStack justifyContent="flex-end" gap={8} marginTop={4}>
-        <Button
-          unstyled
-          minHeight={44}
-          borderRadius={12}
-          borderWidth={1.25}
-          borderColor={colors.borderStrong}
-          backgroundColor={colors.surface}
-          paddingHorizontal={16}
-          paddingVertical={10}
-          onPress={onDismiss}
-        >
-          完成
-        </Button>
-        </XStack>
+            <TimeWheelPicker
+              label="分钟"
+              accessibilityPrefix="分钟"
+              options={minuteOptions}
+              selectedValue={selectedMinute}
+              visible={visible}
+              onSelect={onSelectMinute}
+            />
+          </XStack>
+          <XStack justifyContent="flex-end" gap={8} marginTop={4}>
+            <Button
+              unstyled
+              accessibilityRole="button"
+              accessibilityLabel="完成时间选择"
+              minHeight={44}
+              borderRadius={12}
+              borderWidth={1.25}
+              borderColor={colors.borderStrong}
+              backgroundColor={colors.surface}
+              paddingHorizontal={16}
+              paddingVertical={10}
+              onPress={onDismiss}
+            >
+              完成
+            </Button>
+          </XStack>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog>
