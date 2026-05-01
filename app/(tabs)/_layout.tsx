@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Pressable } from "react-native";
+import { Pressable, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, useTheme } from "tamagui";
 
@@ -42,6 +42,26 @@ interface QuickEntryFabButtonProps {
 }
 
 const AnimatedPressable = createAnimatedComponent(Pressable);
+const TAB_BAR_HORIZONTAL_MARGIN = 16;
+const TAB_BAR_MIN_WIDTH = 288;
+const TAB_BAR_MAX_WIDTH = 360;
+const TAB_BAR_WIDTH_RATIO = 0.82;
+
+export interface FloatingTabBarMetrics {
+  marginLeft: number;
+  width: number;
+}
+
+export function getFloatingTabBarMetrics(windowWidth: number): FloatingTabBarMetrics {
+  const availableWidth = Math.max(windowWidth - TAB_BAR_HORIZONTAL_MARGIN * 2, TAB_BAR_MIN_WIDTH);
+  const preferredWidth = Math.max(Math.round(windowWidth * TAB_BAR_WIDTH_RATIO), TAB_BAR_MIN_WIDTH);
+  const tabBarWidth = Math.min(preferredWidth, availableWidth, TAB_BAR_MAX_WIDTH);
+
+  return {
+    marginLeft: -Math.round(tabBarWidth / 2),
+    width: tabBarWidth,
+  };
+}
 
 function AnimatedTabIcon({ color, focused, name, size = 24 }: AnimatedTabVisualProps) {
   const reduceMotion = useReducedMotion();
@@ -214,10 +234,12 @@ function renderTabIcon(name: IconName) {
 
 export default function TabsLayout() {
   const colors = getThemeColors(useTheme());
+  const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const openQuickEntrySheet = useUIStore((state) => state.openQuickEntrySheet);
   const quickEntrySheetVisible = useUIStore((state) => state.quickEntrySheetVisible);
   const tabBarBottomOffset = Math.max(insets.bottom, 16);
+  const tabBarMetrics = getFloatingTabBarMetrics(windowWidth);
 
   return (
     <>
@@ -228,8 +250,11 @@ export default function TabsLayout() {
           tabBarInactiveTintColor: colors.tabInactive,
           tabBarStyle: {
             position: "absolute",
-            left: 16,
-            right: 16,
+            start: undefined,
+            end: undefined,
+            left: "50%",
+            marginLeft: tabBarMetrics.marginLeft,
+            width: tabBarMetrics.width,
             bottom: tabBarBottomOffset,
             height: 64,
             paddingTop: 8,

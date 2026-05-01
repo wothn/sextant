@@ -1,6 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react-native";
 
-import TabsLayout from "@/app/(tabs)/_layout";
+import TabsLayout, { getFloatingTabBarMetrics } from "@/app/(tabs)/_layout";
 import { renderWithProviders } from "@/src/test/render";
 
 const mockOpenQuickEntrySheet = jest.fn();
@@ -8,6 +8,11 @@ let capturedScreenOptions:
   | {
       tabBarStyle?: {
         bottom?: number;
+        end?: number;
+        left?: number | string;
+        marginLeft?: number;
+        start?: number;
+        width?: number;
       };
     }
   | undefined;
@@ -46,6 +51,11 @@ jest.mock("expo-router", () => {
     screenOptions?: {
       tabBarStyle?: {
         bottom?: number;
+        end?: number;
+        left?: number | string;
+        marginLeft?: number;
+        start?: number;
+        width?: number;
       };
     };
   }) => {
@@ -143,5 +153,32 @@ describe("TabsLayout", () => {
     renderWithProviders(<TabsLayout />);
 
     expect(capturedScreenOptions?.tabBarStyle?.bottom).toBe(34);
+  });
+
+  it("keeps the floating tab bar compact and centered on a phone width", () => {
+    expect(getFloatingTabBarMetrics(390)).toEqual({
+      marginLeft: -160,
+      width: 320,
+    });
+  });
+
+  it("caps the floating tab bar width on wide screens", () => {
+    expect(getFloatingTabBarMetrics(768)).toEqual({
+      marginLeft: -180,
+      width: 360,
+    });
+  });
+
+  it("overrides the default logical edges before centering the tab bar", () => {
+    renderWithProviders(<TabsLayout />);
+
+    const tabBarStyle = capturedScreenOptions?.tabBarStyle;
+
+    expect(capturedScreenOptions?.tabBarStyle?.start).toBeUndefined();
+    expect(capturedScreenOptions?.tabBarStyle?.end).toBeUndefined();
+    expect(capturedScreenOptions?.tabBarStyle?.left).toBe("50%");
+    expect(tabBarStyle?.marginLeft).toBe(
+      tabBarStyle?.width === undefined ? undefined : -Math.round(tabBarStyle.width / 2),
+    );
   });
 });
