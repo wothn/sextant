@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Keyboard } from "react-native";
-import type { ComponentRef, RefObject } from "react";
+import type { PropsWithChildren, ReactElement } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { Keyboard, TextInput } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button, Input, Sheet, Text, XStack, YStack, useTheme } from "tamagui";
+import { Button, Sheet, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -12,161 +13,132 @@ import { TEXT_VARIANTS } from "@/src/lib/typography";
 
 interface NoteEditorSheetProps {
   visible: boolean;
-  note: string;
-  inputRef: RefObject<FocusableInputRef | null>;
-  onChangeNote: (value: string) => void;
-  onClose: () => void;
-  onInputLayout?: () => void;
+  value: string;
+  onChange: (value: string) => void;
+  onDismiss: () => void;
 }
 
-export type FocusableInputRef = ComponentRef<typeof Input>;
+function NoteKeyboardContainer({ children }: PropsWithChildren): ReactElement {
+  return (
+    <KeyboardAvoidingView
+      behavior="translate-with-padding"
+      pointerEvents="box-none"
+      style={styles.noteKeyboardWrap}
+      testID="note-keyboard-avoiding-view"
+    >
+      {children}
+    </KeyboardAvoidingView>
+  );
+}
 
-export function NoteEditorSheet({
-  visible,
-  note,
-  inputRef,
-  onChangeNote,
-  onClose,
-  onInputLayout,
-}: NoteEditorSheetProps) {
+export function NoteEditorSheet({ visible, value, onChange, onDismiss }: NoteEditorSheetProps) {
   const colors = getThemeColors(useTheme());
   const insets = useSafeAreaInsets();
-  const focusFrameRef = useRef<number | null>(null);
-  const modalShownRef = useRef(false);
-  const inputFocusedRef = useRef(false);
-  const visibleRef = useRef(visible);
+  const inputRef = useRef<TextInput | null>(null);
+  const didRequestFocusRef = useRef(false);
+  const bottomPadding = 12 + Math.min(insets.bottom, 8);
 
-  const clearFocusSchedule = useCallback((): void => {
-    if (focusFrameRef.current !== null) {
-      cancelAnimationFrame(focusFrameRef.current);
-      focusFrameRef.current = null;
-    }
-  }, []);
-
-  const scheduleFocusInput = useCallback((): void => {
-    if (!visibleRef.current || !modalShownRef.current || inputFocusedRef.current) {
+  const requestInputFocus = useCallback((): void => {
+    if (!visible || didRequestFocusRef.current) {
       return;
     }
 
-    clearFocusSchedule();
-
+    didRequestFocusRef.current = true;
     inputRef.current?.focus();
-
-    focusFrameRef.current = requestAnimationFrame(() => {
-      focusFrameRef.current = null;
-
-      if (!visibleRef.current || inputFocusedRef.current) {
-        return;
-      }
-
-      inputRef.current?.focus();
-    });
-  }, [clearFocusSchedule, inputRef]);
-
-  const handleInputLayout = useCallback((): void => {
-    onInputLayout?.();
-    scheduleFocusInput();
-  }, [onInputLayout, scheduleFocusInput]);
-
-  const handleInputFocus = useCallback((): void => {
-    inputFocusedRef.current = true;
-    clearFocusSchedule();
-  }, [clearFocusSchedule]);
-
-  const handleInputBlur = useCallback((): void => {
-    inputFocusedRef.current = false;
-  }, []);
+  }, [visible]);
 
   useEffect(() => {
-    visibleRef.current = visible;
-
     if (visible) {
-      modalShownRef.current = true;
-      inputFocusedRef.current = false;
-      scheduleFocusInput();
+      didRequestFocusRef.current = false;
+      requestInputFocus();
       return;
     }
 
+    didRequestFocusRef.current = false;
     Keyboard.dismiss();
-    clearFocusSchedule();
-  }, [clearFocusSchedule, scheduleFocusInput, visible]);
+  }, [requestInputFocus, visible]);
 
   return (
     <Sheet
       open={visible}
       onOpenChange={(open: boolean) => {
         if (!open) {
-          onClose();
+          onDismiss();
         }
       }}
       modal
       dismissOnOverlayPress
-      snapPoints={[190]}
+      snapPoints={[218]}
       snapPointsMode="constant"
       disableDrag
-      moveOnKeyboardChange
+      containerComponent={NoteKeyboardContainer}
       unmountChildrenWhenHidden
     >
       <Sheet.Overlay backgroundColor={colors.overlay} />
       <Sheet.Frame
         style={[
-          styles.sheet,
+          styles.noteSheet,
           {
             backgroundColor: colors.surface,
             borderColor: colors.border,
-            paddingBottom: 20 + insets.bottom,
+            paddingBottom: bottomPadding,
           },
         ]}
         marginHorizontal={Math.max(insets.left, insets.right)}
         alignSelf="center"
+        elevation={3}
+        testID="note-sheet-frame"
       >
-        <YStack style={styles.dragHandleWrap}>
-          <YStack style={[styles.dragHandle, { backgroundColor: colors.borderStrong }]} />
-        </YStack>
-
-        <XStack style={styles.noteHeaderRow}>
-          <Text style={[TEXT_VARIANTS.titleMedium, { fontWeight: "700", color: colors.text }]}>
-            添加备注
-          </Text>
+        <XStack style={styles.noteSheetHeader}>
+          <YStack gap={2} flex={1}>
+            <Text style={[TEXT_VARIANTS.titleSmall, { color: colors.text, fontWeight: "700" }]}>
+              添加备注
+            </Text>
+            <Text style={[TEXT_VARIANTS.bodySmall, { color: colors.textMuted }]}>
+              给这笔记账补充一点上下文
+            </Text>
+          </YStack>
           <Button
             unstyled
             accessibilityRole="button"
-            accessibilityLabel="关闭备注弹窗"
-            onPress={onClose}
-            style={styles.noteHeaderCloseButton}
-            backgroundColor={colors.surfaceAlt}
-            borderColor={colors.border}
-            pressStyle={{ opacity: 0.8 }}
+            accessibilityLabel="完成备注"
+            onPress={onDismiss}
+            style={styles.noteDoneButton}
+            backgroundColor={colors.accent}
+            pressStyle={{ opacity: 0.92 }}
           >
-            <MaterialCommunityIcons name="close" size={22} color={colors.text} />
+            <Text style={[TEXT_VARIANTS.labelLarge, { color: colors.onAccent }]}>完成</Text>
           </Button>
         </XStack>
 
-        <Input
-          ref={inputRef}
-          value={note}
-          onChangeText={onChangeNote}
-          onFocus={handleInputFocus}
-          onBlur={handleInputBlur}
-          onLayout={handleInputLayout}
-          placeholder="在此输入备注..."
-          maxLength={100}
-          multiline
-          showSoftInputOnFocus
-          minHeight={64}
-          textAlignVertical="top"
-          paddingTop={12}
-          borderWidth={1}
-          borderRadius={12}
-          borderColor={colors.borderStrong}
-          backgroundColor={colors.surface}
-          color={colors.text}
-          placeholderTextColor="$onSurfaceMuted"
-          fontFamily="$body"
-          fontSize={16}
-          paddingHorizontal={12}
-          paddingVertical={10}
-        />
+        <XStack
+          style={[
+            styles.noteInputFrame,
+            {
+              backgroundColor: colors.backgroundSoft,
+              borderColor: colors.borderStrong,
+            },
+          ]}
+        >
+          <MaterialCommunityIcons name="text-box-edit-outline" size={20} color={colors.textMuted} />
+          <TextInput
+            ref={inputRef}
+            accessibilityLabel="备注输入框"
+            autoFocus={visible}
+            value={value}
+            onChangeText={onChange}
+            onLayout={requestInputFocus}
+            placeholder="例如：和朋友晚餐、项目报销..."
+            placeholderTextColor={colors.textSubtle}
+            showSoftInputOnFocus
+            multiline
+            maxLength={120}
+            returnKeyType="done"
+            style={[styles.noteTextInput, { color: colors.text }]}
+            testID="note-text-input"
+            textAlignVertical="top"
+          />
+        </XStack>
       </Sheet.Frame>
     </Sheet>
   );

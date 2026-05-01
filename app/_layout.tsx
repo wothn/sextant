@@ -1,3 +1,5 @@
+import "@tamagui/native/setup-keyboard-controller";
+
 import { Stack } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";

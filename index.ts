@@ -1,3 +1,4 @@
+import "@tamagui/native/setup-keyboard-controller";
 import "@tamagui/native/setup-zeego";
 import { registerRootComponent } from "expo";
 

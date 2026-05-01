@@ -30,8 +30,7 @@ console.error = (...args: unknown[]) => {
 console.warn = (...args: unknown[]) => {
   const isKnownTamaguiNativeMenuTestNoise = args.some(
     (arg) =>
-      typeof arg === "string" &&
-      arg.includes("Must call import '@tamagui/native/setup-zeego'"),
+      typeof arg === "string" && arg.includes("Must call import '@tamagui/native/setup-zeego'"),
   );
 
   if (isKnownTamaguiNativeMenuTestNoise) {
@@ -42,6 +41,32 @@ console.warn = (...args: unknown[]) => {
 };
 
 jest.mock("react-native-worklets", () => require("react-native-worklets/src/mock"));
+jest.mock("react-native-keyboard-controller", () => {
+  const { ScrollView, View } = require("react-native");
+
+  return {
+    AndroidSoftInputModes: {
+      SOFT_INPUT_ADJUST_RESIZE: 16,
+    },
+    KeyboardAvoidingView: View,
+    KeyboardAwareScrollView: ScrollView,
+    KeyboardController: {
+      dismiss: jest.fn().mockResolvedValue(undefined),
+      preload: jest.fn(),
+      setDefaultMode: jest.fn(),
+      setFocusTo: jest.fn(),
+      setInputMode: jest.fn(),
+    },
+    KeyboardEvents: {
+      addListener: jest.fn(() => ({ remove: jest.fn() })),
+    },
+    KeyboardProvider: View,
+    KeyboardStickyView: View,
+    useKeyboardController: jest.fn(() => ({ enabled: true, setEnabled: jest.fn() })),
+    useKeyboardHandler: jest.fn(),
+    useResizeMode: jest.fn(),
+  };
+});
 jest.mock("react-native-safe-area-context", () => {
   const React = require("react");
 

@@ -1,6 +1,7 @@
 import type { PropsWithChildren } from "react";
 import { useMemo } from "react";
 import { useColorScheme } from "react-native";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { TamaguiProvider, Theme } from "tamagui";
 
@@ -21,9 +22,11 @@ export function AppProviders({ children, scheme }: AppProvidersProps) {
 
   return (
     <SafeAreaProvider>
-      <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedScheme}>
-        <Theme name={resolvedScheme}>{children}</Theme>
-      </TamaguiProvider>
+      <KeyboardProvider>
+        <TamaguiProvider config={tamaguiConfig} defaultTheme={resolvedScheme}>
+          <Theme name={resolvedScheme}>{children}</Theme>
+        </TamaguiProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

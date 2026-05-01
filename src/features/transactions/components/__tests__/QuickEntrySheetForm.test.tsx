@@ -1,12 +1,10 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 
 import QuickEntrySheetForm from "@/src/features/transactions/components/QuickEntrySheetForm";
 import { setDatePart, setTimePart } from "@/src/features/transactions/components/quick-entry/utils";
 import { renderWithProviders } from "@/src/test/render";
 
-const animationScope = globalThis;
-const originalRequestAnimationFrame = animationScope.requestAnimationFrame;
-const originalCancelAnimationFrame = animationScope.cancelAnimationFrame;
 const baseTransactionDate = new Date("2026-03-08T10:15:30.000Z").getTime();
 
 function renderQuickEntryForm(handleChange = jest.fn()) {
@@ -60,81 +58,6 @@ describe("QuickEntrySheetForm", () => {
 
   afterEach(() => {
     jest.useRealTimers();
-    animationScope.requestAnimationFrame = originalRequestAnimationFrame;
-    animationScope.cancelAnimationFrame = originalCancelAnimationFrame;
-  });
-
-  it("opens the note sheet above the quick entry sheet", () => {
-    const handleChange = jest.fn();
-    renderQuickEntryForm(handleChange);
-
-    fireEvent.press(screen.getByLabelText("备注"));
-
-    expect(screen.getByPlaceholderText("在此输入备注...")).toBeTruthy();
-  });
-
-  it("schedules note focus with requestAnimationFrame", () => {
-    renderQuickEntryForm();
-
-    const requestAnimationFrame: typeof animationScope.requestAnimationFrame = jest.fn(
-      (_callback: FrameRequestCallback): number => {
-        return 1;
-      },
-    );
-
-    const cancelAnimationFrame: typeof animationScope.cancelAnimationFrame = jest.fn(
-      (_handle: number): void => {
-        return;
-      },
-    );
-
-    animationScope.requestAnimationFrame = requestAnimationFrame;
-    animationScope.cancelAnimationFrame = cancelAnimationFrame;
-
-    fireEvent.press(screen.getByLabelText("备注"));
-    fireEvent(screen.getByPlaceholderText("在此输入备注..."), "layout", {
-      nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 84 } },
-    });
-
-    expect(screen.getByPlaceholderText("在此输入备注...")).toBeTruthy();
-    expect(requestAnimationFrame).toHaveBeenCalled();
-  });
-
-  it("cancels pending note focus frame when note sheet closes", () => {
-    renderQuickEntryForm();
-
-    const requestAnimationFrame: typeof animationScope.requestAnimationFrame = jest.fn(
-      (_callback: FrameRequestCallback): number => {
-        return 9;
-      },
-    );
-
-    const cancelAnimationFrame: typeof animationScope.cancelAnimationFrame = jest.fn(
-      (_handle: number): void => {
-        return;
-      },
-    );
-
-    animationScope.requestAnimationFrame = requestAnimationFrame;
-    animationScope.cancelAnimationFrame = cancelAnimationFrame;
-
-    fireEvent.press(screen.getByLabelText("备注"));
-    fireEvent(screen.getByPlaceholderText("在此输入备注..."), "layout", {
-      nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 84 } },
-    });
-    fireEvent.press(screen.getByLabelText("关闭备注弹窗"));
-
-    expect(cancelAnimationFrame).toHaveBeenCalledWith(9);
-  });
-
-  it("updates the note as text changes", () => {
-    const handleChange = jest.fn();
-    renderQuickEntryForm(handleChange);
-
-    fireEvent.press(screen.getByLabelText("备注"));
-    fireEvent.changeText(screen.getByPlaceholderText("在此输入备注..."), "午饭");
-
-    expect(handleChange).toHaveBeenCalledWith({ description: "午饭" });
   });
 
   it("updates transaction date from calendar selections", async () => {
@@ -179,5 +102,83 @@ describe("QuickEntrySheetForm", () => {
     expect(handleChange).toHaveBeenNthCalledWith(2, {
       transactionDate: setTimePart(baseTransactionDate, 18, 30),
     });
+  });
+
+  it("opens a bottom note editor and updates description", async () => {
+    const handleChange = jest.fn();
+    renderQuickEntryForm(handleChange);
+
+    fireEvent.press(screen.getByLabelText("添加备注"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("备注输入框", { includeHiddenElements: true })).toBeTruthy();
+    });
+
+    fireEvent.changeText(
+      screen.getByLabelText("备注输入框", { includeHiddenElements: true }),
+      "和朋友晚餐",
+    );
+
+    expect(handleChange).toHaveBeenCalledWith({ description: "和朋友晚餐" });
+  });
+
+  it("renders the note editor inside a keyboard avoiding container", async () => {
+    renderQuickEntryForm();
+
+    fireEvent.press(screen.getByLabelText("添加备注"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("note-keyboard-avoiding-view")).toBeTruthy();
+    });
+  });
+
+  it("keeps the note input compact without extra bottom padding", async () => {
+    renderQuickEntryForm();
+
+    fireEvent.press(screen.getByLabelText("添加备注"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("note-text-input")).toBeTruthy();
+    });
+
+    const inputStyle = StyleSheet.flatten(screen.getByTestId("note-text-input").props.style);
+
+    expect(inputStyle).toEqual(
+      expect.objectContaining({
+        includeFontPadding: false,
+        minHeight: 56,
+        paddingBottom: 0,
+        paddingTop: 0,
+      }),
+    );
+  });
+
+  it("keeps the note input close to the sheet bottom", async () => {
+    renderQuickEntryForm();
+
+    fireEvent.press(screen.getByLabelText("添加备注"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("note-sheet-frame")).toBeTruthy();
+    });
+
+    const frameStyle = StyleSheet.flatten(screen.getByTestId("note-sheet-frame").props.style);
+
+    expect(frameStyle).toEqual(expect.objectContaining({ paddingBottom: 20 }));
+  });
+
+  it("requests the keyboard as soon as the note editor opens", async () => {
+    renderQuickEntryForm();
+
+    fireEvent.press(screen.getByLabelText("添加备注"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("note-text-input")).toBeTruthy();
+    });
+
+    const input = screen.getByTestId("note-text-input");
+
+    expect(input.props.autoFocus).toBe(true);
+    expect(input.props.showSoftInputOnFocus).toBe(true);
   });
 });

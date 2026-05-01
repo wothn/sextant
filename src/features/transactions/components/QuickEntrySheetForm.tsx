@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { XStack, YStack } from "tamagui";
+import { Button, Text, XStack, YStack, useTheme } from "tamagui";
+
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { styles } from "@/src/features/transactions/components/quick-entry/styles";
 import { AmountKeypad } from "@/src/features/transactions/components/quick-entry/AmountKeypad";
@@ -11,8 +13,6 @@ import { EntryAmountPanel } from "@/src/features/transactions/components/quick-e
 import { EntryMetaBar } from "@/src/features/transactions/components/quick-entry/EntryMetaBar";
 import { EntryTypeSwitch } from "@/src/features/transactions/components/quick-entry/EntryTypeSwitch";
 import { NoteEditorSheet } from "@/src/features/transactions/components/quick-entry/NoteEditorSheet";
-import type { FocusableInputRef } from "@/src/features/transactions/components/quick-entry/NoteEditorSheet";
-import { NoteTrigger } from "@/src/features/transactions/components/quick-entry/NoteTrigger";
 import { PaymentMethodSelectorStrip } from "@/src/features/transactions/components/quick-entry/PaymentMethodSelectorStrip";
 import { QuickEntrySheetLayout } from "@/src/features/transactions/components/quick-entry/QuickEntrySheetLayout";
 import { TimePickerDialog } from "@/src/features/transactions/components/quick-entry/TimePickerDialog";
@@ -30,8 +30,9 @@ import {
   setDatePart,
   setTimePart,
 } from "@/src/features/transactions/components/quick-entry/utils";
+import { getThemeColors } from "@/src/lib/theme";
+import { TEXT_VARIANTS, type TextVariant } from "@/src/lib/typography";
 import type { Category, PaymentMethod } from "@/src/types/domain";
-import type { TextVariant } from "@/src/lib/typography";
 
 export type { QuickEntryFormValue } from "@/src/features/transactions/components/quick-entry/types";
 
@@ -64,11 +65,10 @@ export default function QuickEntrySheetForm({
 }: QuickEntrySheetFormProps) {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const colors = getThemeColors(useTheme());
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
+  const [noteEditorVisible, setNoteEditorVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date(value.transactionDate));
-  const [noteDialogVisible, setNoteDialogVisible] = useState(false);
-  const noteInputRef = useRef<FocusableInputRef>(null);
-  const noteSheetVisible = visible && noteDialogVisible;
 
   useEffect(() => {
     if (visible) {
@@ -77,13 +77,8 @@ export default function QuickEntrySheetForm({
     }
 
     setPickerMode(null);
+    setNoteEditorVisible(false);
   }, [value.transactionDate, visible]);
-
-  useEffect(() => {
-    if (!visible) {
-      setNoteDialogVisible(false);
-    }
-  }, [visible]);
 
   const amountDisplay = value.amountText || "0";
   const monthMatrix = useMemo(() => getMonthMatrix(calendarMonth), [calendarMonth]);
@@ -95,6 +90,7 @@ export default function QuickEntrySheetForm({
   const selectedHour = pad(selectedDate.getHours());
   const selectedMinute = pad(selectedDate.getMinutes());
   const amountVariant: TextVariant = windowWidth >= 390 ? "displaySmall" : "headlineMedium";
+  const notePreview = value.description.trim();
   const sheetHeight =
     windowHeight > 0
       ? Math.min(Math.max(windowHeight * 0.82, 480), windowHeight - Math.max(insets.top, 8) - 8)
@@ -175,12 +171,33 @@ export default function QuickEntrySheetForm({
               selectedPaymentMethodId={value.paymentMethodId}
               onSelectPaymentMethod={(paymentMethodId) => onChange({ paymentMethodId })}
             />
-            <NoteTrigger
-              description={value.description}
-              onPress={() => {
-                setNoteDialogVisible(true);
-              }}
-            />
+            <Button
+              unstyled
+              accessibilityRole="button"
+              accessibilityLabel="添加备注"
+              onPress={() => setNoteEditorVisible(true)}
+              style={styles.noteSummaryButton}
+              backgroundColor={colors.surfaceAlt}
+              borderColor={notePreview ? colors.accentMuted : colors.border}
+              pressStyle={{ opacity: 0.92 }}
+            >
+              <MaterialCommunityIcons
+                name={notePreview ? "text-box-check-outline" : "text-box-plus-outline"}
+                size={20}
+                color={notePreview ? colors.accentStrong : colors.textMuted}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  TEXT_VARIANTS.bodyMedium,
+                  styles.noteSummaryText,
+                  { color: notePreview ? colors.text : colors.textMuted },
+                ]}
+              >
+                {notePreview || "添加备注"}
+              </Text>
+              <MaterialCommunityIcons name="chevron-up" size={18} color={colors.textMuted} />
+            </Button>
             <AmountKeypad
               keypadRows={keypadRows}
               saving={saving}
@@ -192,14 +209,6 @@ export default function QuickEntrySheetForm({
           </YStack>
         </YStack>
       </QuickEntrySheetLayout>
-
-      <NoteEditorSheet
-        visible={noteSheetVisible}
-        note={value.description}
-        inputRef={noteInputRef}
-        onChangeNote={(description) => onChange({ description })}
-        onClose={() => setNoteDialogVisible(false)}
-      />
 
       <DatePickerDialog
         visible={visible && pickerMode === "date"}
@@ -239,6 +248,13 @@ export default function QuickEntrySheetForm({
             ),
           })
         }
+      />
+
+      <NoteEditorSheet
+        visible={visible && noteEditorVisible}
+        value={value.description}
+        onChange={(description) => onChange({ description })}
+        onDismiss={() => setNoteEditorVisible(false)}
       />
     </>
   );
