@@ -283,6 +283,14 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
+          name="budget"
+          options={{
+            title: "预算",
+            tabBarIcon: renderTabIcon("wallet-outline"),
+            tabBarLabel: renderTabLabel("预算"),
+          }}
+        />
+        <Tabs.Screen
           name="quick-entry"
           options={{
             title: "记账",

@@ -1,10 +1,10 @@
-import type { Category } from "@/src/types/domain";
 import { Button, Card, Input, Text, XStack, YStack, useTheme } from "tamagui";
 
 import { getThemeColors } from "@/src/lib/theme";
 import { TEXT_VARIANTS } from "@/src/lib/typography";
+import type { Category } from "@/src/types/domain";
 
-interface BudgetSettingsCardProps {
+interface BudgetEditorCardProps {
   categories: Category[];
   selectedCategory: string | null;
   selectedName: string;
@@ -14,7 +14,7 @@ interface BudgetSettingsCardProps {
   onSave: () => void;
 }
 
-export function BudgetSettingsCard({
+export function BudgetEditorCard({
   categories,
   selectedCategory,
   selectedName,
@@ -22,7 +22,7 @@ export function BudgetSettingsCard({
   onSelectCategory,
   onChangeBudgetText,
   onSave,
-}: BudgetSettingsCardProps) {
+}: BudgetEditorCardProps) {
   const colors = getThemeColors(useTheme());
 
   return (
@@ -33,9 +33,14 @@ export function BudgetSettingsCard({
       backgroundColor={colors.surface}
       padding={16}
     >
-      <YStack gap={10}>
-        <Text style={TEXT_VARIANTS.titleMedium}>本月预算设置</Text>
-        <Text style={TEXT_VARIANTS.bodyMedium}>当前分类：{selectedName}</Text>
+      <YStack gap={12}>
+        <YStack gap={4}>
+          <Text style={TEXT_VARIANTS.titleMedium}>本月预算</Text>
+          <Text style={[TEXT_VARIANTS.bodyMedium, { color: colors.textMuted }]}>
+            当前分类：{selectedName}
+          </Text>
+        </YStack>
+
         <XStack flexWrap="wrap" gap={8}>
           {categories.map((item) => (
             <Button
@@ -61,6 +66,7 @@ export function BudgetSettingsCard({
             </Button>
           ))}
         </XStack>
+
         <YStack gap={6}>
           <Text style={[TEXT_VARIANTS.labelMedium, { color: colors.textMuted }]}>预算金额</Text>
           <Input
@@ -74,21 +80,22 @@ export function BudgetSettingsCard({
             borderColor={colors.borderStrong}
             backgroundColor={colors.surface}
             color={colors.text}
+            placeholder="例如 1200"
             placeholderTextColor="$onSurfaceMuted"
             fontFamily="$body"
             fontSize={16}
             paddingHorizontal={12}
           />
         </YStack>
+
         <Button
           unstyled
           alignSelf="flex-start"
-          marginTop={8}
-          height={44}
+          minHeight={44}
           borderRadius={12}
           backgroundColor={colors.accent}
           paddingHorizontal={16}
-          paddingVertical={0}
+          paddingVertical={10}
           alignItems="center"
           justifyContent="center"
           onPress={onSave}
