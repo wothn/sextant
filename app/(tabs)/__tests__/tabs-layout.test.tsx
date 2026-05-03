@@ -128,6 +128,7 @@ describe("TabsLayout", () => {
     renderWithProviders(<TabsLayout />);
 
     expect(screen.getByText("index:首页")).toBeTruthy();
+    expect(screen.getByText("budget:预算")).toBeTruthy();
     expect(screen.getByText("quick-entry:记账")).toBeTruthy();
     expect(screen.getByText("analytics:分析")).toBeTruthy();
     expect(screen.getByText("settings:设置")).toBeTruthy();

@@ -16,6 +16,9 @@ memories/
 AGENTS.md
 skills-lock.json
 
+# IDE
+.idea/
+
 # Native
 .kotlin/
 *.orig.*
