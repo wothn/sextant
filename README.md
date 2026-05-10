@@ -1,6 +1,6 @@
 # Sextant
 
-Sextant 是一个基于 **React Native + Expo** 的个人记账应用，当前聚焦本地优先的记账体验，支持：
+Sextant 是一个基于 **Android 原生 Kotlin + Jetpack Compose** 的个人记账应用，当前聚焦本地优先的记账体验，支持：
 
 - 支出 / 收入记录
 - 账户管理
@@ -9,7 +9,7 @@ Sextant 是一个基于 **React Native + Expo** 的个人记账应用，当前�
 - 标签系统
 - CSV 导出备份
 
-UI 采用 `react-native-paper`（Material 3），数据层使用 `expo-sqlite` 本地存储。
+UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android 原生 `SQLiteOpenHelper` 本地存储。
 
 ## 功能概览
 
@@ -21,97 +21,58 @@ UI 采用 `react-native-paper`（Material 3），数据层使用 `expo-sqlite` �
 
 ## 技术栈
 
-- `Expo 55`
-- `React 19`
-- `React Native 0.83`
-- `Expo Router`
-- `react-native-paper`
-- `expo-sqlite`
-- `Zustand`
-- `Jest + @testing-library/react-native`
-- `TypeScript`
-- `Oxlint + oxfmt`
+- Android Gradle Plugin 8.6
+- Kotlin 2.0
+- Jetpack Compose
+- Material 3
+- Android SQLite
 
 ## 快速开始
 
 ### 环境要求
 
-- Node.js 20+
-- `pnpm` 10+
-
-### 安装依赖
-
-```bash
-pnpm install
-```
+- Android Studio / Android SDK
+- JDK 17+
 
 ### 启动项目
 
 ```bash
-pnpm start
-pnpm android
-pnpm ios
+.\gradlew.bat :android:app:assembleDebug
 ```
 
 ## 常用命令
 
 ```bash
-pnpm lint
-pnpm lint:fix
-pnpm typecheck
-pnpm test
-pnpm test:coverage
-pnpm fmt:check
-pnpm fmt
+.\gradlew.bat :android:app:assembleDebug
 ```
 
 ## 项目结构
 
 ```text
-app/                    Expo Router 页面
-  _layout.tsx           根布局：初始化数据库、注入 PaperProvider
-  (tabs)/               底部标签页页面
-
-src/
-  db/                   SQLite 客户端与 schema 初始化
-  features/             业务服务（transactions / budgets / tags）
-  lib/backup/           CSV 导出能力
-  store/                Zustand UI 状态
-  test/                 测试辅助工具
-  types/                领域模型类型定义
+android/app/            Android 原生应用模块
+  src/main/java/
+    com/sextant/app/
+      data/             SQLite schema、仓库、领域模型
+      ui/theme/         Material 3 颜色与主题
+      MainActivity.kt   Compose 页面与交互入口
 ```
 
 ## 开发约定
 
-- 使用 `@/*` 路径别名访问根目录文件
-- 业务服务统一通过 `getDb()` 访问数据库
-- TypeScript 开启 `strict`
-- 优先补测试，再扩展功能
-- 代码格式由 `oxfmt` 负责，静态规则由 `Oxlint` 负责
+- 业务逻辑优先放在 `android/app/src/main/java/com/sextant/app/data`
+- UI 使用 Compose Material3 组件
+- 主题色需保持 `SextantColors` 中的既有色板
 
 ## 测试与质量门槛
 
-当前仓库已配置：
+当前仓库的原生 Android 验证入口是：
 
-- 类型检查：`pnpm typecheck`
-- 单元 / 页面测试：`pnpm test`
-- 覆盖率检查：`pnpm test:coverage`
-- 代码格式检查：`pnpm fmt:check`
-- 静态规则检查：`pnpm lint`
-
-覆盖率门槛：
-
-- Branches: `55%`
-- Functions: `70%`
-- Lines: `70%`
-- Statements: `70%`
+- 构建检查：`.\gradlew.bat :android:app:assembleDebug`
 
 ## 当前范围说明
 
 这个项目目前以 **本地优先 MVP** 为主：
 
-- 重点做 Android / Expo 开发体验
+- 重点做 Android 原生开发体验
 - 暂不包含云同步
 - 暂不配置 CI / 发布构建流程
-
-后续若进入分发阶段，可以再补充 EAS Build、版本发布与自动化流程。
