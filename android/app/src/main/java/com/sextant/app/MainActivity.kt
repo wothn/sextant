@@ -556,7 +556,14 @@ private fun QuickEntryDialog(
   var categoryId by remember { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
   var paymentMethodId by remember { mutableStateOf(state.paymentMethods.firstOrNull()?.id) }
   var description by remember { mutableStateOf("") }
-  val categories = state.categories.filter { it.type == type || type == TransactionType.Transfer }
+  val typeCategories = state.categories.filter { it.type == type }
+  val parentCategories = typeCategories.filter { it.parentCategoryId == null }
+  val selectedCategory = typeCategories.firstOrNull { it.id == categoryId }
+  val selectedParent = parentCategories.firstOrNull { it.id == selectedCategory?.parentCategoryId }
+    ?: parentCategories.firstOrNull { it.id == selectedCategory?.id }
+  val childCategories = selectedParent?.let { parent ->
+    typeCategories.filter { it.parentCategoryId == parent.id }
+  }.orEmpty()
 
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -580,7 +587,7 @@ private fun QuickEntryDialog(
               selected = type == option,
               onClick = {
                 type = option
-                categoryId = state.categories.firstOrNull { it.type == option }?.id
+                categoryId = state.categories.firstOrNull { it.type == option && it.parentCategoryId == null }?.id
               },
               label = { Text(option.label) },
               colors = sextantFilterChipColors(),
@@ -594,7 +601,14 @@ private fun QuickEntryDialog(
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
           singleLine = true,
         )
-        FlowChips(categories, categoryId, { it.displayName(state.categories) }, { argbColor(it.color) }) { categoryId = it.id }
+        FlowChips(parentCategories, selectedParent?.id, { it.name }, { argbColor(it.color) }) { category ->
+          categoryId = category.id
+        }
+        if (childCategories.isNotEmpty()) {
+          FlowChips(childCategories, categoryId, { it.name }, { argbColor(it.color) }) { category ->
+            categoryId = category.id
+          }
+        }
         FlowChips(state.paymentMethods, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
         OutlinedTextField(
           value = description,
