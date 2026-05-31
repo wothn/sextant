@@ -86,19 +86,19 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
     val now = System.currentTimeMillis()
     db.execSQL(
       "INSERT INTO accounts (id, name, type, balance, currency, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      arrayOf(id(), "系统账户", "cash", 0, "CNY", now, now),
+      arrayOf<Any>(id(), "系统账户", "cash", 0, "CNY", now, now),
     )
 
     defaultCategories.forEach { item ->
       db.execSQL(
         "INSERT INTO categories (id, name, type, color, includeInSpending, isBuiltIn, createdAt) VALUES (?, ?, ?, ?, ?, 1, ?)",
-        arrayOf(id(), item.name, item.type, item.color.toLong(), item.includeInSpending, now),
+        arrayOf<Any>(id(), item.name, item.type, item.color.toLong(), item.includeInSpending, now),
       )
     }
     defaultPaymentMethods.forEach { item ->
       db.execSQL(
         "INSERT INTO payment_methods (id, name, color, isBuiltIn, isActive, createdAt) VALUES (?, ?, ?, 1, 1, ?)",
-        arrayOf(id(), item.name, item.color.toLong(), now),
+        arrayOf<Any>(id(), item.name, item.color.toLong(), now),
       )
     }
   }

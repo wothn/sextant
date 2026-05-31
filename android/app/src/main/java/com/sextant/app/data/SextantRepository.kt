@@ -48,7 +48,7 @@ class SextantRepository(context: Context) {
         (id, categoryId, paymentMethodId, amount, type, description, transactionDate, createdAt, updatedAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
-      arrayOf(
+      arrayOf<Any?>(
         UUID.randomUUID().toString(),
         categoryId,
         paymentMethodId,
@@ -78,7 +78,7 @@ class SextantRepository(context: Context) {
       } else {
         db.execSQL(
           "INSERT INTO budgets (id, categoryId, amount, period, startDate, alertThreshold, isActive) VALUES (?, ?, ?, 'month', ?, 0.8, 1)",
-          arrayOf(UUID.randomUUID().toString(), categoryId, amount, startDate),
+          arrayOf<Any>(UUID.randomUUID().toString(), categoryId, amount, startDate),
         )
       }
     }
