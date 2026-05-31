@@ -6,8 +6,11 @@ import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
 class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 4) {
+  init {
+    setWriteAheadLoggingEnabled(true)
+  }
+
   override fun onCreate(db: SQLiteDatabase) {
-    db.execSQL("PRAGMA journal_mode = WAL")
     db.execSQL(
       """
       CREATE TABLE categories (
