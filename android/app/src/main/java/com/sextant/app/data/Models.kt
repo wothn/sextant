@@ -12,6 +12,7 @@ data class Category(
   val type: TransactionType,
   val color: Long,
   val includeInSpending: Boolean,
+  val parentCategoryId: String?,
 )
 
 data class PaymentMethod(
@@ -20,19 +21,10 @@ data class PaymentMethod(
   val color: Long,
 )
 
-data class Account(
-  val id: String,
-  val name: String,
-  val type: String,
-  val balance: Double,
-  val currency: String,
-)
-
 data class Transaction(
   val id: String,
   val categoryId: String?,
   val paymentMethodId: String?,
-  val accountId: String?,
   val amount: Double,
   val type: TransactionType,
   val description: String,
@@ -56,7 +48,6 @@ data class TransactionListItem(
   val categoryName: String,
   val categoryColor: Long,
   val paymentMethodName: String,
-  val accountName: String,
   val includeInSpending: Boolean,
 )
 
@@ -88,7 +79,6 @@ data class BudgetProgress(
 
 data class AppState(
   val categories: List<Category> = emptyList(),
-  val accounts: List<Account> = emptyList(),
   val paymentMethods: List<PaymentMethod> = emptyList(),
   val transactions: List<TransactionListItem> = emptyList(),
   val groups: List<DailyTransactionGroup> = emptyList(),
@@ -96,7 +86,4 @@ data class AppState(
   val monthSummary: Summary = Summary(0.0, 0.0),
   val categoryBreakdown: List<CategoryBreakdown> = emptyList(),
   val budgets: List<BudgetProgress> = emptyList(),
-) {
-  val netAssets: Double
-    get() = accounts.sumOf { it.balance }
-}
+)
