@@ -22,9 +22,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Analytics
-import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Settings
@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.sextant.app.data.Account
 import com.sextant.app.data.AppState
 import com.sextant.app.data.Category
 import com.sextant.app.data.PaymentMethod
@@ -88,6 +89,7 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(val title: String, val icon: ImageVector) {
   Home("首页", Icons.Outlined.Home),
   Analytics("分析", Icons.Outlined.Analytics),
+  Assets("资产", Icons.Outlined.AccountBalanceWallet),
   Budget("预算", Icons.Outlined.PieChart),
   Settings("设置", Icons.Outlined.Settings),
 }
@@ -131,6 +133,7 @@ private fun SextantApp(repository: SextantRepository) {
       when (tab) {
         Tab.Home -> HomeScreen(state)
         Tab.Analytics -> AnalyticsScreen(state)
+        Tab.Assets -> AssetsScreen(state, repository) { reloadKey++ }
         Tab.Budget -> BudgetScreen(state, repository) { reloadKey++ }
         Tab.Settings -> SettingsScreen(repository)
       }
@@ -141,8 +144,8 @@ private fun SextantApp(repository: SextantRepository) {
     QuickEntryDialog(
       state = state,
       onDismiss = { showQuickEntry = false },
-      onSubmit = { type, amount, categoryId, paymentMethodId, description ->
-        repository.addTransaction(type, amount, categoryId, paymentMethodId, description)
+      onSubmit = { type, amount, categoryId, accountId, paymentMethodId, description ->
+        repository.addTransaction(type, amount, categoryId, accountId, paymentMethodId, description)
         showQuickEntry = false
         reloadKey++
       },
@@ -178,6 +181,50 @@ private fun HomeScreen(state: AppState) {
         TransactionRow(item)
       }
     }
+  }
+}
+
+@Composable
+private fun AssetsScreen(state: AppState, repository: SextantRepository, onSaved: () -> Unit) {
+  var showAddAccount by remember { mutableStateOf(false) }
+
+  LazyColumn(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    item {
+      Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Text("资产全景", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+          Text(formatCurrency(state.netAssets), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+          Text("现金、银行卡和钱包账户统一看余额。", color = SextantColors.TextMuted)
+        }
+      }
+    }
+    item {
+      Button(onClick = { showAddAccount = true }, modifier = Modifier.fillMaxWidth()) {
+        Text("添加账户")
+      }
+    }
+    if (state.accounts.isEmpty()) {
+      item { EmptyCard("暂无账户", "添加现金、银行卡或钱包后，可以在记账时同步余额。") }
+    } else {
+      items(state.accounts, key = { it.id }) { account ->
+        AccountRow(account)
+      }
+    }
+  }
+
+  if (showAddAccount) {
+    AddAccountDialog(
+      onDismiss = { showAddAccount = false },
+      onSubmit = { name, type, balance ->
+        repository.addAccount(name, type, balance)
+        showAddAccount = false
+        onSaved()
+      },
+    )
   }
 }
 
@@ -296,11 +343,12 @@ private fun SettingsScreen(repository: SextantRepository) {
 private fun QuickEntryDialog(
   state: AppState,
   onDismiss: () -> Unit,
-  onSubmit: (TransactionType, Double, String?, String?, String) -> Unit,
+  onSubmit: (TransactionType, Double, String?, String?, String?, String) -> Unit,
 ) {
   var type by remember { mutableStateOf(TransactionType.Expense) }
   var amountText by remember { mutableStateOf("") }
   var categoryId by remember { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
+  var accountId by remember { mutableStateOf(state.accounts.firstOrNull()?.id) }
   var paymentMethodId by remember { mutableStateOf(state.paymentMethods.firstOrNull()?.id) }
   var description by remember { mutableStateOf("") }
   val categories = state.categories.filter { it.type == type || type == TransactionType.Transfer }
@@ -311,7 +359,7 @@ private fun QuickEntryDialog(
       Button(onClick = {
         val amount = amountText.toDoubleOrNull()
         if (amount != null && amount > 0) {
-          onSubmit(type, amount, categoryId, paymentMethodId, description)
+          onSubmit(type, amount, categoryId, accountId, paymentMethodId, description)
         }
       }) {
         Text("保存")
@@ -341,11 +389,60 @@ private fun QuickEntryDialog(
           singleLine = true,
         )
         FlowChips(categories, categoryId, { it.name }, { argbColor(it.color) }) { categoryId = it.id }
+        FlowChips(state.accounts, accountId, { it.name }, { SextantColors.Accent }) { accountId = it.id }
         FlowChips(state.paymentMethods, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
         OutlinedTextField(
           value = description,
           onValueChange = { description = it },
           label = { Text("备注") },
+          singleLine = true,
+        )
+      }
+    },
+  )
+}
+
+@Composable
+private fun AddAccountDialog(
+  onDismiss: () -> Unit,
+  onSubmit: (String, String, Double) -> Unit,
+) {
+  var name by remember { mutableStateOf("") }
+  var type by remember { mutableStateOf("cash") }
+  var balanceText by remember { mutableStateOf("") }
+  val types = listOf("cash" to "现金", "bank" to "银行卡", "wallet" to "钱包", "credit" to "信用卡")
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    confirmButton = {
+      Button(onClick = {
+        val balance = balanceText.toDoubleOrNull() ?: 0.0
+        if (name.isNotBlank()) {
+          onSubmit(name, type, balance)
+        }
+      }) {
+        Text("保存")
+      }
+    },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    title = { Text("添加账户") },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("账户名称") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          types.forEach { option ->
+            FilterChip(
+              selected = type == option.first,
+              onClick = { type = option.first },
+              label = { Text(option.second) },
+            )
+          }
+        }
+        OutlinedTextField(
+          value = balanceText,
+          onValueChange = { balanceText = it },
+          label = { Text("当前余额") },
+          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
           singleLine = true,
         )
       }
@@ -376,6 +473,27 @@ private fun Metric(label: String, value: Double, color: Color) {
 }
 
 @Composable
+private fun AccountRow(account: Account) {
+  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+    Row(
+      Modifier.fillMaxWidth().padding(14.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        ColorDot(SextantColors.Accent)
+        Spacer(Modifier.width(12.dp))
+        Column {
+          Text(account.name, fontWeight = FontWeight.SemiBold)
+          Text(account.type.accountTypeLabel, color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+        }
+      }
+      Text(formatCurrency(account.balance), fontWeight = FontWeight.Bold)
+    }
+  }
+}
+
+@Composable
 private fun TransactionRow(item: TransactionListItem) {
   Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
     Row(
@@ -388,7 +506,11 @@ private fun TransactionRow(item: TransactionListItem) {
         Spacer(Modifier.width(12.dp))
         Column {
           Text(item.categoryName, fontWeight = FontWeight.SemiBold)
-          Text(item.paymentMethodName, color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+          Text(
+            "${item.accountName} · ${item.paymentMethodName}",
+            color = SextantColors.TextMuted,
+            style = MaterialTheme.typography.bodySmall,
+          )
         }
       }
       Text(
@@ -451,6 +573,7 @@ private fun <T> FlowChips(
       val id = when (item) {
         is Category -> item.id
         is PaymentMethod -> item.id
+        is Account -> item.id
         else -> ""
       }
       AssistChip(
@@ -468,6 +591,14 @@ private val TransactionType.label: String
     TransactionType.Expense -> "支出"
     TransactionType.Income -> "收入"
     TransactionType.Transfer -> "转账"
+  }
+
+private val String.accountTypeLabel: String
+  get() = when (this) {
+    "bank" -> "银行卡"
+    "wallet" -> "钱包"
+    "credit" -> "信用卡"
+    else -> "现金"
   }
 
 private fun signedAmount(item: TransactionListItem): String {

@@ -13,8 +13,9 @@ class SextantRepository(context: Context) {
   fun loadState(): AppState {
     val db = database.readableDatabase
     val categories = listCategories(db)
+    val accounts = listAccounts(db)
     val paymentMethods = listPaymentMethods(db)
-    val transactions = listTransactions(db, categories, paymentMethods)
+    val transactions = listTransactions(db, categories, accounts, paymentMethods)
     val now = Calendar.getInstance()
     val todayStart = now.startOfDay()
     val monthStart = now.startOfMonth()
@@ -22,6 +23,7 @@ class SextantRepository(context: Context) {
 
     return AppState(
       categories = categories,
+      accounts = accounts,
       paymentMethods = paymentMethods,
       transactions = transactions,
       groups = groups,
@@ -38,27 +40,51 @@ class SextantRepository(context: Context) {
     type: TransactionType,
     amount: Double,
     categoryId: String?,
+    accountId: String?,
     paymentMethodId: String?,
     description: String,
   ) {
     val now = System.currentTimeMillis()
+    val db = database.writableDatabase
+    db.beginTransaction()
+    try {
+      db.execSQL(
+        """
+        INSERT INTO transactions
+          (id, categoryId, paymentMethodId, accountId, amount, type, description, transactionDate, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent(),
+        arrayOf<Any?>(
+          UUID.randomUUID().toString(),
+          categoryId,
+          paymentMethodId,
+          accountId,
+          amount,
+          type.dbValue,
+          description,
+          now,
+          now,
+          now,
+        ),
+      )
+      if (accountId != null && type != TransactionType.Transfer) {
+        val delta = if (type == TransactionType.Income) amount else -amount
+        db.execSQL(
+          "UPDATE accounts SET balance = balance + ?, updatedAt = ? WHERE id = ?",
+          arrayOf<Any>(delta, now, accountId),
+        )
+      }
+      db.setTransactionSuccessful()
+    } finally {
+      db.endTransaction()
+    }
+  }
+
+  fun addAccount(name: String, type: String, balance: Double) {
+    val now = System.currentTimeMillis()
     database.writableDatabase.execSQL(
-      """
-      INSERT INTO transactions
-        (id, categoryId, paymentMethodId, amount, type, description, transactionDate, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      """.trimIndent(),
-      arrayOf<Any?>(
-        UUID.randomUUID().toString(),
-        categoryId,
-        paymentMethodId,
-        amount,
-        type.dbValue,
-        description,
-        now,
-        now,
-        now,
-      ),
+      "INSERT INTO accounts (id, name, type, balance, currency, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'CNY', 1, ?, ?)",
+      arrayOf<Any>(UUID.randomUUID().toString(), name.trim(), type, balance, now, now),
     )
   }
 
@@ -133,17 +159,38 @@ class SextantRepository(context: Context) {
     return rows
   }
 
+  private fun listAccounts(db: SQLiteDatabase): List<Account> {
+    val rows = mutableListOf<Account>()
+    db.rawQuery(
+      "SELECT id, name, type, balance, currency FROM accounts WHERE isActive = 1 ORDER BY createdAt ASC",
+      emptyArray(),
+    ).use { cursor ->
+      while (cursor.moveToNext()) {
+        rows += Account(
+          id = cursor.getString(0),
+          name = cursor.getString(1),
+          type = cursor.getString(2),
+          balance = cursor.getDouble(3),
+          currency = cursor.getString(4),
+        )
+      }
+    }
+    return rows
+  }
+
   private fun listTransactions(
     db: SQLiteDatabase,
     categories: List<Category>,
+    accounts: List<Account>,
     paymentMethods: List<PaymentMethod>,
   ): List<TransactionListItem> {
     val categoryById = categories.associateBy { it.id }
+    val accountById = accounts.associateBy { it.id }
     val paymentById = paymentMethods.associateBy { it.id }
     val rows = mutableListOf<TransactionListItem>()
     db.rawQuery(
       """
-      SELECT id, categoryId, paymentMethodId, amount, type, description, transactionDate, createdAt, updatedAt
+      SELECT id, categoryId, paymentMethodId, accountId, amount, type, description, transactionDate, createdAt, updatedAt
       FROM transactions
       ORDER BY transactionDate DESC
       LIMIT 150
@@ -153,22 +200,25 @@ class SextantRepository(context: Context) {
       while (cursor.moveToNext()) {
         val category = cursor.getStringOrNull(1)?.let(categoryById::get)
         val paymentMethod = cursor.getStringOrNull(2)?.let(paymentById::get)
+        val account = cursor.getStringOrNull(3)?.let(accountById::get)
         val transaction = Transaction(
           id = cursor.getString(0),
           categoryId = cursor.getStringOrNull(1),
           paymentMethodId = cursor.getStringOrNull(2),
-          amount = cursor.getDouble(3),
-          type = cursor.getString(4).toTransactionType(),
-          description = cursor.getString(5),
-          transactionDate = cursor.getLong(6),
-          createdAt = cursor.getLong(7),
-          updatedAt = cursor.getLong(8),
+          accountId = cursor.getStringOrNull(3),
+          amount = cursor.getDouble(4),
+          type = cursor.getString(5).toTransactionType(),
+          description = cursor.getString(6),
+          transactionDate = cursor.getLong(7),
+          createdAt = cursor.getLong(8),
+          updatedAt = cursor.getLong(9),
         )
         rows += TransactionListItem(
           transaction = transaction,
           categoryName = category?.name ?: if (transaction.type == TransactionType.Transfer) "转移记录" else "未分类",
           categoryColor = category?.color ?: 0xFF3B82F6,
           paymentMethodName = paymentMethod?.name ?: "未设置",
+          accountName = account?.name ?: "未选择账户",
           includeInSpending = category?.includeInSpending ?: true,
         )
       }
