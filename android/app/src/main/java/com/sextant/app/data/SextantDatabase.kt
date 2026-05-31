@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
-class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 1) {
+class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 2) {
   override fun onCreate(db: SQLiteDatabase) {
     db.execSQL("PRAGMA journal_mode = WAL")
     db.execSQL(
@@ -54,6 +54,7 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
         id TEXT PRIMARY KEY NOT NULL,
         categoryId TEXT,
         paymentMethodId TEXT,
+        accountId TEXT,
         amount REAL NOT NULL,
         type TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
@@ -80,14 +81,20 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
     seedDefaults(db)
   }
 
-  override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+  override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+    if (oldVersion < 2) {
+      db.execSQL("ALTER TABLE transactions ADD COLUMN accountId TEXT")
+    }
+  }
 
   private fun seedDefaults(db: SQLiteDatabase) {
     val now = System.currentTimeMillis()
-    db.execSQL(
-      "INSERT INTO accounts (id, name, type, balance, currency, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      arrayOf<Any>(id(), "系统账户", "cash", 0, "CNY", now, now),
-    )
+    defaultAccounts.forEach { item ->
+      db.execSQL(
+        "INSERT INTO accounts (id, name, type, balance, currency, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'CNY', ?, ?)",
+        arrayOf<Any>(id(), item.name, item.type, item.balance, now, now),
+      )
+    }
 
     defaultCategories.forEach { item ->
       db.execSQL(
@@ -116,6 +123,19 @@ private data class SeedCategory(
 private data class SeedPaymentMethod(
   val name: String,
   val color: Int,
+)
+
+private data class SeedAccount(
+  val name: String,
+  val type: String,
+  val balance: Double,
+)
+
+private val defaultAccounts = listOf(
+  SeedAccount("现金", "cash", 0.0),
+  SeedAccount("银行卡", "bank", 0.0),
+  SeedAccount("微信钱包", "wallet", 0.0),
+  SeedAccount("支付宝", "wallet", 0.0),
 )
 
 private val defaultCategories = listOf(
