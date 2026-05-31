@@ -5,23 +5,9 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
-class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 2) {
+class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 4) {
   override fun onCreate(db: SQLiteDatabase) {
     db.execSQL("PRAGMA journal_mode = WAL")
-    db.execSQL(
-      """
-      CREATE TABLE accounts (
-        id TEXT PRIMARY KEY NOT NULL,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        balance REAL NOT NULL DEFAULT 0,
-        currency TEXT NOT NULL DEFAULT 'CNY',
-        isActive INTEGER NOT NULL DEFAULT 1,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
-      )
-      """.trimIndent(),
-    )
     db.execSQL(
       """
       CREATE TABLE categories (
@@ -30,6 +16,7 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
         type TEXT NOT NULL,
         color INTEGER NOT NULL,
         includeInSpending INTEGER NOT NULL DEFAULT 1,
+        parentCategoryId TEXT,
         isBuiltIn INTEGER NOT NULL DEFAULT 0,
         isActive INTEGER NOT NULL DEFAULT 1,
         createdAt INTEGER NOT NULL
@@ -54,7 +41,6 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
         id TEXT PRIMARY KEY NOT NULL,
         categoryId TEXT,
         paymentMethodId TEXT,
-        accountId TEXT,
         amount REAL NOT NULL,
         type TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
@@ -82,20 +68,20 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
   }
 
   override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-    if (oldVersion < 2) {
-      db.execSQL("ALTER TABLE transactions ADD COLUMN accountId TEXT")
+    if (oldVersion == 3) {
+      db.execSQL("ALTER TABLE categories ADD COLUMN parentCategoryId TEXT")
+      return
     }
+    db.execSQL("DROP TABLE IF EXISTS accounts")
+    db.execSQL("DROP TABLE IF EXISTS budgets")
+    db.execSQL("DROP TABLE IF EXISTS transactions")
+    db.execSQL("DROP TABLE IF EXISTS payment_methods")
+    db.execSQL("DROP TABLE IF EXISTS categories")
+    onCreate(db)
   }
 
   private fun seedDefaults(db: SQLiteDatabase) {
     val now = System.currentTimeMillis()
-    defaultAccounts.forEach { item ->
-      db.execSQL(
-        "INSERT INTO accounts (id, name, type, balance, currency, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'CNY', ?, ?)",
-        arrayOf<Any>(id(), item.name, item.type, item.balance, now, now),
-      )
-    }
-
     defaultCategories.forEach { item ->
       db.execSQL(
         "INSERT INTO categories (id, name, type, color, includeInSpending, isBuiltIn, createdAt) VALUES (?, ?, ?, ?, ?, 1, ?)",
@@ -123,19 +109,6 @@ private data class SeedCategory(
 private data class SeedPaymentMethod(
   val name: String,
   val color: Int,
-)
-
-private data class SeedAccount(
-  val name: String,
-  val type: String,
-  val balance: Double,
-)
-
-private val defaultAccounts = listOf(
-  SeedAccount("现金", "cash", 0.0),
-  SeedAccount("银行卡", "bank", 0.0),
-  SeedAccount("微信钱包", "wallet", 0.0),
-  SeedAccount("支付宝", "wallet", 0.0),
 )
 
 private val defaultCategories = listOf(

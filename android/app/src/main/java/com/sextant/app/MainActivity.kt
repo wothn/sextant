@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,16 +20,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Analytics
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -39,11 +39,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,7 +62,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.sextant.app.data.Account
 import com.sextant.app.data.AppState
 import com.sextant.app.data.Category
 import com.sextant.app.data.PaymentMethod
@@ -71,7 +72,6 @@ import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantTheme
 import com.sextant.app.ui.theme.argbColor
 import java.text.NumberFormat
-import java.text.SimpleDateFormat
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -89,7 +89,6 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(val title: String, val icon: ImageVector) {
   Home("首页", Icons.Outlined.Home),
   Analytics("分析", Icons.Outlined.Analytics),
-  Assets("资产", Icons.Outlined.AccountBalanceWallet),
   Budget("预算", Icons.Outlined.PieChart),
   Settings("设置", Icons.Outlined.Settings),
 }
@@ -133,9 +132,8 @@ private fun SextantApp(repository: SextantRepository) {
       when (tab) {
         Tab.Home -> HomeScreen(state)
         Tab.Analytics -> AnalyticsScreen(state)
-        Tab.Assets -> AssetsScreen(state, repository) { reloadKey++ }
         Tab.Budget -> BudgetScreen(state, repository) { reloadKey++ }
-        Tab.Settings -> SettingsScreen(repository)
+        Tab.Settings -> SettingsScreen(state, repository) { reloadKey++ }
       }
     }
   }
@@ -144,8 +142,8 @@ private fun SextantApp(repository: SextantRepository) {
     QuickEntryDialog(
       state = state,
       onDismiss = { showQuickEntry = false },
-      onSubmit = { type, amount, categoryId, accountId, paymentMethodId, description ->
-        repository.addTransaction(type, amount, categoryId, accountId, paymentMethodId, description)
+      onSubmit = { type, amount, categoryId, paymentMethodId, description ->
+        repository.addTransaction(type, amount, categoryId, paymentMethodId, description)
         showQuickEntry = false
         reloadKey++
       },
@@ -181,50 +179,6 @@ private fun HomeScreen(state: AppState) {
         TransactionRow(item)
       }
     }
-  }
-}
-
-@Composable
-private fun AssetsScreen(state: AppState, repository: SextantRepository, onSaved: () -> Unit) {
-  var showAddAccount by remember { mutableStateOf(false) }
-
-  LazyColumn(
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    item {
-      Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-          Text("资产全景", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-          Text(formatCurrency(state.netAssets), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-          Text("现金、银行卡和钱包账户统一看余额。", color = SextantColors.TextMuted)
-        }
-      }
-    }
-    item {
-      Button(onClick = { showAddAccount = true }, modifier = Modifier.fillMaxWidth()) {
-        Text("添加账户")
-      }
-    }
-    if (state.accounts.isEmpty()) {
-      item { EmptyCard("暂无账户", "添加现金、银行卡或钱包后，可以在记账时同步余额。") }
-    } else {
-      items(state.accounts, key = { it.id }) { account ->
-        AccountRow(account)
-      }
-    }
-  }
-
-  if (showAddAccount) {
-    AddAccountDialog(
-      onDismiss = { showAddAccount = false },
-      onSubmit = { name, type, balance ->
-        repository.addAccount(name, type, balance)
-        showAddAccount = false
-        onSaved()
-      },
-    )
   }
 }
 
@@ -271,7 +225,7 @@ private fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved
       FlowChips(
         items = expenseCategories,
         selectedId = selectedCategoryId,
-        label = { it.name },
+        label = { it.displayName(state.categories) },
         color = { argbColor(it.color) },
         onSelect = { selectedCategoryId = it.id },
       )
@@ -309,13 +263,20 @@ private fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved
 }
 
 @Composable
-private fun SettingsScreen(repository: SextantRepository) {
+private fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: () -> Unit) {
   var csv by remember { mutableStateOf<String?>(null) }
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
+    item {
+      CategoryManagement(
+        categories = state.categories,
+        repository = repository,
+        onChanged = onChanged,
+      )
+    }
     item { SectionTitle("数据管理") }
     item {
       Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
@@ -340,15 +301,232 @@ private fun SettingsScreen(repository: SextantRepository) {
 }
 
 @Composable
+private fun CategoryManagement(
+  categories: List<Category>,
+  repository: SextantRepository,
+  onChanged: () -> Unit,
+) {
+  var editingCategory by remember { mutableStateOf<Category?>(null) }
+  var parentForNewChild by remember { mutableStateOf<Category?>(null) }
+  var showAddRoot by remember { mutableStateOf(false) }
+  val rootCategories = categories.filter { it.parentCategoryId == null }
+
+  Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+      SectionTitle("分类管理")
+      TextButton(onClick = { showAddRoot = true }) { Text("新增分类") }
+    }
+    if (categories.isEmpty()) {
+      EmptyCard("暂无分类", "新增收入或支出分类后，就可以在记账时选择。")
+    } else {
+      rootCategories.forEach { category ->
+        CategoryRow(
+          category = category,
+          categories = categories,
+          level = 0,
+          onAddChild = { parentForNewChild = category },
+          onEdit = { editingCategory = category },
+          onArchive = {
+            repository.archiveCategory(category.id)
+            onChanged()
+          },
+        )
+        categories.filter { it.parentCategoryId == category.id }.forEach { child ->
+          CategoryRow(
+            category = child,
+            categories = categories,
+            level = 1,
+            onAddChild = { parentForNewChild = child },
+            onEdit = { editingCategory = child },
+            onArchive = {
+              repository.archiveCategory(child.id)
+              onChanged()
+            },
+          )
+        }
+      }
+    }
+  }
+
+  if (showAddRoot) {
+    CategoryDialog(
+      categories = categories,
+      initial = null,
+      fixedParent = null,
+      onDismiss = { showAddRoot = false },
+      onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
+        repository.addCategory(name, type, color, includeInSpending, parentCategoryId)
+        showAddRoot = false
+        onChanged()
+      },
+    )
+  }
+
+  parentForNewChild?.let { parent ->
+    CategoryDialog(
+      categories = categories,
+      initial = null,
+      fixedParent = parent,
+      onDismiss = { parentForNewChild = null },
+      onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
+        repository.addCategory(name, type, color, includeInSpending, parentCategoryId)
+        parentForNewChild = null
+        onChanged()
+      },
+    )
+  }
+
+  editingCategory?.let { category ->
+    CategoryDialog(
+      categories = categories,
+      initial = category,
+      fixedParent = null,
+      onDismiss = { editingCategory = null },
+      onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
+        repository.updateCategory(category.id, name, type, color, includeInSpending, parentCategoryId)
+        editingCategory = null
+        onChanged()
+      },
+    )
+  }
+}
+
+@Composable
+private fun CategoryRow(
+  category: Category,
+  categories: List<Category>,
+  level: Int,
+  onAddChild: () -> Unit,
+  onEdit: () -> Unit,
+  onArchive: () -> Unit,
+) {
+  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+    Row(
+      Modifier.fillMaxWidth().padding(14.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Spacer(Modifier.width((level * 20).dp))
+        ColorDot(argbColor(category.color))
+        Spacer(Modifier.width(12.dp))
+        Column {
+          Text(category.name, fontWeight = FontWeight.SemiBold)
+          Text(
+            listOf(category.type.label, if (category.includeInSpending) "计入支出" else "不计支出")
+              .joinToString(" · "),
+            color = SextantColors.TextMuted,
+            style = MaterialTheme.typography.bodySmall,
+          )
+        }
+      }
+      Row {
+        if (level == 0) {
+          TextButton(onClick = onAddChild) { Text("子分类") }
+        }
+        IconButton(onClick = onEdit) {
+          Icon(Icons.Outlined.Edit, contentDescription = "编辑${category.displayName(categories)}")
+        }
+        IconButton(onClick = onArchive) {
+          Icon(Icons.Outlined.Delete, contentDescription = "停用${category.displayName(categories)}")
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun CategoryDialog(
+  categories: List<Category>,
+  initial: Category?,
+  fixedParent: Category?,
+  onDismiss: () -> Unit,
+  onSubmit: (String, TransactionType, Long, Boolean, String?) -> Unit,
+) {
+  var name by remember(initial, fixedParent) { mutableStateOf(initial?.name.orEmpty()) }
+  var type by remember(initial, fixedParent) { mutableStateOf(fixedParent?.type ?: initial?.type ?: TransactionType.Expense) }
+  var color by remember(initial, fixedParent) { mutableStateOf(initial?.color ?: fixedParent?.color ?: categoryColorOptions.first().first) }
+  var includeInSpending by remember(initial, fixedParent) {
+    mutableStateOf(initial?.includeInSpending ?: fixedParent?.includeInSpending ?: true)
+  }
+  var parentCategoryId by remember(initial, fixedParent) { mutableStateOf(fixedParent?.id ?: initial?.parentCategoryId) }
+  val parentOptions = categories.filter {
+    it.parentCategoryId == null && it.type == type && it.id != initial?.id
+  }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    confirmButton = {
+      Button(onClick = {
+        if (name.isNotBlank()) {
+          onSubmit(name, type, color, includeInSpending, fixedParent?.id ?: parentCategoryId)
+        }
+      }) {
+        Text("保存")
+      }
+    },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    title = { Text(if (initial == null) "添加分类" else "编辑分类") },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("分类名称") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          listOf(TransactionType.Expense, TransactionType.Income).forEach { option ->
+            FilterChip(
+              selected = type == option,
+              enabled = fixedParent == null,
+              onClick = {
+                type = option
+                parentCategoryId = null
+              },
+              label = { Text(option.label) },
+            )
+          }
+        }
+        FlowChips(
+          items = categoryColorOptions,
+          selectedId = color.toString(),
+          label = { it.second },
+          color = { argbColor(it.first) },
+          onSelect = { color = it.first },
+        )
+        if (fixedParent == null) {
+          Text("上级分类", style = MaterialTheme.typography.labelLarge)
+          FlowChips(
+            items = listOf<Category?>(null) + parentOptions,
+            selectedId = parentCategoryId,
+            label = { it?.name ?: "无" },
+            color = { it?.let { item -> argbColor(item.color) } ?: SextantColors.TextMuted },
+            onSelect = { parentCategoryId = it?.id },
+          )
+        } else {
+          Text("上级分类：${fixedParent.name}", color = SextantColors.TextMuted)
+        }
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+          Text("计入支出统计")
+          Switch(checked = includeInSpending, onCheckedChange = { includeInSpending = it })
+        }
+      }
+    },
+  )
+}
+
+@Composable
 private fun QuickEntryDialog(
   state: AppState,
   onDismiss: () -> Unit,
-  onSubmit: (TransactionType, Double, String?, String?, String?, String) -> Unit,
+  onSubmit: (TransactionType, Double, String?, String?, String) -> Unit,
 ) {
   var type by remember { mutableStateOf(TransactionType.Expense) }
   var amountText by remember { mutableStateOf("") }
   var categoryId by remember { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
-  var accountId by remember { mutableStateOf(state.accounts.firstOrNull()?.id) }
   var paymentMethodId by remember { mutableStateOf(state.paymentMethods.firstOrNull()?.id) }
   var description by remember { mutableStateOf("") }
   val categories = state.categories.filter { it.type == type || type == TransactionType.Transfer }
@@ -359,7 +537,7 @@ private fun QuickEntryDialog(
       Button(onClick = {
         val amount = amountText.toDoubleOrNull()
         if (amount != null && amount > 0) {
-          onSubmit(type, amount, categoryId, accountId, paymentMethodId, description)
+          onSubmit(type, amount, categoryId, paymentMethodId, description)
         }
       }) {
         Text("保存")
@@ -388,61 +566,12 @@ private fun QuickEntryDialog(
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
           singleLine = true,
         )
-        FlowChips(categories, categoryId, { it.name }, { argbColor(it.color) }) { categoryId = it.id }
-        FlowChips(state.accounts, accountId, { it.name }, { SextantColors.Accent }) { accountId = it.id }
+        FlowChips(categories, categoryId, { it.displayName(state.categories) }, { argbColor(it.color) }) { categoryId = it.id }
         FlowChips(state.paymentMethods, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
         OutlinedTextField(
           value = description,
           onValueChange = { description = it },
           label = { Text("备注") },
-          singleLine = true,
-        )
-      }
-    },
-  )
-}
-
-@Composable
-private fun AddAccountDialog(
-  onDismiss: () -> Unit,
-  onSubmit: (String, String, Double) -> Unit,
-) {
-  var name by remember { mutableStateOf("") }
-  var type by remember { mutableStateOf("cash") }
-  var balanceText by remember { mutableStateOf("") }
-  val types = listOf("cash" to "现金", "bank" to "银行卡", "wallet" to "钱包", "credit" to "信用卡")
-
-  AlertDialog(
-    onDismissRequest = onDismiss,
-    confirmButton = {
-      Button(onClick = {
-        val balance = balanceText.toDoubleOrNull() ?: 0.0
-        if (name.isNotBlank()) {
-          onSubmit(name, type, balance)
-        }
-      }) {
-        Text("保存")
-      }
-    },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    title = { Text("添加账户") },
-    text = {
-      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("账户名称") }, singleLine = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          types.forEach { option ->
-            FilterChip(
-              selected = type == option.first,
-              onClick = { type = option.first },
-              label = { Text(option.second) },
-            )
-          }
-        }
-        OutlinedTextField(
-          value = balanceText,
-          onValueChange = { balanceText = it },
-          label = { Text("当前余额") },
-          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
           singleLine = true,
         )
       }
@@ -473,27 +602,6 @@ private fun Metric(label: String, value: Double, color: Color) {
 }
 
 @Composable
-private fun AccountRow(account: Account) {
-  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
-    Row(
-      Modifier.fillMaxWidth().padding(14.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        ColorDot(SextantColors.Accent)
-        Spacer(Modifier.width(12.dp))
-        Column {
-          Text(account.name, fontWeight = FontWeight.SemiBold)
-          Text(account.type.accountTypeLabel, color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
-        }
-      }
-      Text(formatCurrency(account.balance), fontWeight = FontWeight.Bold)
-    }
-  }
-}
-
-@Composable
 private fun TransactionRow(item: TransactionListItem) {
   Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
     Row(
@@ -507,7 +615,7 @@ private fun TransactionRow(item: TransactionListItem) {
         Column {
           Text(item.categoryName, fontWeight = FontWeight.SemiBold)
           Text(
-            "${item.accountName} · ${item.paymentMethodName}",
+            item.paymentMethodName,
             color = SextantColors.TextMuted,
             style = MaterialTheme.typography.bodySmall,
           )
@@ -567,13 +675,18 @@ private fun <T> FlowChips(
   label: (T) -> String,
   color: (T) -> Color,
   onSelect: (T) -> Unit,
-) where T : Any {
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-    items.take(4).forEach { item ->
+) {
+  FlowRow(
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+    modifier = Modifier.fillMaxWidth(),
+  ) {
+    items.forEach { item ->
       val id = when (item) {
         is Category -> item.id
         is PaymentMethod -> item.id
-        is Account -> item.id
+        is Pair<*, *> -> item.first.toString()
+        null -> null
         else -> ""
       }
       AssistChip(
@@ -593,13 +706,19 @@ private val TransactionType.label: String
     TransactionType.Transfer -> "转账"
   }
 
-private val String.accountTypeLabel: String
-  get() = when (this) {
-    "bank" -> "银行卡"
-    "wallet" -> "钱包"
-    "credit" -> "信用卡"
-    else -> "现金"
-  }
+private fun Category.displayName(categories: List<Category>): String {
+  val parentName = parentCategoryId?.let { parentId -> categories.firstOrNull { it.id == parentId }?.name }
+  return if (parentName == null) name else "$parentName / $name"
+}
+
+private val categoryColorOptions = listOf(
+  0xFFFF7043L to "橙",
+  0xFF42A5F5L to "蓝",
+  0xFFAB47BCL to "紫",
+  0xFF66BB6AL to "绿",
+  0xFF26A69AL to "青",
+  0xFFD97706L to "金",
+)
 
 private fun signedAmount(item: TransactionListItem): String {
   val sign = if (item.transaction.type == TransactionType.Expense) "-" else "+"
