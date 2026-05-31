@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,16 +39,20 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -106,12 +111,22 @@ private fun SextantApp(repository: SextantRepository) {
   }
 
   Scaffold(
-    topBar = { CenterAlignedTopAppBar(title = { Text("Sextant") }) },
+    topBar = {
+      CenterAlignedTopAppBar(
+        title = { Text("Sextant") },
+        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+          containerColor = SextantColors.Background,
+          titleContentColor = SextantColors.Text,
+        ),
+      )
+    },
     floatingActionButton = {
       ExtendedFloatingActionButton(
         text = { Text("记一笔") },
         icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
         onClick = { showQuickEntry = true },
+        containerColor = SextantColors.Accent,
+        contentColor = SextantColors.OnAccent,
       )
     },
     bottomBar = {
@@ -122,6 +137,13 @@ private fun SextantApp(repository: SextantRepository) {
             onClick = { tab = item },
             icon = { Icon(item.icon, contentDescription = item.title) },
             label = { Text(item.title) },
+            colors = NavigationBarItemDefaults.colors(
+              selectedIconColor = SextantColors.AccentStrong,
+              selectedTextColor = SextantColors.AccentStrong,
+              indicatorColor = SextantColors.AccentSoft,
+              unselectedIconColor = SextantColors.TabInactive,
+              unselectedTextColor = SextantColors.TextSubtle,
+            ),
           )
         }
       }
@@ -483,6 +505,7 @@ private fun CategoryDialog(
                 parentCategoryId = null
               },
               label = { Text(option.label) },
+              colors = sextantFilterChipColors(),
             )
           }
         }
@@ -511,7 +534,11 @@ private fun CategoryDialog(
           horizontalArrangement = Arrangement.SpaceBetween,
         ) {
           Text("计入支出统计")
-          Switch(checked = includeInSpending, onCheckedChange = { includeInSpending = it })
+          Switch(
+            checked = includeInSpending,
+            onCheckedChange = { includeInSpending = it },
+            colors = sextantSwitchColors(),
+          )
         }
       }
     },
@@ -556,6 +583,7 @@ private fun QuickEntryDialog(
                 categoryId = state.categories.firstOrNull { it.type == option }?.id
               },
               label = { Text(option.label) },
+              colors = sextantFilterChipColors(),
             )
           }
         }
@@ -693,11 +721,35 @@ private fun <T> FlowChips(
         onClick = { onSelect(item) },
         label = { Text(label(item)) },
         leadingIcon = { ColorDot(color(item)) },
-        border = if (id == selectedId) null else androidx.compose.material3.AssistChipDefaults.assistChipBorder(enabled = true),
+        colors = AssistChipDefaults.assistChipColors(
+          containerColor = if (id == selectedId) SextantColors.AccentSoft else SextantColors.Surface,
+          labelColor = if (id == selectedId) SextantColors.AccentStrong else SextantColors.Text,
+          leadingIconContentColor = SextantColors.TextMuted,
+        ),
+        border = if (id == selectedId) null else AssistChipDefaults.assistChipBorder(enabled = true),
       )
     }
   }
 }
+
+@Composable
+private fun sextantFilterChipColors() = FilterChipDefaults.filterChipColors(
+  selectedContainerColor = SextantColors.AccentSoft,
+  selectedLabelColor = SextantColors.AccentStrong,
+  selectedLeadingIconColor = SextantColors.AccentStrong,
+  containerColor = SextantColors.Surface,
+  labelColor = SextantColors.Text,
+)
+
+@Composable
+private fun sextantSwitchColors() = SwitchDefaults.colors(
+  checkedThumbColor = SextantColors.OnAccent,
+  checkedTrackColor = SextantColors.Accent,
+  checkedBorderColor = SextantColors.Accent,
+  uncheckedThumbColor = SextantColors.Surface,
+  uncheckedTrackColor = SextantColors.SurfaceStrong,
+  uncheckedBorderColor = SextantColors.Border,
+)
 
 private val TransactionType.label: String
   get() = when (this) {
@@ -714,7 +766,7 @@ private fun Category.displayName(categories: List<Category>): String {
 private val categoryColorOptions = listOf(
   0xFFFF7043L to "橙",
   0xFF42A5F5L to "蓝",
-  0xFFAB47BCL to "紫",
+  0xFFF97316L to "橘",
   0xFF66BB6AL to "绿",
   0xFF26A69AL to "青",
   0xFFD97706L to "金",

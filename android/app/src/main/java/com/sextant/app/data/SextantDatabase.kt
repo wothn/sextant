@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
-class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 4) {
+class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 5) {
   init {
     setWriteAheadLoggingEnabled(true)
   }
@@ -71,16 +71,28 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
   }
 
   override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-    if (oldVersion == 3) {
-      db.execSQL("ALTER TABLE categories ADD COLUMN parentCategoryId TEXT")
+    if (oldVersion < 3) {
+      db.execSQL("DROP TABLE IF EXISTS accounts")
+      db.execSQL("DROP TABLE IF EXISTS budgets")
+      db.execSQL("DROP TABLE IF EXISTS transactions")
+      db.execSQL("DROP TABLE IF EXISTS payment_methods")
+      db.execSQL("DROP TABLE IF EXISTS categories")
+      onCreate(db)
       return
     }
-    db.execSQL("DROP TABLE IF EXISTS accounts")
-    db.execSQL("DROP TABLE IF EXISTS budgets")
-    db.execSQL("DROP TABLE IF EXISTS transactions")
-    db.execSQL("DROP TABLE IF EXISTS payment_methods")
-    db.execSQL("DROP TABLE IF EXISTS categories")
-    onCreate(db)
+    if (oldVersion == 3) {
+      db.execSQL("ALTER TABLE categories ADD COLUMN parentCategoryId TEXT")
+    }
+    if (oldVersion < 5) {
+      db.execSQL(
+        "UPDATE categories SET color = ? WHERE isBuiltIn = 1 AND color = ?",
+        arrayOf<Any>(0xFFF97316.toInt(), 0xFFAB47BC.toInt()),
+      )
+      db.execSQL(
+        "UPDATE categories SET color = ? WHERE isBuiltIn = 1 AND color = ?",
+        arrayOf<Any>(0xFF0F9F9A.toInt(), 0xFF5C6BC0.toInt()),
+      )
+    }
   }
 
   private fun seedDefaults(db: SQLiteDatabase) {
@@ -117,10 +129,10 @@ private data class SeedPaymentMethod(
 private val defaultCategories = listOf(
   SeedCategory("餐饮", "expense", 0xFFFF7043.toInt(), 1),
   SeedCategory("交通", "expense", 0xFF42A5F5.toInt(), 1),
-  SeedCategory("购物", "expense", 0xFFAB47BC.toInt(), 1),
+  SeedCategory("购物", "expense", 0xFFF97316.toInt(), 1),
   SeedCategory("工资", "income", 0xFF66BB6A.toInt(), 1),
   SeedCategory("兼职", "income", 0xFF26A69A.toInt(), 1),
-  SeedCategory("基金定投", "expense", 0xFF5C6BC0.toInt(), 0),
+  SeedCategory("基金定投", "expense", 0xFF0F9F9A.toInt(), 0),
   SeedCategory("储蓄", "expense", 0xFF26A69A.toInt(), 0),
 )
 
