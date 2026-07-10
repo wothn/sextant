@@ -48,9 +48,7 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android �
 
 ## CI 与版本发布
 
-GitHub Actions 会在推送到 `dev`、`main` 或创建 Pull Request 时构建 debug APK，构建产物可在对应 Actions 运行页面下载。
-
-正式版本通过 `v` 开头的标签发布，例如：
+GitHub Actions 只在推送 `v` 开头的版本标签时构建正式版本，例如：
 
 ```bash
 git tag v1.1.0
