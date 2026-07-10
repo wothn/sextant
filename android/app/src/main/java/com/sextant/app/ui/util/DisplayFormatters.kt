@@ -30,12 +30,12 @@ val categoryColorOptions = listOf(
 
 fun signedAmount(item: TransactionListItem): String {
   val sign = if (item.transaction.type == TransactionType.Expense) "-" else "+"
-  return sign + formatCurrency(item.transaction.amount)
+  return sign + formatCurrency(item.transaction.amountCents)
 }
 
 fun signedAmountPlain(item: TransactionListItem): String {
   val sign = if (item.transaction.type == TransactionType.Expense) "-" else "+"
-  return sign + formatAmountPlain(item.transaction.amount)
+  return sign + formatAmountPlain(item.transaction.amountCents)
 }
 
 fun transactionSubtitle(item: TransactionListItem): String {
@@ -45,10 +45,15 @@ fun transactionSubtitle(item: TransactionListItem): String {
     .joinToString("  |  ")
 }
 
-fun formatCurrency(value: Double): String {
-  return NumberFormat.getCurrencyInstance(Locale.CHINA).format(value)
+fun formatCurrency(valueCents: Long): String {
+  return NumberFormat.getCurrencyInstance(Locale.CHINA).format(valueCents / 100.0)
 }
 
-fun formatAmountPlain(value: Double): String {
-  return "%.2f".format(Locale.CHINA, value)
+fun formatAmountPlain(valueCents: Long): String {
+  return "%.2f".format(Locale.CHINA, valueCents / 100.0)
 }
+
+fun parseAmountCents(value: String): Long? = value.trim().toBigDecimalOrNull()
+  ?.takeIf { it.signum() > 0 && it.scale() <= 2 }
+  ?.movePointRight(2)
+  ?.longValueExact()

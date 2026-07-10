@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
-class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 6) {
+class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 7) {
   init {
     setWriteAheadLoggingEnabled(true)
   }
@@ -44,7 +44,7 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
         id TEXT PRIMARY KEY NOT NULL,
         categoryId TEXT,
         paymentMethodId TEXT,
-        amount REAL NOT NULL,
+        amountCents INTEGER NOT NULL,
         type TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
         transactionDate INTEGER NOT NULL,
@@ -58,7 +58,7 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
       CREATE TABLE budgets (
         id TEXT PRIMARY KEY NOT NULL,
         categoryId TEXT NOT NULL,
-        amount REAL NOT NULL,
+        amountCents INTEGER NOT NULL,
         period TEXT NOT NULL,
         startDate INTEGER NOT NULL,
         alertThreshold REAL NOT NULL DEFAULT 0.8,
@@ -67,6 +67,9 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
       """.trimIndent(),
     )
     db.execSQL("CREATE INDEX idx_transactions_date ON transactions(transactionDate)")
+    db.execSQL("CREATE INDEX idx_transactions_type_date ON transactions(type, transactionDate)")
+    db.execSQL("CREATE INDEX idx_transactions_category_date ON transactions(categoryId, transactionDate)")
+    db.execSQL("CREATE INDEX idx_transactions_payment_date ON transactions(paymentMethodId, transactionDate)")
     seedDefaults(db)
   }
 
@@ -95,6 +98,15 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
     }
     if (oldVersion < 6) {
       seedDefaultCategories(db)
+    }
+    if (oldVersion < 7) {
+      db.execSQL("ALTER TABLE transactions ADD COLUMN amountCents INTEGER NOT NULL DEFAULT 0")
+      db.execSQL("UPDATE transactions SET amountCents = CAST(ROUND(amount * 100) AS INTEGER)")
+      db.execSQL("ALTER TABLE budgets ADD COLUMN amountCents INTEGER NOT NULL DEFAULT 0")
+      db.execSQL("UPDATE budgets SET amountCents = CAST(ROUND(amount * 100) AS INTEGER)")
+      db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(type, transactionDate)")
+      db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_category_date ON transactions(categoryId, transactionDate)")
+      db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_payment_date ON transactions(paymentMethodId, transactionDate)")
     }
   }
 

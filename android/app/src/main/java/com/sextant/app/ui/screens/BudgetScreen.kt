@@ -26,6 +26,7 @@ import com.sextant.app.ui.components.ProgressRow
 import com.sextant.app.ui.components.SectionTitle
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.displayName
+import com.sextant.app.ui.util.parseAmountCents
 
 @Composable
 fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> Unit) {
@@ -62,9 +63,9 @@ fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> 
       Button(
         onClick = {
           val categoryId = selectedCategoryId
-          val amount = amountText.toDoubleOrNull()
-          if (categoryId != null && amount != null && amount > 0) {
-            repository.upsertBudget(categoryId, amount)
+          val amountCents = parseAmountCents(amountText)
+          if (categoryId != null && amountCents != null) {
+            repository.upsertBudget(categoryId, amountCents)
             amountText = ""
             onSaved()
           }
@@ -75,7 +76,7 @@ fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> 
       }
     }
     items(state.budgets) { item ->
-      ProgressRow(item.categoryName, item.spent, item.amount, argbColor(item.color))
+      ProgressRow(item.categoryName, item.spentCents, item.amountCents, argbColor(item.color))
     }
   }
 }

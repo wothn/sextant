@@ -10,14 +10,15 @@ import java.util.UUID
 class SextantRepository(context: Context) {
   private val database = SextantDatabase(context)
 
-  fun loadState(): AppState {
+  fun loadState(filter: LedgerFilter = LedgerFilter(Calendar.getInstance().startOfMonth())): AppState {
     val db = database.readableDatabase
     val categories = listCategories(db)
     val paymentMethods = listPaymentMethods(db)
-    val transactions = listTransactions(db, categories, paymentMethods)
+    val monthEnd = filter.monthStart.endOfMonth()
+    val transactions = listTransactions(db, categories, paymentMethods, filter, monthEnd)
     val now = Calendar.getInstance()
     val todayStart = now.startOfDay()
-    val monthStart = now.startOfMonth()
+    val monthStart = filter.monthStart
     val groups = transactions.groupByDay()
 
     return AppState(
@@ -25,10 +26,10 @@ class SextantRepository(context: Context) {
       paymentMethods = paymentMethods,
       transactions = transactions,
       groups = groups,
-      todaySummary = summarize(transactions.filter { it.transaction.transactionDate >= todayStart }),
-      monthSummary = summarize(transactions.filter { it.transaction.transactionDate >= monthStart }),
+      todaySummary = summarize(transactions.filter { it.transaction.transactionDate >= todayStart && it.transaction.transactionDate < todayStart + DAY_MILLIS }),
+      monthSummary = summarize(transactions),
       categoryBreakdown = breakdown(transactions.filter {
-        it.transaction.transactionDate >= monthStart && it.transaction.type == TransactionType.Expense && it.includeInSpending
+        it.transaction.type == TransactionType.Expense && it.includeInSpending
       }),
       budgets = budgetProgress(db, categories, transactions, monthStart),
     )
@@ -36,10 +37,11 @@ class SextantRepository(context: Context) {
 
   fun addTransaction(
     type: TransactionType,
-    amount: Double,
+    amountCents: Long,
     categoryId: String?,
     paymentMethodId: String?,
     description: String,
+    transactionDate: Long,
   ) {
     val now = System.currentTimeMillis()
     val db = database.writableDatabase
@@ -48,17 +50,17 @@ class SextantRepository(context: Context) {
       db.execSQL(
         """
         INSERT INTO transactions
-          (id, categoryId, paymentMethodId, amount, type, description, transactionDate, createdAt, updatedAt)
+          (id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
         arrayOf<Any?>(
           UUID.randomUUID().toString(),
           categoryId,
           paymentMethodId,
-          amount,
+          amountCents,
           type.dbValue,
           description,
-          now,
+          transactionDate,
           now,
           now,
         ),
@@ -69,7 +71,29 @@ class SextantRepository(context: Context) {
     }
   }
 
-  fun upsertBudget(categoryId: String, amount: Double) {
+  fun updateTransaction(
+    id: String,
+    type: TransactionType,
+    amountCents: Long,
+    categoryId: String?,
+    paymentMethodId: String?,
+    description: String,
+    transactionDate: Long,
+  ) {
+    database.writableDatabase.execSQL(
+      """
+      UPDATE transactions SET type = ?, amountCents = ?, categoryId = ?, paymentMethodId = ?,
+        description = ?, transactionDate = ?, updatedAt = ? WHERE id = ?
+      """.trimIndent(),
+      arrayOf<Any?>(type.dbValue, amountCents, categoryId, paymentMethodId, description.trim(), transactionDate, System.currentTimeMillis(), id),
+    )
+  }
+
+  fun deleteTransaction(id: String) {
+    database.writableDatabase.delete("transactions", "id = ?", arrayOf(id))
+  }
+
+  fun upsertBudget(categoryId: String, amountCents: Long) {
     val db = database.writableDatabase
     val startDate = Calendar.getInstance().startOfMonth()
     val existing = db.rawQuery(
@@ -79,13 +103,13 @@ class SextantRepository(context: Context) {
     existing.use { cursor ->
       if (cursor.moveToFirst()) {
         db.execSQL(
-          "UPDATE budgets SET amount = ?, isActive = 1 WHERE id = ?",
-          arrayOf(amount, cursor.getString(0)),
+          "UPDATE budgets SET amountCents = ?, isActive = 1 WHERE id = ?",
+          arrayOf(amountCents, cursor.getString(0)),
         )
       } else {
         db.execSQL(
-          "INSERT INTO budgets (id, categoryId, amount, period, startDate, alertThreshold, isActive) VALUES (?, ?, ?, 'month', ?, 0.8, 1)",
-          arrayOf<Any>(UUID.randomUUID().toString(), categoryId, amount, startDate),
+          "INSERT INTO budgets (id, categoryId, amountCents, period, startDate, alertThreshold, isActive) VALUES (?, ?, ?, 'month', ?, 0.8, 1)",
+          arrayOf<Any>(UUID.randomUUID().toString(), categoryId, amountCents, startDate),
         )
       }
     }
@@ -154,18 +178,31 @@ class SextantRepository(context: Context) {
   }
 
   fun exportCsv(): String {
-    val state = loadState()
     val rows = mutableListOf("date,type,category,paymentMethod,amount,description")
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
-    state.transactions.forEach { item ->
-      rows += listOf(
-        dateFormat.format(item.transaction.transactionDate),
-        item.transaction.type.dbValue,
-        item.categoryName,
-        item.paymentMethodName,
-        "%.2f".format(Locale.US, item.transaction.amount),
-        item.transaction.description.replace("\"", "\"\""),
-      ).joinToString(",") { "\"$it\"" }
+    database.readableDatabase.rawQuery(
+      """
+      SELECT t.transactionDate, t.type,
+        CASE WHEN parent.name IS NULL THEN COALESCE(c.name, '未分类') ELSE parent.name || ' / ' || c.name END,
+        COALESCE(p.name, '未设置'), t.amountCents, t.description
+      FROM transactions t
+      LEFT JOIN categories c ON c.id = t.categoryId
+      LEFT JOIN categories parent ON parent.id = c.parentCategoryId
+      LEFT JOIN payment_methods p ON p.id = t.paymentMethodId
+      ORDER BY t.transactionDate DESC
+      """.trimIndent(),
+      emptyArray(),
+    ).use { cursor ->
+      while (cursor.moveToNext()) {
+        rows += listOf(
+          dateFormat.format(cursor.getLong(0)),
+          cursor.getString(1),
+          cursor.getString(2),
+          cursor.getString(3),
+          "%.2f".format(Locale.US, cursor.getLong(4) / 100.0),
+          cursor.getString(5).replace("\"", "\"\""),
+        ).joinToString(",") { "\"$it\"" }
+      }
     }
     return rows.joinToString("\n")
   }
@@ -212,18 +249,28 @@ class SextantRepository(context: Context) {
     db: SQLiteDatabase,
     categories: List<Category>,
     paymentMethods: List<PaymentMethod>,
+    filter: LedgerFilter,
+    monthEnd: Long,
   ): List<TransactionListItem> {
     val categoryById = categories.associateBy { it.id }
     val paymentById = paymentMethods.associateBy { it.id }
     val rows = mutableListOf<TransactionListItem>()
     db.rawQuery(
       """
-      SELECT id, categoryId, paymentMethodId, amount, type, description, transactionDate, createdAt, updatedAt
+      SELECT id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt
       FROM transactions
+      WHERE transactionDate >= ? AND transactionDate < ?
+        AND (? = '' OR description LIKE '%' || ? || '%')
+        AND (? IS NULL OR categoryId = ?)
+        AND (? IS NULL OR paymentMethodId = ?)
+        AND (? IS NULL OR type = ?)
       ORDER BY transactionDate DESC
-      LIMIT 150
       """.trimIndent(),
-      emptyArray(),
+      arrayOf(
+        filter.monthStart.toString(), monthEnd.toString(), filter.query.trim(), filter.query.trim(),
+        filter.categoryId, filter.categoryId, filter.paymentMethodId, filter.paymentMethodId,
+        filter.type?.dbValue, filter.type?.dbValue,
+      ),
     ).use { cursor ->
       while (cursor.moveToNext()) {
         val category = cursor.getStringOrNull(1)?.let(categoryById::get)
@@ -232,7 +279,7 @@ class SextantRepository(context: Context) {
           id = cursor.getString(0),
           categoryId = cursor.getStringOrNull(1),
           paymentMethodId = cursor.getStringOrNull(2),
-          amount = cursor.getDouble(3),
+          amountCents = cursor.getLong(3),
           type = cursor.getString(4).toTransactionType(),
           description = cursor.getString(5),
           transactionDate = cursor.getLong(6),
@@ -260,7 +307,7 @@ class SextantRepository(context: Context) {
     val categoryById = categories.associateBy { it.id }
     val rows = mutableListOf<BudgetProgress>()
     db.rawQuery(
-      "SELECT categoryId, amount FROM budgets WHERE isActive = 1 AND period = 'month' AND startDate = ?",
+      "SELECT categoryId, amountCents FROM budgets WHERE isActive = 1 AND period = 'month' AND startDate = ?",
       arrayOf(monthStart.toString()),
     ).use { cursor ->
       while (cursor.moveToNext()) {
@@ -269,8 +316,8 @@ class SextantRepository(context: Context) {
         val budgetCategoryIds = category.childInclusiveIds(categories)
         val spent = transactions
           .filter { it.transaction.categoryId in budgetCategoryIds && it.transaction.type == TransactionType.Expense }
-          .sumOf { it.transaction.amount }
-        rows += BudgetProgress(category.displayName(categoryById), category.color, cursor.getDouble(1), spent)
+          .sumOf { it.transaction.amountCents }
+        rows += BudgetProgress(category.displayName(categoryById), category.color, cursor.getLong(1), spent)
       }
     }
     return rows
@@ -287,19 +334,19 @@ private fun Category.childInclusiveIds(categories: List<Category>): Set<String> 
 }
 
 private fun summarize(items: List<TransactionListItem>): Summary {
-  val income = items.filter { it.transaction.type == TransactionType.Income }.sumOf { it.transaction.amount }
+  val income = items.filter { it.transaction.type == TransactionType.Income }.sumOf { it.transaction.amountCents }
   val expense = items
     .filter { it.transaction.type == TransactionType.Expense && it.includeInSpending }
-    .sumOf { it.transaction.amount }
+    .sumOf { it.transaction.amountCents }
   return Summary(income, expense)
 }
 
 private fun breakdown(items: List<TransactionListItem>): List<CategoryBreakdown> {
   return items.groupBy { it.categoryName }
     .map { (categoryName, rows) ->
-      CategoryBreakdown(categoryName, rows.first().categoryColor, rows.sumOf { it.transaction.amount })
+      CategoryBreakdown(categoryName, rows.first().categoryColor, rows.sumOf { it.transaction.amountCents })
     }
-    .sortedByDescending { it.amount }
+    .sortedByDescending { it.amountCents }
 }
 
 private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> {
@@ -320,6 +367,14 @@ private fun Calendar.startOfMonth(): Long {
   set(Calendar.DAY_OF_MONTH, 1)
   return startOfDay()
 }
+
+private fun Long.endOfMonth(): Long = Calendar.getInstance().run {
+  timeInMillis = this@endOfMonth
+  add(Calendar.MONTH, 1)
+  timeInMillis
+}
+
+private const val DAY_MILLIS = 86_400_000L
 
 private val TransactionType.dbValue: String
   get() = when (this) {

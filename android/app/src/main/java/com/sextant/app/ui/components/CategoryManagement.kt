@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
@@ -45,6 +46,7 @@ fun CategoryManagement(
   categories: List<Category>,
   repository: SextantRepository,
   onChanged: () -> Unit,
+  onNavigateBack: (() -> Unit)? = null,
 ) {
   var editingCategory by remember { mutableStateOf<Category?>(null) }
   var parentForNewChild by remember { mutableStateOf<Category?>(null) }
@@ -53,7 +55,17 @@ fun CategoryManagement(
 
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-      SectionTitle("分类管理")
+      Row(
+        modifier = Modifier.weight(1f),
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        if (onNavigateBack != null) {
+          IconButton(onClick = onNavigateBack) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回设置")
+          }
+        }
+        SectionTitle("分类管理")
+      }
       TextButton(onClick = { showAddRoot = true }) { Text("新增分类") }
     }
     if (categories.isEmpty()) {
