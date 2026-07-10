@@ -10,6 +10,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -21,21 +26,35 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
+import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.label
+import com.sextant.app.ui.util.parseAmountCents
+import com.sextant.app.ui.util.formatAmountPlain
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Calendar
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun QuickEntryDialog(
   state: AppState,
+  editing: TransactionListItem? = null,
+  initialPaymentMethodId: String? = null,
   onDismiss: () -> Unit,
-  onSubmit: (TransactionType, Double, String?, String?, String) -> Unit,
+  onDelete: (() -> Unit)? = null,
+  onSubmit: (TransactionType, Long, String?, String?, String, Long) -> Unit,
 ) {
-  var type by remember { mutableStateOf(TransactionType.Expense) }
-  var amountText by remember { mutableStateOf("") }
-  var categoryId by remember { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
-  var paymentMethodId by remember { mutableStateOf(state.paymentMethods.firstOrNull()?.id) }
-  var description by remember { mutableStateOf("") }
+  var type by remember(editing) { mutableStateOf(editing?.transaction?.type ?: TransactionType.Expense) }
+  var amountText by remember(editing) { mutableStateOf(editing?.transaction?.amountCents?.let(::formatAmountPlain).orEmpty()) }
+  var categoryId by remember(editing) { mutableStateOf(editing?.transaction?.categoryId ?: state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
+  var paymentMethodId by remember(editing) { mutableStateOf(editing?.transaction?.paymentMethodId ?: initialPaymentMethodId ?: state.paymentMethods.firstOrNull()?.id) }
+  var description by remember(editing) { mutableStateOf(editing?.transaction?.description.orEmpty()) }
+  var transactionDate by remember(editing) { mutableStateOf(editing?.transaction?.transactionDate ?: System.currentTimeMillis()) }
+  var showDatePicker by remember { mutableStateOf(false) }
+  var showTimePicker by remember { mutableStateOf(false) }
+  var amountError by remember { mutableStateOf(false) }
   val typeCategories = state.categories.filter { it.type == type }
   val parentCategories = typeCategories.filter { it.parentCategoryId == null }
   val selectedCategory = typeCategories.firstOrNull { it.id == categoryId }
@@ -46,16 +65,22 @@ fun QuickEntryDialog(
     onDismissRequest = onDismiss,
     confirmButton = {
       Button(onClick = {
-        val amount = amountText.toDoubleOrNull()
-        if (amount != null && amount > 0) {
-          onSubmit(type, amount, categoryId, paymentMethodId, description)
+        val amountCents = parseAmountCents(amountText)
+        amountError = amountCents == null
+        if (amountCents != null) {
+          onSubmit(type, amountCents, categoryId, paymentMethodId, description.trim(), transactionDate)
         }
       }) {
         Text("保存")
       }
     },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    title = { Text("快速记账") },
+    dismissButton = {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (onDelete != null) TextButton(onClick = onDelete) { Text("删除") }
+        TextButton(onClick = onDismiss) { Text("取消") }
+      }
+    },
+    title = { Text(if (editing == null) "快速记账" else "编辑记录") },
     text = {
       Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -80,7 +105,15 @@ fun QuickEntryDialog(
           label = { Text("金额") },
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
           singleLine = true,
+          isError = amountError,
+          supportingText = if (amountError) ({ Text("请输入最多两位小数的有效金额") }) else null,
         )
+        TextButton(onClick = { showDatePicker = true }) {
+          Text("日期：${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(transactionDate)}")
+        }
+        TextButton(onClick = { showTimePicker = true }) {
+          Text("时间：${SimpleDateFormat("HH:mm", Locale.CHINA).format(transactionDate)}")
+        }
         CategoryPicker(
           parentCategories = parentCategories,
           typeCategories = typeCategories,
@@ -98,4 +131,44 @@ fun QuickEntryDialog(
       }
     },
   )
+
+  if (showDatePicker) {
+    val pickerState = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = transactionDate)
+    DatePickerDialog(
+      onDismissRequest = { showDatePicker = false },
+      confirmButton = {
+        TextButton(onClick = {
+          pickerState.selectedDateMillis?.let { selected ->
+            val old = Calendar.getInstance().apply { timeInMillis = transactionDate }
+            transactionDate = Calendar.getInstance().apply {
+              timeInMillis = selected
+              set(Calendar.HOUR_OF_DAY, old.get(Calendar.HOUR_OF_DAY))
+              set(Calendar.MINUTE, old.get(Calendar.MINUTE))
+            }.timeInMillis
+          }
+          showDatePicker = false
+        }) { Text("确定") }
+      },
+      dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("取消") } },
+    ) { DatePicker(state = pickerState) }
+  }
+  if (showTimePicker) {
+    val current = Calendar.getInstance().apply { timeInMillis = transactionDate }
+    val timeState = rememberTimePickerState(current.get(Calendar.HOUR_OF_DAY), current.get(Calendar.MINUTE), true)
+    AlertDialog(
+      onDismissRequest = { showTimePicker = false },
+      confirmButton = {
+        TextButton(onClick = {
+          transactionDate = Calendar.getInstance().apply {
+            timeInMillis = transactionDate
+            set(Calendar.HOUR_OF_DAY, timeState.hour)
+            set(Calendar.MINUTE, timeState.minute)
+          }.timeInMillis
+          showTimePicker = false
+        }) { Text("确定") }
+      },
+      dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("取消") } },
+      text = { TimePicker(state = timeState) },
+    )
+  }
 }

@@ -25,7 +25,7 @@ data class Transaction(
   val id: String,
   val categoryId: String?,
   val paymentMethodId: String?,
-  val amount: Double,
+  val amountCents: Long,
   val type: TransactionType,
   val description: String,
   val transactionDate: Long,
@@ -36,7 +36,7 @@ data class Transaction(
 data class Budget(
   val id: String,
   val categoryId: String,
-  val amount: Double,
+  val amountCents: Long,
   val period: String,
   val startDate: Long,
   val alertThreshold: Double,
@@ -57,24 +57,32 @@ data class DailyTransactionGroup(
 )
 
 data class Summary(
-  val income: Double,
-  val expense: Double,
+  val incomeCents: Long,
+  val expenseCents: Long,
 ) {
-  val net: Double
-    get() = income - expense
+  val netCents: Long
+    get() = incomeCents - expenseCents
 }
 
 data class CategoryBreakdown(
   val categoryName: String,
   val color: Long,
-  val amount: Double,
+  val amountCents: Long,
 )
 
 data class BudgetProgress(
   val categoryName: String,
   val color: Long,
-  val amount: Double,
-  val spent: Double,
+  val amountCents: Long,
+  val spentCents: Long,
+)
+
+data class LedgerFilter(
+  val monthStart: Long,
+  val query: String = "",
+  val categoryId: String? = null,
+  val paymentMethodId: String? = null,
+  val type: TransactionType? = null,
 )
 
 data class AppState(
@@ -82,8 +90,8 @@ data class AppState(
   val paymentMethods: List<PaymentMethod> = emptyList(),
   val transactions: List<TransactionListItem> = emptyList(),
   val groups: List<DailyTransactionGroup> = emptyList(),
-  val todaySummary: Summary = Summary(0.0, 0.0),
-  val monthSummary: Summary = Summary(0.0, 0.0),
+  val todaySummary: Summary = Summary(0, 0),
+  val monthSummary: Summary = Summary(0, 0),
   val categoryBreakdown: List<CategoryBreakdown> = emptyList(),
   val budgets: List<BudgetProgress> = emptyList(),
 )

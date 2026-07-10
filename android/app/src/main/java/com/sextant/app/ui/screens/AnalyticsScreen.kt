@@ -22,13 +22,13 @@ fun AnalyticsScreen(state: AppState) {
     contentPadding = PaddingValues(16.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    item { SummaryCard("本月收支", state.monthSummary.income, state.monthSummary.expense) }
+    item { SummaryCard("本月收支", state.monthSummary.incomeCents, state.monthSummary.expenseCents) }
     item { SectionTitle("支出结构") }
     if (state.categoryBreakdown.isEmpty()) {
       item { EmptyCard("暂无分析", "录入支出后会展示分类占比。") }
     } else {
       items(state.categoryBreakdown) { item ->
-        ProgressRow(item.categoryName, item.amount, state.monthSummary.expense, argbColor(item.color))
+        ProgressRow(item.categoryName, item.amountCents, state.monthSummary.expenseCents, argbColor(item.color))
       }
     }
     item { SectionTitle("预算进度") }
@@ -36,7 +36,7 @@ fun AnalyticsScreen(state: AppState) {
       item { EmptyCard("尚未设置预算", "在预算页为常用分类设置月预算。") }
     } else {
       items(state.budgets) { item ->
-        ProgressRow(item.categoryName, item.spent, item.amount, argbColor(item.color))
+        ProgressRow(item.categoryName, item.spentCents, item.amountCents, argbColor(item.color))
       }
     }
   }

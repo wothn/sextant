@@ -39,7 +39,7 @@ import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.signedAmount
 
 @Composable
-fun SummaryCard(title: String, income: Double, expense: Double) {
+fun SummaryCard(title: String, income: Long, expense: Long) {
   Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -53,7 +53,7 @@ fun SummaryCard(title: String, income: Double, expense: Double) {
 }
 
 @Composable
-private fun Metric(label: String, value: Double, color: Color) {
+private fun Metric(label: String, value: Long, color: Color) {
   Column {
     Text(label, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
     Text(formatCurrency(value), color = color, fontWeight = FontWeight.Bold)
@@ -90,8 +90,8 @@ fun TransactionRow(item: TransactionListItem) {
 }
 
 @Composable
-fun ProgressRow(label: String, value: Double, total: Double, color: Color) {
-  val percent = if (total <= 0.0) 0f else (value / total).toFloat().coerceIn(0f, 1f)
+fun ProgressRow(label: String, value: Long, total: Long, color: Color) {
+  val percent = if (total <= 0) 0f else (value.toDouble() / total).toFloat().coerceIn(0f, 1f)
   Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
