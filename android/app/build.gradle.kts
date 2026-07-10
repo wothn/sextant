@@ -11,8 +11,36 @@ android {
     applicationId = "com.sextant.app"
     minSdk = 26
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0.0"
+    versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 1
+    versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "1.0.0"
+  }
+
+  val releaseStoreFile = providers.gradleProperty("RELEASE_STORE_FILE").orNull
+  val releaseStorePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
+  val releaseKeyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull
+  val releaseKeyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+  val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+  ).all { !it.isNullOrBlank() }
+
+  signingConfigs {
+    if (hasReleaseSigning) {
+      create("release") {
+        storeFile = file(releaseStoreFile!!)
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      }
+    }
+  }
+
+  buildTypes {
+    getByName("release") {
+      signingConfig = signingConfigs.findByName("release")
+    }
   }
 
   buildFeatures {

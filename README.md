@@ -46,6 +46,32 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android �
 .\gradlew.bat :android:app:assembleDebug
 ```
 
+## CI 与版本发布
+
+GitHub Actions 会在推送到 `dev`、`main` 或创建 Pull Request 时构建 debug APK，构建产物可在对应 Actions 运行页面下载。
+
+正式版本通过 `v` 开头的标签发布，例如：
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+标签触发后，Actions 会构建签名 release APK、生成 SHA-256 校验文件，并创建 GitHub Release。首次发布前，需要在仓库的 `Settings > Secrets and variables > Actions` 中配置：
+
+- `ANDROID_KEYSTORE_BASE64`：release keystore 文件的 Base64 内容
+- `ANDROID_STORE_PASSWORD`：keystore 密码
+- `ANDROID_KEY_ALIAS`：签名 key alias
+- `ANDROID_KEY_PASSWORD`：签名 key 密码
+
+Windows PowerShell 可用以下命令生成 keystore 的 Base64 内容：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("sextant-release.jks"))
+```
+
+keystore 和密码只能保存在安全位置或 GitHub Secrets 中，不要提交到仓库。
+
 ## 项目结构
 
 ```text
