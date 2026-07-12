@@ -20,6 +20,28 @@ class SextantRepository(context: Context) {
     val todayStart = now.startOfDay()
     val monthStart = filter.monthStart
     val groups = transactions.groupByDay()
+    val analysisTransactions = listTransactions(
+      db,
+      categories,
+      paymentMethods,
+      LedgerFilter(monthStart),
+      monthEnd,
+    )
+    val previousMonthStart = monthStart.shiftMonth(-1)
+    val previousTransactions = listTransactions(
+      db,
+      categories,
+      paymentMethods,
+      LedgerFilter(previousMonthStart),
+      monthStart,
+    )
+    val currentBreakdown = breakdown(analysisTransactions.filter {
+      it.transaction.type == TransactionType.Expense && it.includeInSpending
+    })
+    val previousBreakdown = breakdown(previousTransactions.filter {
+      it.transaction.type == TransactionType.Expense && it.includeInSpending
+    }).associateBy { it.categoryName }
+    val analysisSummary = summarize(analysisTransactions)
 
     return AppState(
       categories = categories,
@@ -27,11 +49,20 @@ class SextantRepository(context: Context) {
       transactions = transactions,
       groups = groups,
       todaySummary = summarize(transactions.filter { it.transaction.transactionDate >= todayStart && it.transaction.transactionDate < todayStart + DAY_MILLIS }),
-      monthSummary = summarize(transactions),
-      categoryBreakdown = breakdown(transactions.filter {
-        it.transaction.type == TransactionType.Expense && it.includeInSpending
-      }),
-      budgets = budgetProgress(db, categories, transactions, monthStart),
+      monthSummary = analysisSummary,
+      categoryBreakdown = currentBreakdown.map { it.copy(previousAmountCents = previousBreakdown[it.categoryName]?.amountCents ?: 0) },
+      budgets = budgetProgress(db, categories, analysisTransactions, monthStart),
+      monthlyBudgetCents = monthlyBudget(db),
+      previousMonthSummary = summarize(previousTransactions),
+      dailySpending = dailySpending(analysisTransactions, monthStart),
+      projectedExpenseCents = projectedExpense(analysisSummary.expenseCents, monthStart),
+    )
+  }
+
+  fun setMonthlyBudget(amountCents: Long) {
+    database.writableDatabase.execSQL(
+      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('monthly_budget_cents', ?)",
+      arrayOf(amountCents.toString()),
     )
   }
 
@@ -323,6 +354,12 @@ class SextantRepository(context: Context) {
     }
     return rows
   }
+
+  private fun monthlyBudget(db: SQLiteDatabase): Long? {
+    db.rawQuery("SELECT value FROM app_settings WHERE key = 'monthly_budget_cents'", emptyArray()).use { cursor ->
+      return if (cursor.moveToFirst()) cursor.getString(0).toLongOrNull() else null
+    }
+  }
 }
 
 private fun Category.displayName(categoryById: Map<String, Category>): String {
@@ -350,6 +387,27 @@ private fun breakdown(items: List<TransactionListItem>): List<CategoryBreakdown>
     .sortedByDescending { it.amountCents }
 }
 
+private fun dailySpending(items: List<TransactionListItem>, monthStart: Long): List<DailySpending> {
+  val calendar = Calendar.getInstance().apply { timeInMillis = monthStart }
+  val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+  val spendingByDay = items
+    .filter { it.transaction.type == TransactionType.Expense && it.includeInSpending }
+    .groupBy { Calendar.getInstance().run { timeInMillis = it.transaction.transactionDate; get(Calendar.DAY_OF_MONTH) } }
+    .mapValues { (_, rows) -> rows.sumOf { it.transaction.amountCents } }
+  return (1..daysInMonth).map { day -> DailySpending(day, spendingByDay[day] ?: 0) }
+}
+
+private fun projectedExpense(expenseCents: Long, monthStart: Long): Long {
+  val selected = Calendar.getInstance().apply { timeInMillis = monthStart }
+  val now = Calendar.getInstance()
+  val isCurrentMonth = selected.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+    selected.get(Calendar.MONTH) == now.get(Calendar.MONTH)
+  if (!isCurrentMonth) return expenseCents
+  val elapsedDays = now.get(Calendar.DAY_OF_MONTH).coerceAtLeast(1)
+  val daysInMonth = now.getActualMaximum(Calendar.DAY_OF_MONTH)
+  return (expenseCents.toDouble() / elapsedDays * daysInMonth).toLong()
+}
+
 private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> {
   val formatter = SimpleDateFormat("M月d日 EEEE", Locale.CHINA)
   return groupBy { formatter.format(it.transaction.transactionDate) }
@@ -372,6 +430,12 @@ private fun Calendar.startOfMonth(): Long {
 private fun Long.endOfMonth(): Long = Calendar.getInstance().run {
   timeInMillis = this@endOfMonth
   add(Calendar.MONTH, 1)
+  timeInMillis
+}
+
+private fun Long.shiftMonth(amount: Int): Long = Calendar.getInstance().run {
+  timeInMillis = this@shiftMonth
+  add(Calendar.MONTH, amount)
   timeInMillis
 }
 

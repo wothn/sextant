@@ -1,15 +1,15 @@
 package com.sextant.app.ui.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Explore
-import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class Tab(val title: String, val icon: ImageVector) {
-  Home("记账", Icons.Outlined.Home),
-  Analytics("报表", Icons.Outlined.PieChart),
-  Discover("发现", Icons.Outlined.Explore),
+  Home("概览", Icons.Outlined.AccountBalanceWallet),
+  Analytics("分析", Icons.Outlined.PieChart),
+  Discover("预算", Icons.AutoMirrored.Outlined.ReceiptLong),
   Settings("设置", Icons.Outlined.Settings),
 }

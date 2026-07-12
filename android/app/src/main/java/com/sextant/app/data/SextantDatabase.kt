@@ -5,7 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
-class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 7) {
+class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 8) {
   init {
     setWriteAheadLoggingEnabled(true)
   }
@@ -23,6 +23,14 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
         isBuiltIn INTEGER NOT NULL DEFAULT 0,
         isActive INTEGER NOT NULL DEFAULT 1,
         createdAt INTEGER NOT NULL
+      )
+      """.trimIndent(),
+    )
+    db.execSQL(
+      """
+      CREATE TABLE app_settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
       )
       """.trimIndent(),
     )
@@ -107,6 +115,9 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
       db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(type, transactionDate)")
       db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_category_date ON transactions(categoryId, transactionDate)")
       db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_payment_date ON transactions(paymentMethodId, transactionDate)")
+    }
+    if (oldVersion < 8) {
+      db.execSQL("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)")
     }
   }
 

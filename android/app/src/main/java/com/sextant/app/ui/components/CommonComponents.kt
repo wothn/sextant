@@ -92,8 +92,7 @@ fun TransactionRow(item: TransactionListItem) {
 @Composable
 fun ProgressRow(label: String, value: Long, total: Long, color: Color) {
   val percent = if (total <= 0) 0f else (value.toDouble() / total).toFloat().coerceIn(0f, 1f)
-  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
-    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+  Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, fontWeight = FontWeight.SemiBold)
         Text("${formatCurrency(value)} / ${formatCurrency(total)}", color = SextantColors.TextMuted)
@@ -101,7 +100,6 @@ fun ProgressRow(label: String, value: Long, total: Long, color: Color) {
       Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(SextantColors.SurfaceStrong)) {
         Box(Modifier.fillMaxWidth(percent).height(8.dp).clip(CircleShape).background(color))
       }
-    }
   }
 }
 

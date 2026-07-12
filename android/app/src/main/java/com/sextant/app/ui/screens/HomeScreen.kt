@@ -16,11 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,16 +37,20 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.LedgerFilter
-import com.sextant.app.data.CategoryBreakdown
 import com.sextant.app.data.DailyTransactionGroup
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
@@ -65,6 +73,7 @@ fun HomeScreen(
   onQuickEntry: () -> Unit,
   onTransactionClick: (TransactionListItem) -> Unit,
 ) {
+  var filtersExpanded by remember { mutableStateOf(false) }
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 20.dp),
@@ -76,7 +85,19 @@ fun HomeScreen(
     item {
       LedgerOverview(state)
     }
-    item { LedgerFilters(state, filter, onFilterChanged) }
+    item {
+      LedgerToolbar(
+        filter = filter,
+        expanded = filtersExpanded,
+        onExpandedChange = { filtersExpanded = !filtersExpanded },
+        onFilterChanged = onFilterChanged,
+      )
+    }
+    item {
+      AnimatedVisibility(visible = filtersExpanded) {
+        LedgerFilters(state, filter, onFilterChanged)
+      }
+    }
     item {
       RecentLedgerHeader(state.transactions.size)
     }
@@ -92,13 +113,37 @@ fun HomeScreen(
 }
 
 @Composable
-private fun LedgerFilters(state: AppState, filter: LedgerFilter, onChanged: (LedgerFilter) -> Unit) {
-  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-      TextButton(onClick = { onChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(-1))) }) { Text("上个月") }
-      Text(SimpleDateFormat("yyyy年M月", Locale.CHINA).format(filter.monthStart), fontWeight = FontWeight.Bold)
-      TextButton(onClick = { onChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(1))) }) { Text("下个月") }
+private fun LedgerToolbar(
+  filter: LedgerFilter,
+  expanded: Boolean,
+  onExpandedChange: () -> Unit,
+  onFilterChanged: (LedgerFilter) -> Unit,
+) {
+  val activeFilters = listOf(filter.query.isNotBlank(), filter.type != null, filter.categoryId != null, filter.paymentMethodId != null).count { it }
+  Row(
+    modifier = Modifier.fillMaxWidth().animateContentSize(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      TextButton(onClick = { onFilterChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(-1))) }) { Text("‹") }
+      Text(SimpleDateFormat("yyyy年 M月", Locale.CHINA).format(filter.monthStart), fontWeight = FontWeight.Bold)
+      TextButton(onClick = { onFilterChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(1))) }) { Text("›") }
     }
+    TextButton(onClick = onExpandedChange) {
+      Icon(if (expanded) Icons.Outlined.Search else Icons.Outlined.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+      Spacer(Modifier.width(6.dp))
+      Text(if (activeFilters > 0) "筛选 $activeFilters" else "筛选")
+    }
+  }
+}
+
+@Composable
+private fun LedgerFilters(state: AppState, filter: LedgerFilter, onChanged: (LedgerFilter) -> Unit) {
+  Column(
+    modifier = Modifier.fillMaxWidth().background(SextantColors.SurfaceAlt, RoundedCornerShape(20.dp)).padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
     OutlinedTextField(
       value = filter.query,
       onValueChange = { onChanged(filter.copy(query = it)) },
@@ -142,8 +187,8 @@ private fun LedgerTopBar(onQuickEntry: () -> Unit) {
   ) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("记账", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("今日与本月收支", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
+        Text("财务概览", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("掌握今天，也看清这个月", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
       }
     }
     Button(
@@ -161,13 +206,9 @@ private fun LedgerTopBar(onQuickEntry: () -> Unit) {
 
 @Composable
 private fun LedgerOverview(state: AppState) {
-  Card(
-    shape = RoundedCornerShape(28.dp),
-    colors = CardDefaults.cardColors(containerColor = SextantColors.Surface),
-    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-  ) {
+  Column {
     Column(
-      modifier = Modifier.fillMaxWidth().padding(20.dp),
+      modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
       verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -179,9 +220,8 @@ private fun LedgerOverview(state: AppState) {
         OverviewMetric("本月收入", state.monthSummary.incomeCents, SextantColors.Success, Modifier.weight(1f))
         OverviewMetric("本月结余", state.monthSummary.netCents, SextantColors.AccentStrong, Modifier.weight(1f))
       }
-      if (state.categoryBreakdown.isNotEmpty()) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(SextantColors.Border))
-        TopSpendingBreakdown(state.categoryBreakdown.take(3), state.categoryBreakdown.sumOf { it.amountCents })
+      state.monthlyBudgetCents?.let { total ->
+        MonthlyBudgetProgress(spent = state.monthSummary.expenseCents, total = total)
       }
     }
   }
@@ -196,24 +236,26 @@ private fun OverviewMetric(label: String, value: Long, color: Color, modifier: M
 }
 
 @Composable
-private fun TopSpendingBreakdown(items: List<CategoryBreakdown>, total: Long) {
-  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Text("本月主要支出", fontWeight = FontWeight.SemiBold, color = SextantColors.Text)
-    items.forEach { item ->
-      val color = argbColor(item.color)
-      val percent = if (total <= 0) 0f else (item.amountCents.toDouble() / total).toFloat().coerceIn(0f, 1f)
-      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.size(9.dp).clip(CircleShape).background(color))
-            Text(item.categoryName, fontWeight = FontWeight.SemiBold)
-          }
-          Text(formatAmountPlain(item.amountCents), color = SextantColors.TextMuted, fontWeight = FontWeight.SemiBold)
-        }
-        Box(Modifier.fillMaxWidth().height(7.dp).clip(CircleShape).background(SextantColors.SurfaceStrong)) {
-          Box(Modifier.fillMaxWidth(percent).height(7.dp).clip(CircleShape).background(color))
-        }
-      }
+private fun MonthlyBudgetProgress(spent: Long, total: Long) {
+  val ratio = if (total <= 0) 0f else spent.toFloat() / total
+  val progress = ratio.coerceIn(0f, 1f)
+  val color = when {
+    ratio >= 1f -> SextantColors.Danger
+    ratio >= 0.8f -> SextantColors.Warning
+    else -> SextantColors.Accent
+  }
+  Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+      Text("本月预算", color = SextantColors.TextMuted, fontWeight = FontWeight.SemiBold)
+      Text(
+        "${formatAmountPlain(spent)} / ${formatAmountPlain(total)}  ·  ${(ratio * 100).toInt()}%",
+        color = color,
+        fontWeight = FontWeight.SemiBold,
+        style = MaterialTheme.typography.bodySmall,
+      )
+    }
+    Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(SextantColors.SurfaceStrong)) {
+      Box(Modifier.fillMaxWidth(progress).height(8.dp).clip(CircleShape).background(color))
     }
   }
 }
@@ -233,19 +275,30 @@ private fun DailyLedgerCard(group: DailyTransactionGroup, onTransactionClick: (T
     .filter { it.transaction.type == TransactionType.Expense && it.includeInSpending }
     .sumOf { it.transaction.amountCents }
 
-  Card(
-    shape = RoundedCornerShape(24.dp),
-    colors = CardDefaults.cardColors(containerColor = SextantColors.Surface),
-    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-  ) {
+  Column {
     Column(Modifier.fillMaxWidth()) {
       Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        Text(group.label, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("支 ${formatAmountPlain(expense)}    收 ${formatAmountPlain(income)}", color = SextantColors.TextSubtle, fontSize = 18.sp)
+        Text(
+          text = group.label,
+          modifier = Modifier.weight(1f),
+          fontSize = 18.sp,
+          fontWeight = FontWeight.Bold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+          text = "支 ${formatAmountPlain(expense)}  收 ${formatAmountPlain(income)}",
+          color = SextantColors.TextSubtle,
+          fontSize = 14.sp,
+          fontWeight = FontWeight.Medium,
+          maxLines = 1,
+          softWrap = false,
+        )
       }
       group.items.forEachIndexed { index, item ->
         if (index > 0) {

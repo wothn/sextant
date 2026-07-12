@@ -68,6 +68,12 @@ data class CategoryBreakdown(
   val categoryName: String,
   val color: Long,
   val amountCents: Long,
+  val previousAmountCents: Long = 0,
+)
+
+data class DailySpending(
+  val dayOfMonth: Int,
+  val amountCents: Long,
 )
 
 data class BudgetProgress(
@@ -94,4 +100,8 @@ data class AppState(
   val monthSummary: Summary = Summary(0, 0),
   val categoryBreakdown: List<CategoryBreakdown> = emptyList(),
   val budgets: List<BudgetProgress> = emptyList(),
+  val monthlyBudgetCents: Long? = null,
+  val previousMonthSummary: Summary = Summary(0, 0),
+  val dailySpending: List<DailySpending> = emptyList(),
+  val projectedExpenseCents: Long = 0,
 )
