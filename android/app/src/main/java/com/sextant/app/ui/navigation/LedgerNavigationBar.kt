@@ -57,7 +57,8 @@ fun LedgerNavigationBar(
           Icon(Icons.Outlined.Add, contentDescription = "记一笔", tint = SextantColors.OnAccent, modifier = Modifier.size(34.dp))
         }
       },
-      label = { Text("记一笔") },
+      label = null,
+      alwaysShowLabel = false,
       colors = sextantNavItemColors(),
     )
     NavigationBarItem(
