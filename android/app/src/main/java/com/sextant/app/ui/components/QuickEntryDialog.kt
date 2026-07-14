@@ -2,6 +2,10 @@ package com.sextant.app.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -9,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -23,6 +29,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
@@ -61,76 +68,91 @@ fun QuickEntryDialog(
   val selectedParent = parentCategories.firstOrNull { it.id == selectedCategory?.parentCategoryId }
     ?: parentCategories.firstOrNull { it.id == selectedCategory?.id }
 
-  AlertDialog(
+  ModalBottomSheet(
     onDismissRequest = onDismiss,
-    confirmButton = {
-      Button(onClick = {
-        val amountCents = parseAmountCents(amountText)
-        amountError = amountCents == null
-        if (amountCents != null) {
-          onSubmit(type, amountCents, categoryId, paymentMethodId, description.trim(), transactionDate)
-        }
-      }) {
-        Text("保存")
-      }
-    },
-    dismissButton = {
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .verticalScroll(rememberScrollState())
+        .imePadding()
+        .navigationBarsPadding()
+        .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+      verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(
+          if (editing == null) "记一笔" else "编辑记录",
+          style = MaterialTheme.typography.titleLarge,
+          fontWeight = FontWeight.Bold,
+        )
         if (onDelete != null) TextButton(onClick = onDelete) { Text("删除") }
-        TextButton(onClick = onDismiss) { Text("取消") }
       }
-    },
-    title = { Text(if (editing == null) "快速记账" else "编辑记录") },
-    text = {
-      Column(
-        modifier = Modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          TransactionType.entries.forEach { option ->
-            FilterChip(
-              selected = type == option,
-              onClick = {
-                type = option
-                categoryId = state.categories.firstOrNull { it.type == option && it.parentCategoryId == null }?.id
-              },
-              label = { Text(option.label) },
-              colors = sextantFilterChipColors(),
-            )
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TransactionType.entries.forEach { option ->
+          FilterChip(
+            selected = type == option,
+            onClick = {
+              type = option
+              categoryId = state.categories.firstOrNull { it.type == option && it.parentCategoryId == null }?.id
+            },
+            label = { Text(option.label) },
+            colors = sextantFilterChipColors(),
+          )
+        }
+      }
+      OutlinedTextField(
+        value = amountText,
+        onValueChange = {
+          amountText = it
+          amountError = false
+        },
+        label = { Text("金额") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        singleLine = true,
+        isError = amountError,
+        supportingText = if (amountError) ({ Text("请输入最多两位小数的有效金额") }) else null,
+        modifier = Modifier.fillMaxWidth(),
+      )
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(onClick = { showDatePicker = true }, modifier = Modifier.weight(1f)) {
+          Text(SimpleDateFormat("M月d日", Locale.CHINA).format(transactionDate))
+        }
+        TextButton(onClick = { showTimePicker = true }, modifier = Modifier.weight(1f)) {
+          Text(SimpleDateFormat("HH:mm", Locale.CHINA).format(transactionDate))
+        }
+      }
+      Text("分类", style = MaterialTheme.typography.labelLarge)
+      CategoryPicker(
+        parentCategories = parentCategories,
+        typeCategories = typeCategories,
+        selectedParentId = selectedParent?.id,
+        selectedCategoryId = categoryId,
+        onSelect = { category -> categoryId = category.id },
+      )
+      Text("支付方式", style = MaterialTheme.typography.labelLarge)
+      FlowChips(state.paymentMethods, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
+      OutlinedTextField(
+        value = description,
+        onValueChange = { description = it },
+        label = { Text("备注（可选）") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+      )
+      Button(
+        onClick = {
+          val amountCents = parseAmountCents(amountText)
+          amountError = amountCents == null
+          if (amountCents != null) {
+            onSubmit(type, amountCents, categoryId, paymentMethodId, description.trim(), transactionDate)
           }
-        }
-        OutlinedTextField(
-          value = amountText,
-          onValueChange = { amountText = it },
-          label = { Text("金额") },
-          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-          singleLine = true,
-          isError = amountError,
-          supportingText = if (amountError) ({ Text("请输入最多两位小数的有效金额") }) else null,
-        )
-        TextButton(onClick = { showDatePicker = true }) {
-          Text("日期：${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(transactionDate)}")
-        }
-        TextButton(onClick = { showTimePicker = true }) {
-          Text("时间：${SimpleDateFormat("HH:mm", Locale.CHINA).format(transactionDate)}")
-        }
-        CategoryPicker(
-          parentCategories = parentCategories,
-          typeCategories = typeCategories,
-          selectedParentId = selectedParent?.id,
-          selectedCategoryId = categoryId,
-          onSelect = { category -> categoryId = category.id },
-        )
-        FlowChips(state.paymentMethods, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
-        OutlinedTextField(
-          value = description,
-          onValueChange = { description = it },
-          label = { Text("备注") },
-          singleLine = true,
-        )
+        },
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Text(if (editing == null) "保存记录" else "保存修改")
       }
-    },
-  )
+    }
+  }
 
   if (showDatePicker) {
     val pickerState = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = transactionDate)
