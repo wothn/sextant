@@ -1,6 +1,10 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -18,11 +23,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sextant.app.data.AppState
@@ -63,7 +74,7 @@ fun AnalyticsScreen(state: AppState) {
         if (state.categoryBreakdown.isEmpty()) {
           EmptyCard("暂无分析", "录入支出后会展示分类占比。")
         } else {
-          CategoryStructure(state.categoryBreakdown.take(5), state.monthSummary.expenseCents)
+          CategoryStructure(state.categoryBreakdown, state.monthSummary.expenseCents)
         }
       }
     }
@@ -108,23 +119,57 @@ private fun ComparisonMetric(label: String, value: String, color: Color = Sextan
 private fun SpendingChart(points: List<DailySpending>) {
   val maxAmount = points.maxOfOrNull { it.amountCents }?.coerceAtLeast(1) ?: 1
   val peak = points.maxByOrNull { it.amountCents }
-  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Row(
-      modifier = Modifier.fillMaxWidth().height(132.dp),
-      horizontalArrangement = Arrangement.spacedBy(2.dp),
-      verticalAlignment = Alignment.Bottom,
-    ) {
-      points.forEach { point ->
-        val ratio = point.amountCents.toFloat() / maxAmount
-        Box(
-          Modifier.weight(1f).height((6 + 126 * ratio).dp).clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-            .background(if (point == peak) SextantColors.AccentStrong else SextantColors.AccentSoft),
-        )
+  var selectedPoint by remember(points) { mutableStateOf(peak) }
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("${selectedPoint?.dayOfMonth ?: peak?.dayOfMonth}日支出", color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+        Text(formatCurrency(selectedPoint?.amountCents ?: 0), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+      }
+      peak?.let {
+        Text("峰值 ${it.dayOfMonth}日", color = SextantColors.AccentStrong, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
       }
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(Modifier.fillMaxWidth().height(138.dp)) {
+      Column(
+        modifier = Modifier.width(58.dp).height(132.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.End,
+      ) {
+        Text(compactAmount(maxAmount), color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
+        Text(compactAmount(maxAmount / 2), color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
+        Text("¥0", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
+      }
+      Spacer(Modifier.width(8.dp))
+      Box(Modifier.weight(1f).height(132.dp)) {
+        Canvas(Modifier.matchParentSize()) {
+          listOf(0f, size.height / 2f, size.height - 1f).forEach { y ->
+            drawLine(SextantColors.Border, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
+          }
+        }
+        Row(
+          modifier = Modifier.matchParentSize(),
+          horizontalArrangement = Arrangement.spacedBy(2.dp),
+          verticalAlignment = Alignment.Bottom,
+        ) {
+          points.forEach { point ->
+            val ratio = point.amountCents.toFloat() / maxAmount
+            val selected = point.dayOfMonth == selectedPoint?.dayOfMonth
+            Box(
+              Modifier
+                .weight(1f)
+                .height((3 + 126 * ratio).dp)
+                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                .background(if (selected) SextantColors.AccentStrong else SextantColors.AccentSoft)
+                .clickable { selectedPoint = point },
+            )
+          }
+        }
+      }
+    }
+    Row(Modifier.fillMaxWidth().padding(start = 66.dp), horizontalArrangement = Arrangement.SpaceBetween) {
       Text("1日", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
-      peak?.let { Text("最高 ${it.dayOfMonth}日 · ${formatCurrency(it.amountCents)}", color = SextantColors.AccentStrong, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall) }
+      Text("${(points.size + 1) / 2}日", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
       Text("${points.size}日", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
     }
   }
@@ -132,8 +177,15 @@ private fun SpendingChart(points: List<DailySpending>) {
 
 @Composable
 private fun CategoryStructure(items: List<CategoryBreakdown>, total: Long) {
-  Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-    items.forEach { item ->
+  val leading = items.take(4)
+  val otherAmount = items.drop(4).sumOf { it.amountCents }
+  val slices = buildList {
+    leading.forEach { add(CategorySlice(it.categoryName, it.amountCents, argbColor(it.color))) }
+    if (otherAmount > 0) add(CategorySlice("其他", otherAmount, SextantColors.TextSubtle))
+  }
+  Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    CategoryDonut(slices, total)
+    items.take(5).forEach { item ->
       val ratio = if (total <= 0) 0f else item.amountCents.toFloat() / total
       val change = if (item.previousAmountCents <= 0) null else (item.amountCents - item.previousAmountCents).toDouble() / item.previousAmountCents
       val color = argbColor(item.color)
@@ -160,6 +212,69 @@ private fun CategoryStructure(items: List<CategoryBreakdown>, total: Long) {
         )
       }
     }
+  }
+}
+
+@Composable
+private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
+  val reveal by animateFloatAsState(targetValue = 1f, animationSpec = tween(650), label = "categoryDonutReveal")
+  Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
+      Canvas(Modifier.matchParentSize().padding(7.dp)) {
+        val stroke = 22.dp.toPx()
+        drawArc(
+          color = SextantColors.SurfaceStrong,
+          startAngle = -90f,
+          sweepAngle = 360f,
+          useCenter = false,
+          style = Stroke(stroke),
+        )
+        var startAngle = -90f
+        slices.forEach { slice ->
+          val sweep = if (total <= 0) 0f else slice.amountCents.toFloat() / total * 360f * reveal
+          val gap = if (sweep > 4f) 2f else 0f
+          drawArc(
+            color = slice.color,
+            startAngle = startAngle + gap / 2f,
+            sweepAngle = (sweep - gap).coerceAtLeast(0f),
+            useCenter = false,
+            style = Stroke(stroke),
+          )
+          startAngle += sweep
+        }
+      }
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("总支出", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
+        Text(compactAmount(total), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+      }
+    }
+    Spacer(Modifier.width(18.dp))
+    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+      slices.forEach { slice ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Box(Modifier.size(8.dp).clip(CircleShape).background(slice.color))
+          Spacer(Modifier.width(8.dp))
+          Text(slice.label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+          Text(
+            "${if (total <= 0) 0 else (slice.amountCents * 100 / total)}%",
+            color = SextantColors.TextMuted,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.bodySmall,
+          )
+        }
+      }
+    }
+  }
+}
+
+private data class CategorySlice(val label: String, val amountCents: Long, val color: Color)
+
+private fun compactAmount(amountCents: Long): String {
+  val yuan = amountCents / 100.0
+  return when {
+    yuan >= 10_000 -> "¥${"%.1f".format(yuan / 10_000)}万"
+    yuan >= 1_000 -> "¥${"%.1f".format(yuan / 1_000)}k"
+    else -> "¥${yuan.toInt()}"
   }
 }
 
