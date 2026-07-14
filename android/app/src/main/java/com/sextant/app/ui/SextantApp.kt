@@ -60,7 +60,6 @@ fun SextantApp(repository: SextantRepository) {
           state = state,
           filter = filter,
           onFilterChanged = { filter = it },
-          onQuickEntry = { showQuickEntry = true },
           onTransactionClick = { editingTransaction = it },
         )
         Tab.Analytics -> AnalyticsScreen(state)

@@ -22,14 +22,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,7 +73,6 @@ fun HomeScreen(
   state: AppState,
   filter: LedgerFilter,
   onFilterChanged: (LedgerFilter) -> Unit,
-  onQuickEntry: () -> Unit,
   onTransactionClick: (TransactionListItem) -> Unit,
 ) {
   var showFilters by remember { mutableStateOf(false) }
@@ -86,7 +83,7 @@ fun HomeScreen(
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     item {
-      LedgerTopBar(onQuickEntry = onQuickEntry)
+      LedgerTopBar()
     }
     item {
       LedgerOverview(state)
@@ -237,28 +234,10 @@ private fun Long.shiftMonth(amount: Int): Long = Calendar.getInstance().run {
 }
 
 @Composable
-private fun LedgerTopBar(onQuickEntry: () -> Unit) {
-  Row(
-    modifier = Modifier.fillMaxWidth(),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.SpaceBetween,
-  ) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("财务概览", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("掌握今天，也看清这个月", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
-      }
-    }
-    Button(
-      onClick = onQuickEntry,
-      shape = RoundedCornerShape(14.dp),
-      colors = ButtonDefaults.buttonColors(containerColor = SextantColors.Accent, contentColor = SextantColors.OnAccent),
-      contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-    ) {
-      Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(20.dp))
-      Spacer(Modifier.width(6.dp))
-      Text("记一笔", fontWeight = FontWeight.SemiBold)
-    }
+private fun LedgerTopBar() {
+  Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Text("财务概览", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Text("掌握今天，也看清这个月", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
   }
 }
 
