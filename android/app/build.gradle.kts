@@ -11,8 +11,8 @@ android {
     applicationId = "com.sextant.app"
     minSdk = 26
     targetSdk = 36
-    versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 1
-    versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "1.0.0"
+    versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 3
+    versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.1.2"
   }
 
   val releaseStoreFile = providers.gradleProperty("RELEASE_STORE_FILE").orNull
