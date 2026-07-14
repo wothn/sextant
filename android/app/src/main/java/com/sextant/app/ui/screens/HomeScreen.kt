@@ -16,24 +16,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ChevronLeft
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,6 +58,7 @@ import com.sextant.app.data.DailyTransactionGroup
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.components.EmptyCard
+import com.sextant.app.ui.components.CategoryPicker
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatAmountPlain
@@ -66,6 +70,7 @@ import java.util.Calendar
 import java.util.Locale
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun HomeScreen(
   state: AppState,
   filter: LedgerFilter,
@@ -73,7 +78,8 @@ fun HomeScreen(
   onQuickEntry: () -> Unit,
   onTransactionClick: (TransactionListItem) -> Unit,
 ) {
-  var filtersExpanded by remember { mutableStateOf(false) }
+  var showFilters by remember { mutableStateOf(false) }
+  var draftFilter by remember(filter) { mutableStateOf(filter) }
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 20.dp),
@@ -88,15 +94,12 @@ fun HomeScreen(
     item {
       LedgerToolbar(
         filter = filter,
-        expanded = filtersExpanded,
-        onExpandedChange = { filtersExpanded = !filtersExpanded },
+        onFilterClick = {
+          draftFilter = filter
+          showFilters = true
+        },
         onFilterChanged = onFilterChanged,
       )
-    }
-    item {
-      AnimatedVisibility(visible = filtersExpanded) {
-        LedgerFilters(state, filter, onFilterChanged)
-      }
     }
     item {
       RecentLedgerHeader(state.transactions.size)
@@ -110,28 +113,63 @@ fun HomeScreen(
       }
     }
   }
+
+  if (showFilters) {
+    ModalBottomSheet(onDismissRequest = { showFilters = false }) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .navigationBarsPadding()
+          .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+      ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          Text("筛选流水", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+          Text("缩小当前月份的流水范围", color = SextantColors.TextSubtle)
+        }
+        LedgerFilters(state, draftFilter) { draftFilter = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+          TextButton(
+            onClick = { draftFilter = filter.copy(query = "", type = null, categoryId = null, paymentMethodId = null) },
+            modifier = Modifier.weight(1f),
+          ) { Text("清除") }
+          Button(
+            onClick = {
+              onFilterChanged(draftFilter)
+              showFilters = false
+            },
+            modifier = Modifier.weight(2f),
+          ) { Text("查看结果") }
+        }
+      }
+    }
+  }
 }
 
 @Composable
 private fun LedgerToolbar(
   filter: LedgerFilter,
-  expanded: Boolean,
-  onExpandedChange: () -> Unit,
+  onFilterClick: () -> Unit,
   onFilterChanged: (LedgerFilter) -> Unit,
 ) {
   val activeFilters = listOf(filter.query.isNotBlank(), filter.type != null, filter.categoryId != null, filter.paymentMethodId != null).count { it }
   Row(
-    modifier = Modifier.fillMaxWidth().animateContentSize(),
+    modifier = Modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-      TextButton(onClick = { onFilterChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(-1))) }) { Text("‹") }
+      IconButton(onClick = { onFilterChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(-1))) }) {
+        Icon(Icons.Outlined.ChevronLeft, contentDescription = "上个月")
+      }
       Text(SimpleDateFormat("yyyy年 M月", Locale.CHINA).format(filter.monthStart), fontWeight = FontWeight.Bold)
-      TextButton(onClick = { onFilterChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(1))) }) { Text("›") }
+      IconButton(onClick = { onFilterChanged(filter.copy(monthStart = filter.monthStart.shiftMonth(1))) }) {
+        Icon(Icons.Outlined.ChevronRight, contentDescription = "下个月")
+      }
     }
-    TextButton(onClick = onExpandedChange) {
-      Icon(if (expanded) Icons.Outlined.Search else Icons.Outlined.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+    TextButton(onClick = onFilterClick) {
+      Icon(Icons.Outlined.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
       Spacer(Modifier.width(6.dp))
       Text(if (activeFilters > 0) "筛选 $activeFilters" else "筛选")
     }
@@ -140,9 +178,13 @@ private fun LedgerToolbar(
 
 @Composable
 private fun LedgerFilters(state: AppState, filter: LedgerFilter, onChanged: (LedgerFilter) -> Unit) {
+  val typeCategories = state.categories.filter { filter.type == null || it.type == filter.type }
+  val parentCategories = typeCategories.filter { it.parentCategoryId == null }
+  val selectedCategory = typeCategories.firstOrNull { it.id == filter.categoryId }
+  val selectedParentId = selectedCategory?.parentCategoryId ?: selectedCategory?.id
   Column(
-    modifier = Modifier.fillMaxWidth().background(SextantColors.SurfaceAlt, RoundedCornerShape(20.dp)).padding(14.dp),
-    verticalArrangement = Arrangement.spacedBy(8.dp),
+    modifier = Modifier.fillMaxWidth(),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     OutlinedTextField(
       value = filter.query,
@@ -151,18 +193,34 @@ private fun LedgerFilters(state: AppState, filter: LedgerFilter, onChanged: (Led
       singleLine = true,
       modifier = Modifier.fillMaxWidth(),
     )
+    Text("收支类型", style = MaterialTheme.typography.labelLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       FilterChip(selected = filter.type == null, onClick = { onChanged(filter.copy(type = null)) }, label = { Text("全部") })
       TransactionType.entries.forEach { type ->
-        FilterChip(selected = filter.type == type, onClick = { onChanged(filter.copy(type = type)) }, label = { Text(type.label) })
+        FilterChip(
+          selected = filter.type == type,
+          onClick = {
+            val currentCategoryMatches = state.categories.any { it.id == filter.categoryId && it.type == type }
+            onChanged(filter.copy(type = type, categoryId = filter.categoryId.takeIf { currentCategoryMatches }))
+          },
+          label = { Text(type.label) },
+        )
       }
     }
-    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      FilterChip(selected = filter.categoryId == null, onClick = { onChanged(filter.copy(categoryId = null)) }, label = { Text("全部分类") })
-      state.categories.filter { filter.type == null || it.type == filter.type }.forEach { category ->
-        FilterChip(selected = filter.categoryId == category.id, onClick = { onChanged(filter.copy(categoryId = category.id)) }, label = { Text(category.name) })
-      }
-    }
+    Text("分类", style = MaterialTheme.typography.labelLarge)
+    FilterChip(
+      selected = filter.categoryId == null,
+      onClick = { onChanged(filter.copy(categoryId = null)) },
+      label = { Text("全部分类") },
+    )
+    CategoryPicker(
+      parentCategories = parentCategories,
+      typeCategories = typeCategories,
+      selectedParentId = selectedParentId,
+      selectedCategoryId = filter.categoryId,
+      onSelect = { onChanged(filter.copy(categoryId = it.id)) },
+    )
+    Text("支付方式", style = MaterialTheme.typography.labelLarge)
     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
       FilterChip(selected = filter.paymentMethodId == null, onClick = { onChanged(filter.copy(paymentMethodId = null)) }, label = { Text("全部方式") })
       state.paymentMethods.forEach { method ->

@@ -1,12 +1,19 @@
 package com.sextant.app.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.dp
@@ -38,15 +45,60 @@ fun CategoryPicker(
       )
     }
     if (selectedChildren.isNotEmpty()) {
-      FlowChips(
-        items = selectedChildren,
-        selectedId = selectedCategoryId,
-        label = { it.name },
-        color = { argbColor(it.color) },
-        modifier = Modifier.fillMaxWidth().padding(start = 12.dp),
-        useColorContainer = true,
+      ChildCategoryBranch(
+        children = selectedChildren,
+        selectedCategoryId = selectedCategoryId,
+        parentColor = parentCategories.firstOrNull { it.id == selectedParentId }?.let { argbColor(it.color) }
+          ?: Color.Gray,
         onSelect = onSelect,
       )
+    }
+  }
+}
+
+@Composable
+private fun ChildCategoryBranch(
+  children: List<Category>,
+  selectedCategoryId: String?,
+  parentColor: Color,
+  onSelect: (Category) -> Unit,
+) {
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(start = 12.dp)
+      .drawBehind {
+        val stroke = 2.dp.toPx()
+        val railX = 1.dp.toPx()
+        val branchY = 16.dp.toPx()
+        drawLine(parentColor.copy(alpha = 0.48f), start = androidx.compose.ui.geometry.Offset(railX, 0f), end = androidx.compose.ui.geometry.Offset(railX, branchY), strokeWidth = stroke)
+        drawLine(parentColor.copy(alpha = 0.48f), start = androidx.compose.ui.geometry.Offset(railX, branchY), end = androidx.compose.ui.geometry.Offset(14.dp.toPx(), branchY), strokeWidth = stroke)
+      }
+      .padding(start = 18.dp),
+  ) {
+    FlowRow(
+      modifier = Modifier.weight(1f),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      children.forEach { child ->
+        val selected = child.id == selectedCategoryId
+        AssistChip(
+          onClick = { onSelect(child) },
+          label = { Text(child.name) },
+          leadingIcon = if (selected) {
+            { Icon(Icons.Outlined.Check, contentDescription = null) }
+          } else {
+            null
+          },
+          colors = AssistChipDefaults.assistChipColors(
+            containerColor = if (selected) parentColor else parentColor.copy(alpha = 0.12f),
+            labelColor = if (selected) Color.White else parentColor,
+            leadingIconContentColor = Color.White,
+          ),
+          border = null,
+        )
+      }
     }
   }
 }

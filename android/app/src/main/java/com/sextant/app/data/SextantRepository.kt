@@ -292,14 +292,16 @@ class SextantRepository(context: Context) {
       FROM transactions
       WHERE transactionDate >= ? AND transactionDate < ?
         AND (? = '' OR description LIKE '%' || ? || '%')
-        AND (? = '' OR categoryId = ?)
+        AND (? = '' OR categoryId = ? OR categoryId IN (
+          SELECT id FROM categories WHERE parentCategoryId = ?
+        ))
         AND (? = '' OR paymentMethodId = ?)
         AND (? = '' OR type = ?)
       ORDER BY transactionDate DESC
       """.trimIndent(),
       arrayOf(
         filter.monthStart.toString(), monthEnd.toString(), filter.query.trim(), filter.query.trim(),
-        filter.categoryId.orEmpty(), filter.categoryId.orEmpty(),
+        filter.categoryId.orEmpty(), filter.categoryId.orEmpty(), filter.categoryId.orEmpty(),
         filter.paymentMethodId.orEmpty(), filter.paymentMethodId.orEmpty(),
         filter.type?.dbValue.orEmpty(), filter.type?.dbValue.orEmpty(),
       ),

@@ -1,6 +1,5 @@
 package com.sextant.app.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -13,11 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
@@ -25,7 +24,9 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -57,8 +58,9 @@ import java.util.Calendar
 import kotlin.math.max
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> Unit) {
-  var editingTotal by remember { mutableStateOf(state.monthlyBudgetCents == null) }
+  var editingTotal by remember { mutableStateOf(false) }
   var editingCategory by remember { mutableStateOf(false) }
   var totalText by remember(state.monthlyBudgetCents) { mutableStateOf(state.monthlyBudgetCents?.let { "%.2f".format(it / 100.0) }.orEmpty()) }
   var selectedCategoryId by remember { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }?.id) }
@@ -76,72 +78,17 @@ fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> 
         Text("控制总支出，再为重要分类分配额度。", color = SextantColors.TextSubtle)
       }
     }
-    item { BudgetOverview(state, onEdit = { editingTotal = !editingTotal }) }
-    item {
-      AnimatedVisibility(editingTotal) {
-        BudgetEditor(
-          title = if (state.monthlyBudgetCents == null) "设置本月总预算" else "调整本月总预算",
-          amountText = totalText,
-          onAmountChanged = { totalText = it },
-          onSave = {
-            parseAmountCents(totalText)?.let {
-              repository.setMonthlyBudget(it)
-              editingTotal = false
-              onSaved()
-            }
-          },
-        )
-      }
-    }
+    item { BudgetOverview(state, onEdit = { editingTotal = true }) }
     item {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Column {
           Text("分类预算", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
           Text("${state.budgets.size} 个分类已设置", color = SextantColors.TextSubtle)
         }
-        OutlinedButton(onClick = { editingCategory = !editingCategory }) {
+        OutlinedButton(onClick = { editingCategory = true }) {
           Icon(Icons.Outlined.Add, null)
           Spacer(Modifier.width(6.dp))
           Text("添加")
-        }
-      }
-    }
-    item {
-      AnimatedVisibility(editingCategory) {
-        Column(
-          Modifier.fillMaxWidth().background(SextantColors.SurfaceAlt, RoundedCornerShape(20.dp)).padding(16.dp),
-          verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-          Text("选择一个主要消费分类", fontWeight = FontWeight.SemiBold)
-          FlowChips(
-            items = expenseCategories,
-            selectedId = selectedCategoryId,
-            label = { it.displayName(state.categories) },
-            color = { argbColor(it.color) },
-            onSelect = { selectedCategoryId = it.id },
-          )
-          OutlinedTextField(
-            value = categoryAmountText,
-            onValueChange = { categoryAmountText = it },
-            label = { Text("每月额度") },
-            prefix = { Text("¥ ") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(),
-          )
-          Button(
-            onClick = {
-              val categoryId = selectedCategoryId
-              val amount = parseAmountCents(categoryAmountText)
-              if (categoryId != null && amount != null) {
-                repository.upsertBudget(categoryId, amount)
-                categoryAmountText = ""
-                editingCategory = false
-                onSaved()
-              }
-            },
-            modifier = Modifier.fillMaxWidth(),
-          ) { Text("保存分类预算") }
         }
       }
     }
@@ -151,6 +98,68 @@ fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> 
       }
     } else {
       items(state.budgets) { CategoryBudgetRow(it) }
+    }
+  }
+
+  if (editingTotal) {
+    ModalBottomSheet(onDismissRequest = { editingTotal = false }) {
+      BudgetEditor(
+        title = if (state.monthlyBudgetCents == null) "设置本月总预算" else "调整本月总预算",
+        amountText = totalText,
+        onAmountChanged = { totalText = it },
+        onSave = {
+          parseAmountCents(totalText)?.let {
+            repository.setMonthlyBudget(it)
+            editingTotal = false
+            onSaved()
+          }
+        },
+      )
+    }
+  }
+
+  if (editingCategory) {
+    ModalBottomSheet(onDismissRequest = { editingCategory = false }) {
+      Column(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+      ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          Text("添加分类预算", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+          Text("为波动较大的消费设置单独额度", color = SextantColors.TextSubtle)
+        }
+        Text("消费分类", style = MaterialTheme.typography.labelLarge)
+        FlowChips(
+          items = expenseCategories,
+          selectedId = selectedCategoryId,
+          label = { it.displayName(state.categories) },
+          color = { argbColor(it.color) },
+          onSelect = { selectedCategoryId = it.id },
+        )
+        OutlinedTextField(
+          value = categoryAmountText,
+          onValueChange = { categoryAmountText = it },
+          label = { Text("每月额度") },
+          prefix = { Text("¥ ") },
+          singleLine = true,
+          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+          modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+          onClick = {
+            val categoryId = selectedCategoryId
+            val amount = parseAmountCents(categoryAmountText)
+            if (categoryId != null && amount != null) {
+              repository.upsertBudget(categoryId, amount)
+              categoryAmountText = ""
+              editingCategory = false
+              onSaved()
+            }
+          },
+          enabled = selectedCategoryId != null && parseAmountCents(categoryAmountText) != null,
+          modifier = Modifier.fillMaxWidth(),
+        ) { Text("保存分类预算") }
+      }
     }
   }
 }
@@ -198,10 +207,11 @@ private fun BudgetMetric(label: String, value: String) {
 @Composable
 private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (String) -> Unit, onSave: () -> Unit) {
   Column(
-    Modifier.fillMaxWidth().background(SextantColors.AccentSoft, RoundedCornerShape(20.dp)).padding(16.dp),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
+    Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+    verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
-    Text(title, fontWeight = FontWeight.Bold)
+    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    Text("额度会用于首页进度和月底预测", color = SextantColors.TextSubtle)
     OutlinedTextField(
       value = amountText,
       onValueChange = onAmountChanged,
@@ -213,6 +223,7 @@ private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (St
     )
     Button(
       onClick = onSave,
+      enabled = parseAmountCents(amountText) != null,
       modifier = Modifier.fillMaxWidth(),
       colors = ButtonDefaults.buttonColors(containerColor = SextantColors.Accent),
     ) { Text("保存总预算") }
