@@ -5,7 +5,10 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.UUID
 
-class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, 8) {
+class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, DATABASE_VERSION) {
+  companion object {
+    const val DATABASE_VERSION = 8
+  }
   init {
     setWriteAheadLoggingEnabled(true)
   }

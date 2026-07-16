@@ -1,6 +1,7 @@
 plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.plugin.compose")
+  id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -63,5 +64,8 @@ dependencies {
   implementation("androidx.compose.material:material-icons-extended")
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.ui:ui-tooling-preview")
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
   debugImplementation("androidx.compose.ui:ui-tooling")
+  testImplementation("junit:junit:4.13.2")
 }
