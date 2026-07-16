@@ -1,7 +1,6 @@
 package com.sextant.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -61,7 +59,6 @@ import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatAmountPlain
 import com.sextant.app.ui.util.signedAmountPlain
-import com.sextant.app.ui.util.transactionSubtitle
 import com.sextant.app.ui.util.label
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -339,7 +336,7 @@ private fun DailyLedgerCard(group: DailyTransactionGroup, onTransactionClick: (T
       }
       group.items.forEachIndexed { index, item ->
         if (index > 0) {
-          Box(Modifier.fillMaxWidth().padding(start = 86.dp).height(1.dp).background(SextantColors.Border))
+          Box(Modifier.fillMaxWidth().padding(start = 68.dp).height(1.dp).background(SextantColors.Border))
         }
         LedgerTransactionRow(item, onTransactionClick)
       }
@@ -350,39 +347,66 @@ private fun DailyLedgerCard(group: DailyTransactionGroup, onTransactionClick: (T
 @Composable
 private fun LedgerTransactionRow(item: TransactionListItem, onClick: (TransactionListItem) -> Unit) {
   Row(
-    Modifier.fillMaxWidth().clickable { onClick(item) }.padding(horizontal = 16.dp, vertical = 14.dp),
+    Modifier.fillMaxWidth().clickable { onClick(item) }.padding(horizontal = 16.dp, vertical = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-      LedgerCategoryIcon(item)
-      Spacer(Modifier.width(14.dp))
-      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text(item.categoryName, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-          if (item.transaction.description.isNotBlank()) {
-            Text(
-              item.transaction.description,
-              color = SextantColors.TextSubtle,
-              modifier = Modifier
-                .border(1.dp, SextantColors.Border, RoundedCornerShape(6.dp))
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-              style = MaterialTheme.typography.bodySmall,
-            )
-          }
-        }
+    LedgerCategoryIcon(item)
+    Spacer(Modifier.width(12.dp))
+    Column(
+      modifier = Modifier.weight(1f),
+      verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
         Text(
-          transactionSubtitle(item),
-          color = SextantColors.TextSubtle,
+          text = item.categoryName,
+          modifier = Modifier.weight(1f, fill = false),
+          color = SextantColors.Text,
           fontSize = 16.sp,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
         )
+        if (item.paymentMethodName.isNotBlank()) {
+          Text(
+            text = item.paymentMethodName,
+            color = SextantColors.TextSubtle,
+            fontSize = 12.sp,
+            maxLines = 1,
+            softWrap = false,
+          )
+        }
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          SimpleDateFormat("HH:mm", Locale.CHINA).format(item.transaction.transactionDate),
+          color = SextantColors.TextSubtle,
+          fontSize = 13.sp,
+          maxLines = 1,
+          softWrap = false,
+        )
+        if (item.transaction.description.isNotBlank()) {
+          Text(
+            text = "  ·  ${item.transaction.description}",
+            modifier = Modifier.weight(1f),
+            color = SextantColors.TextMuted,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
       }
     }
+    Spacer(Modifier.width(12.dp))
     Text(
       text = signedAmountPlain(item),
-      color = Color.Black,
-      fontSize = 22.sp,
-      fontWeight = FontWeight.Bold,
+      color = SextantColors.Text,
+      fontSize = 18.sp,
+      fontWeight = FontWeight.SemiBold,
+      maxLines = 1,
+      softWrap = false,
     )
   }
 }
@@ -391,7 +415,7 @@ private fun LedgerTransactionRow(item: TransactionListItem, onClick: (Transactio
 private fun LedgerCategoryIcon(item: TransactionListItem) {
   val color = argbColor(item.categoryColor)
   Box(
-    modifier = Modifier.size(44.dp).clip(CircleShape).background(color.copy(alpha = 0.16f)),
+    modifier = Modifier.size(40.dp).clip(CircleShape).background(color.copy(alpha = 0.14f)),
     contentAlignment = Alignment.Center,
   ) {
     Icon(
@@ -402,7 +426,7 @@ private fun LedgerCategoryIcon(item: TransactionListItem) {
       },
       contentDescription = null,
       tint = color,
-      modifier = Modifier.size(26.dp),
+      modifier = Modifier.size(22.dp),
     )
   }
 }
