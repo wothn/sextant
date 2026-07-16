@@ -7,7 +7,8 @@ Sextant 是一个基于 **Android 原生 Kotlin + Jetpack Compose** 的个人记
 - 转账记录
 - 月度预算
 - 标签系统
-- CSV 导出备份
+- 版本化完整备份与恢复
+- CSV 流水导出
 
 UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android 原生 `SQLiteOpenHelper` 本地存储。
 
@@ -16,7 +17,8 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android �
 - **极速记账**：面向高频输入场景，优先保证录入速度
 - **账户维度管理**：现金、银行卡、钱包等账户统一管理
 - **预算提醒基础能力**：按分类维护月预算
-- **本地数据导出**：支持导出交易 CSV 进行备份
+- **本地数据备份**：支持通过系统文件选择器导出和恢复完整 JSON 账本
+- **通用流水导出**：支持导出 UTF-8 CSV，便于使用表格工具查看
 - **离线可用**：当前不依赖云同步
 
 ## 技术栈
@@ -38,6 +40,7 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android �
 
 ```bash
 .\gradlew.bat :android:app:assembleDebug
+.\gradlew.bat :android:app:testDebugUnitTest
 ```
 
 ## 常用命令
@@ -92,6 +95,7 @@ android/app/            Android 原生应用模块
 当前仓库的原生 Android 验证入口是：
 
 - 构建检查：`.\gradlew.bat :android:app:assembleDebug`
+- 本地 JVM 测试：`.\gradlew.bat :android:app:testDebugUnitTest`
 
 ## 当前范围说明
 
@@ -99,4 +103,4 @@ android/app/            Android 原生应用模块
 
 - 重点做 Android 原生开发体验
 - 暂不包含云同步
-- 暂不配置 CI / 发布构建流程
+- 通过版本标签触发 GitHub Actions 签名发布

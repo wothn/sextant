@@ -9,6 +9,7 @@ import java.util.UUID
 
 class SextantRepository(context: Context) {
   private val database = SextantDatabase(context)
+  private val backupStore = BackupStore(database)
 
   fun loadState(filter: LedgerFilter = LedgerFilter(Calendar.getInstance().startOfMonth())): AppState {
     val db = database.readableDatabase
@@ -237,6 +238,10 @@ class SextantRepository(context: Context) {
     }
     return rows.joinToString("\n")
   }
+
+  fun exportBackup(): String = backupStore.export()
+
+  fun restoreBackup(content: String): BackupSummary = backupStore.restore(content)
 
   private fun listCategories(db: SQLiteDatabase): List<Category> {
     val rows = mutableListOf<Category>()
