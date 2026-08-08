@@ -14,9 +14,10 @@ class SextantRepository(context: Context) {
   fun loadState(filter: LedgerFilter = LedgerFilter(Calendar.getInstance().startOfMonth())): AppState {
     val db = database.readableDatabase
     val categories = listCategories(db)
-    val paymentMethods = listPaymentMethods(db)
+    val allPaymentMethods = listPaymentMethods(db)
+    val paymentMethods = allPaymentMethods.filter { it.isActive }
     val monthEnd = filter.monthStart.endOfMonth()
-    val transactions = listTransactions(db, categories, paymentMethods, filter, monthEnd)
+    val transactions = listTransactions(db, categories, allPaymentMethods, filter, monthEnd)
     val now = Calendar.getInstance()
     val todayStart = now.startOfDay()
     val monthStart = filter.monthStart
@@ -24,7 +25,7 @@ class SextantRepository(context: Context) {
     val analysisTransactions = listTransactions(
       db,
       categories,
-      paymentMethods,
+      allPaymentMethods,
       LedgerFilter(monthStart),
       monthEnd,
     )
@@ -32,7 +33,7 @@ class SextantRepository(context: Context) {
     val previousTransactions = listTransactions(
       db,
       categories,
-      paymentMethods,
+      allPaymentMethods,
       LedgerFilter(previousMonthStart),
       monthStart,
     )
@@ -47,6 +48,7 @@ class SextantRepository(context: Context) {
     return AppState(
       categories = categories,
       paymentMethods = paymentMethods,
+      allPaymentMethods = allPaymentMethods,
       transactions = transactions,
       groups = groups,
       todaySummary = LedgerCalculations.summarize(transactions.filter { it.transaction.transactionDate >= todayStart && it.transaction.transactionDate < todayStart + DAY_MILLIS }),
@@ -215,6 +217,54 @@ class SextantRepository(context: Context) {
     )
   }
 
+  fun addPaymentMethod(name: String, color: Long) {
+    val trimmedName = name.trim()
+    require(trimmedName.isNotBlank()) { "来源名称不能为空" }
+    require(trimmedName.length <= MAX_PAYMENT_METHOD_NAME_LENGTH) { "来源名称不能超过 40 个字符" }
+    requirePaymentMethodNameAvailable(trimmedName)
+    database.writableDatabase.execSQL(
+      "INSERT INTO payment_methods (id, name, color, isBuiltIn, isActive, createdAt) VALUES (?, ?, ?, 0, 1, ?)",
+      arrayOf<Any>(UUID.randomUUID().toString(), trimmedName, color, System.currentTimeMillis()),
+    )
+  }
+
+  fun updatePaymentMethod(id: String, name: String, color: Long) {
+    val trimmedName = name.trim()
+    require(trimmedName.isNotBlank()) { "来源名称不能为空" }
+    require(trimmedName.length <= MAX_PAYMENT_METHOD_NAME_LENGTH) { "来源名称不能超过 40 个字符" }
+    requirePaymentMethodNameAvailable(trimmedName, excludingId = id)
+    database.writableDatabase.execSQL(
+      "UPDATE payment_methods SET name = ?, color = ? WHERE id = ?",
+      arrayOf<Any>(trimmedName, color, id),
+    )
+  }
+
+  fun setPaymentMethodActive(id: String, isActive: Boolean) {
+    database.writableDatabase.execSQL(
+      "UPDATE payment_methods SET isActive = ? WHERE id = ?",
+      arrayOf<Any>(if (isActive) 1 else 0, id),
+    )
+  }
+
+  fun deletePaymentMethod(id: String) {
+    val db = database.writableDatabase
+    db.rawQuery(
+      """
+      SELECT p.isBuiltIn, COUNT(t.id)
+      FROM payment_methods p
+      LEFT JOIN transactions t ON t.paymentMethodId = p.id
+      WHERE p.id = ?
+      GROUP BY p.id
+      """.trimIndent(),
+      arrayOf(id),
+    ).use { cursor ->
+      require(cursor.moveToFirst()) { "来源不存在" }
+      require(cursor.getInt(0) == 0) { "内置来源不能删除" }
+      require(cursor.getLong(1) == 0L) { "已被流水使用的来源不能删除" }
+    }
+    db.delete("payment_methods", "id = ?", arrayOf(id))
+  }
+
   fun exportCsv(): String {
     val rows = mutableListOf("date,type,category,source,amount,description")
     val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
@@ -277,14 +327,42 @@ class SextantRepository(context: Context) {
   private fun listPaymentMethods(db: SQLiteDatabase): List<PaymentMethod> {
     val rows = mutableListOf<PaymentMethod>()
     db.rawQuery(
-      "SELECT id, name, color FROM payment_methods WHERE isActive = 1 ORDER BY createdAt ASC",
+      """
+      SELECT p.id, p.name, p.color, p.isBuiltIn, p.isActive, COUNT(t.id)
+      FROM payment_methods p
+      LEFT JOIN transactions t ON t.paymentMethodId = p.id
+      GROUP BY p.id
+      ORDER BY p.isActive DESC, p.createdAt ASC
+      """.trimIndent(),
       emptyArray(),
     ).use { cursor ->
       while (cursor.moveToNext()) {
-        rows += PaymentMethod(cursor.getString(0), cursor.getString(1), cursor.getLong(2))
+        rows += PaymentMethod(
+          id = cursor.getString(0),
+          name = cursor.getString(1),
+          color = cursor.getLong(2),
+          isBuiltIn = cursor.getInt(3) == 1,
+          isActive = cursor.getInt(4) == 1,
+          transactionCount = cursor.getLong(5),
+        )
       }
     }
     return rows
+  }
+
+  private fun requirePaymentMethodNameAvailable(name: String, excludingId: String? = null) {
+    val sql = if (excludingId == null) {
+      "SELECT 1 FROM payment_methods WHERE name = ? COLLATE NOCASE LIMIT 1"
+    } else {
+      "SELECT 1 FROM payment_methods WHERE name = ? COLLATE NOCASE AND id != ? LIMIT 1"
+    }
+    val args = if (excludingId == null) arrayOf(name) else arrayOf(name, excludingId)
+    database.readableDatabase.rawQuery(
+      sql,
+      args,
+    ).use { cursor ->
+      require(!cursor.moveToFirst()) { "来源名称已存在" }
+    }
   }
 
   private fun listTransactions(
@@ -416,6 +494,7 @@ private fun Long.shiftMonth(amount: Int): Long = Calendar.getInstance().run {
 }
 
 private const val DAY_MILLIS = 86_400_000L
+private const val MAX_PAYMENT_METHOD_NAME_LENGTH = 40
 
 private val TransactionType.dbValue: String
   get() = when (this) {

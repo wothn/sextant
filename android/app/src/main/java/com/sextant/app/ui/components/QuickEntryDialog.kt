@@ -67,6 +67,12 @@ fun QuickEntryDialog(
   val selectedCategory = typeCategories.firstOrNull { it.id == categoryId }
   val selectedParent = parentCategories.firstOrNull { it.id == selectedCategory?.parentCategoryId }
     ?: parentCategories.firstOrNull { it.id == selectedCategory?.id }
+  val paymentMethodOptions = state.paymentMethods.toMutableList().apply {
+    val editingMethod = editing?.transaction?.paymentMethodId?.let { id ->
+      state.allPaymentMethods.firstOrNull { it.id == id && !it.isActive }
+    }
+    if (editingMethod != null) add(editingMethod)
+  }
 
   ModalBottomSheet(
     onDismissRequest = onDismiss,
@@ -131,7 +137,7 @@ fun QuickEntryDialog(
         onSelect = { category -> categoryId = category.id },
       )
       Text("来源", style = MaterialTheme.typography.labelLarge)
-      FlowChips(state.paymentMethods, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
+      FlowChips(paymentMethodOptions, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
       OutlinedTextField(
         value = description,
         onValueChange = { description = it },

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -45,6 +46,7 @@ import com.sextant.app.data.BackupException
 import com.sextant.app.data.BackupSummary
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.ui.components.CategoryManagement
+import com.sextant.app.ui.components.PaymentMethodManagement
 import com.sextant.app.ui.components.SectionTitle
 import com.sextant.app.ui.theme.SextantColors
 import java.text.SimpleDateFormat
@@ -93,13 +95,14 @@ fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: ()
     ActivityResultContracts.OpenDocument(),
   ) { uri -> pendingRestoreUri = uri }
 
-  if (destination == SettingsDestination.CategoryManagement) {
+  if (destination != SettingsDestination.Overview) {
     BackHandler { destination = SettingsDestination.Overview }
   }
 
   when (destination) {
     SettingsDestination.Overview -> SettingsOverview(
       onCategoryManagementClick = { destination = SettingsDestination.CategoryManagement },
+      onPaymentMethodManagementClick = { destination = SettingsDestination.PaymentMethodManagement },
       isBusy = isBusy,
       onBackupExport = { backupExportLauncher.launch(backupFileName()) },
       onBackupImport = { backupImportLauncher.launch(arrayOf("application/json", "text/plain")) },
@@ -107,6 +110,13 @@ fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: ()
     )
 
     SettingsDestination.CategoryManagement -> CategoryManagementScreen(
+      state = state,
+      repository = repository,
+      onChanged = onChanged,
+      onNavigateBack = { destination = SettingsDestination.Overview },
+    )
+
+    SettingsDestination.PaymentMethodManagement -> PaymentMethodManagementScreen(
       state = state,
       repository = repository,
       onChanged = onChanged,
@@ -155,6 +165,7 @@ fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: ()
 @Composable
 private fun SettingsOverview(
   onCategoryManagementClick: () -> Unit,
+  onPaymentMethodManagementClick: () -> Unit,
   isBusy: Boolean,
   onBackupExport: () -> Unit,
   onBackupImport: () -> Unit,
@@ -174,6 +185,14 @@ private fun SettingsOverview(
         description = "管理收入、支出分类与子分类",
         icon = Icons.Outlined.Category,
         onClick = onCategoryManagementClick,
+      )
+    }
+    item {
+      SettingsEntry(
+        title = "来源管理",
+        description = "管理现金、银行卡和支付平台等来源",
+        icon = Icons.Outlined.Payments,
+        onClick = onPaymentMethodManagementClick,
       )
     }
     item { SectionTitle("数据管理") }
@@ -231,6 +250,29 @@ private fun CategoryManagementScreen(
 }
 
 @Composable
+private fun PaymentMethodManagementScreen(
+  state: AppState,
+  repository: SextantRepository,
+  onChanged: () -> Unit,
+  onNavigateBack: () -> Unit,
+) {
+  LazyColumn(
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(16.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    item {
+      PaymentMethodManagement(
+        methods = state.allPaymentMethods,
+        repository = repository,
+        onChanged = onChanged,
+        onNavigateBack = onNavigateBack,
+      )
+    }
+  }
+}
+
+@Composable
 private fun SettingsEntry(
   title: String,
   description: String,
@@ -271,6 +313,7 @@ private fun SettingsEntry(
 private enum class SettingsDestination {
   Overview,
   CategoryManagement,
+  PaymentMethodManagement,
 }
 
 private data class DataOperationMessage(val title: String, val body: String)

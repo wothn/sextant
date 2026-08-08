@@ -47,6 +47,7 @@ class SextantDatabaseTest {
     assertTrue(db.hasIndex("idx_transactions_category_date"))
     assertTrue(db.hasIndex("idx_transactions_payment_date"))
     assertEquals(setOf("银行卡", "微信", "支付宝", "现金"), db.stringSet("SELECT name FROM payment_methods"))
+    assertEquals(4L, db.longValue("SELECT COUNT(*) FROM payment_methods WHERE isBuiltIn = 1 AND isActive = 1"))
     assertTrue(db.longValue("SELECT COUNT(*) FROM categories") > 7)
   }
 
