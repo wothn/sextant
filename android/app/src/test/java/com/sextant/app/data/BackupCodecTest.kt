@@ -44,6 +44,55 @@ class BackupCodecTest {
   }
 
   @Test
+  fun rejectsBrokenSourceReferencesBeforeRestore() {
+    val document = sampleDocument()
+    val content = BackupCodec.encode(
+      document.copy(transactions = document.transactions.map { it.copy(paymentMethodId = "missing") }),
+    )
+
+    val error = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate(content)
+    }
+
+    assertEquals("交易来源引用无效", error.message)
+  }
+
+  @Test
+  fun rejectsDuplicateIdentifiersAndNegativeAmounts() {
+    val document = sampleDocument()
+    val duplicateError = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate(
+        BackupCodec.encode(document.copy(categories = document.categories + document.categories.first())),
+      )
+    }
+    val amountError = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate(
+        BackupCodec.encode(document.copy(transactions = document.transactions.map { it.copy(amountCents = -1) })),
+      )
+    }
+
+    assertEquals("分类 ID 重复", duplicateError.message)
+    assertEquals("交易金额无效", amountError.message)
+  }
+
+  @Test
+  fun ignoresUnknownFieldsForForwardCompatibleMetadata() {
+    val encoded = BackupCodec.encode(sampleDocument())
+    val withUnknownField = encoded.replaceFirst("{", "{\n  \"futureMetadata\": \"ignored\",")
+
+    assertEquals(sampleDocument(), BackupCodec.decodeAndValidate(withUnknownField))
+  }
+
+  @Test
+  fun rejectsMalformedJsonWithStableUserFacingError() {
+    val error = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate("{ definitely-not-json }")
+    }
+
+    assertEquals("无法识别这个备份文件", error.message)
+  }
+
+  @Test
   fun rejectsCategoryCycles() {
     val document = sampleDocument()
     val cyclicCategories = document.categories.map { category ->

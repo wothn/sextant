@@ -3,10 +3,9 @@
 Sextant 是一个基于 **Android 原生 Kotlin + Jetpack Compose** 的个人记账应用，当前聚焦本地优先的记账体验，支持：
 
 - 支出 / 收入记录
-- 账户管理
-- 转账记录
+- 消费来源记录
 - 月度预算
-- 标签系统
+- 分类体系
 - 版本化完整备份与恢复
 - CSV 流水导出
 
@@ -15,7 +14,7 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android �
 ## 功能概览
 
 - **极速记账**：面向高频输入场景，优先保证录入速度
-- **账户维度管理**：现金、银行卡、钱包等账户统一管理
+- **来源记录**：记录现金、银行卡、微信、支付宝等消费或收入来源，为后续自动记账保留衔接点
 - **预算提醒基础能力**：按分类维护月预算
 - **本地数据备份**：支持通过系统文件选择器导出和恢复完整 JSON 账本
 - **通用流水导出**：支持导出 UTF-8 CSV，便于使用表格工具查看
@@ -34,13 +33,14 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android �
 ### 环境要求
 
 - Android Studio / Android SDK
-- JDK 17+
+- JDK 21
 
 ### 启动项目
 
 ```bash
 .\gradlew.bat :android:app:assembleDebug
 .\gradlew.bat :android:app:testDebugUnitTest
+.\gradlew.bat :android:app:testDebugUnitTest :android:app:assembleDebug
 ```
 
 ## 常用命令
@@ -96,6 +96,9 @@ android/app/            Android 原生应用模块
 
 - 构建检查：`.\gradlew.bat :android:app:assembleDebug`
 - 本地 JVM 测试：`.\gradlew.bat :android:app:testDebugUnitTest`
+- CI：推送到 `main` 或创建 Pull Request 时自动执行单元测试和 debug 构建
+
+测试覆盖数据库建库与旧版本迁移、完整备份恢复及事务回滚、CSV 导出、流水核心计算和金额输入边界。
 
 ## 当前范围说明
 
@@ -103,4 +106,5 @@ android/app/            Android 原生应用模块
 
 - 重点做 Android 原生开发体验
 - 暂不包含云同步
+- 暂不引入账户体系，优先聚焦消费追踪与快速记账
 - 通过版本标签触发 GitHub Actions 签名发布

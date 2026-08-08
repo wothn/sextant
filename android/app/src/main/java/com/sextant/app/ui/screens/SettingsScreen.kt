@@ -138,7 +138,7 @@ fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: ()
       },
       dismissButton = { TextButton(onClick = { pendingRestoreUri = null }) { Text("取消") } },
       title = { Text("恢复这份备份？") },
-      text = { Text("当前账本中的分类、支付方式、流水、预算和设置将被完整替换。文件校验或写入失败时不会修改原数据。") },
+      text = { Text("当前账本中的分类、来源、流水、预算和设置将被完整替换。文件校验或写入失败时不会修改原数据。") },
     )
   }
 
@@ -181,7 +181,7 @@ private fun SettingsOverview(
       Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Text("完整账本备份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-          Text("保存分类、支付方式、流水、预算和设置，可用于完整恢复。", color = SextantColors.TextMuted)
+          Text("保存分类、来源、流水、预算和设置，可用于完整恢复。", color = SextantColors.TextMuted)
           Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onBackupExport, enabled = !isBusy) {
               Text(if (isBusy) "处理中" else "导出备份")
@@ -276,7 +276,7 @@ private enum class SettingsDestination {
 private data class DataOperationMessage(val title: String, val body: String)
 
 private fun BackupSummary.restoreMessage(): String =
-  "已恢复 $transactionCount 笔流水、$categoryCount 个分类、$paymentMethodCount 个支付方式和 $budgetCount 项预算。"
+  "已恢复 $transactionCount 笔流水、$categoryCount 个分类、$paymentMethodCount 个来源和 $budgetCount 项预算。"
 
 private fun Throwable.toDataErrorMessage(): String = when (this) {
   is BackupException -> message ?: "备份文件无效。"

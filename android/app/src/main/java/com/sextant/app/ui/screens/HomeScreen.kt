@@ -214,9 +214,9 @@ private fun LedgerFilters(state: AppState, filter: LedgerFilter, onChanged: (Led
       selectedCategoryId = filter.categoryId,
       onSelect = { onChanged(filter.copy(categoryId = it.id)) },
     )
-    Text("支付方式", style = MaterialTheme.typography.labelLarge)
+    Text("来源", style = MaterialTheme.typography.labelLarge)
     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-      FilterChip(selected = filter.paymentMethodId == null, onClick = { onChanged(filter.copy(paymentMethodId = null)) }, label = { Text("全部方式") })
+      FilterChip(selected = filter.paymentMethodId == null, onClick = { onChanged(filter.copy(paymentMethodId = null)) }, label = { Text("全部来源") })
       state.paymentMethods.forEach { method ->
         FilterChip(selected = filter.paymentMethodId == method.id, onClick = { onChanged(filter.copy(paymentMethodId = method.id)) }, label = { Text(method.name) })
       }
