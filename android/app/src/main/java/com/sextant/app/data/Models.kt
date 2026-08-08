@@ -19,6 +19,9 @@ data class PaymentMethod(
   val id: String,
   val name: String,
   val color: Long,
+  val isBuiltIn: Boolean = false,
+  val isActive: Boolean = true,
+  val transactionCount: Long = 0,
 )
 
 data class Transaction(
@@ -94,6 +97,7 @@ data class LedgerFilter(
 data class AppState(
   val categories: List<Category> = emptyList(),
   val paymentMethods: List<PaymentMethod> = emptyList(),
+  val allPaymentMethods: List<PaymentMethod> = emptyList(),
   val transactions: List<TransactionListItem> = emptyList(),
   val groups: List<DailyTransactionGroup> = emptyList(),
   val todaySummary: Summary = Summary(0, 0),

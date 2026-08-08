@@ -4,6 +4,7 @@ import android.content.Context
 import java.util.Calendar
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -64,6 +65,68 @@ class SextantRepositoryTest {
     }.message)
     assertEquals("预算金额必须大于 0", assertThrows(IllegalArgumentException::class.java) {
       repository.upsertBudget("category", 0)
+    }.message)
+  }
+
+  @Test
+  fun addEditDeactivateReactivateAndDeleteUnusedSource() {
+    val repository = SextantRepository(context)
+
+    repository.addPaymentMethod("  信用卡  ", 10)
+    var state = repository.loadState(filter())
+    val source = state.allPaymentMethods.single { it.name == "信用卡" }
+    assertTrue(source.isActive)
+    assertFalse(source.isBuiltIn)
+
+    repository.updatePaymentMethod(source.id, "储蓄卡", 20)
+    repository.setPaymentMethodActive(source.id, false)
+    state = repository.loadState(filter())
+    assertTrue(state.paymentMethods.none { it.id == source.id })
+    assertEquals(
+      PaymentMethod(source.id, "储蓄卡", 20, isBuiltIn = false, isActive = false),
+      state.allPaymentMethods.single { it.id == source.id },
+    )
+
+    repository.setPaymentMethodActive(source.id, true)
+    assertTrue(repository.loadState(filter()).paymentMethods.any { it.id == source.id })
+
+    repository.deletePaymentMethod(source.id)
+    assertTrue(repository.loadState(filter()).allPaymentMethods.none { it.id == source.id })
+  }
+
+  @Test
+  fun protectsBuiltInAndReferencedSourcesWhileKeepingHistoricalNames() {
+    val repository = SextantRepository(context)
+    val initial = repository.loadState(filter())
+    val builtIn = initial.paymentMethods.first()
+    val category = initial.categories.first { it.type == TransactionType.Expense }
+
+    assertEquals("内置来源不能删除", assertThrows(IllegalArgumentException::class.java) {
+      repository.deletePaymentMethod(builtIn.id)
+    }.message)
+
+    repository.addPaymentMethod("公司卡", 30)
+    val custom = repository.loadState(filter()).paymentMethods.single { it.name == "公司卡" }
+    repository.addTransaction(TransactionType.Expense, 500, category.id, custom.id, "工作餐", now())
+
+    assertEquals("已被流水使用的来源不能删除", assertThrows(IllegalArgumentException::class.java) {
+      repository.deletePaymentMethod(custom.id)
+    }.message)
+
+    repository.setPaymentMethodActive(custom.id, false)
+    val state = repository.loadState(filter(query = "工作餐"))
+    assertTrue(state.paymentMethods.none { it.id == custom.id })
+    assertEquals("公司卡", state.transactions.single().paymentMethodName)
+    assertEquals(1L, state.allPaymentMethods.single { it.id == custom.id }.transactionCount)
+  }
+
+  @Test
+  fun rejectsDuplicateSourceNames() {
+    val repository = SextantRepository(context)
+    repository.addPaymentMethod("信用卡", 10)
+
+    assertEquals("来源名称已存在", assertThrows(IllegalArgumentException::class.java) {
+      repository.addPaymentMethod(" 信用卡 ", 20)
     }.message)
   }
 
