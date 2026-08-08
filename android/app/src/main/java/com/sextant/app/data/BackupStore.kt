@@ -125,7 +125,7 @@ internal object BackupCodec {
     requireBackup(document.databaseVersion in 1..SextantDatabase.DATABASE_VERSION) { "备份来自更新版本的 Sextant" }
 
     requireUnique(document.categories.map { it.id }, "分类 ID")
-    requireUnique(document.paymentMethods.map { it.id }, "支付方式 ID")
+    requireUnique(document.paymentMethods.map { it.id }, "来源 ID")
     requireUnique(document.transactions.map { it.id }, "交易 ID")
     requireUnique(document.budgets.map { it.id }, "预算 ID")
     requireUnique(document.settings.map { it.key }, "设置项")
@@ -141,14 +141,14 @@ internal object BackupCodec {
     requireBackup(!document.categories.hasParentCycle()) { "分类层级存在循环" }
 
     document.paymentMethods.forEach { item ->
-      requireBackup(item.id.isNotBlank() && item.name.isNotBlank()) { "支付方式信息不完整" }
+      requireBackup(item.id.isNotBlank() && item.name.isNotBlank()) { "来源信息不完整" }
     }
     document.transactions.forEach { item ->
       requireBackup(item.id.isNotBlank()) { "交易 ID 不能为空" }
       requireBackup(item.type in TRANSACTION_TYPES) { "交易类型无效" }
       requireBackup(item.amountCents >= 0) { "交易金额无效" }
       requireBackup(item.categoryId == null || item.categoryId in categoryIds) { "交易分类引用无效" }
-      requireBackup(item.paymentMethodId == null || item.paymentMethodId in paymentMethodIds) { "交易支付方式引用无效" }
+      requireBackup(item.paymentMethodId == null || item.paymentMethodId in paymentMethodIds) { "交易来源引用无效" }
     }
     document.budgets.forEach { item ->
       requireBackup(item.id.isNotBlank() && item.categoryId in categoryIds) { "预算分类引用无效" }

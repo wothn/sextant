@@ -12,6 +12,7 @@ skills-lock.json
 # Native
 .kotlin/
 .gradle/
+.gradle-user-home/
 **/build/
 *.orig.*
 *.jks

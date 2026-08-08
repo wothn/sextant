@@ -87,14 +87,8 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
   override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
     if (oldVersion < 3) {
       db.execSQL("DROP TABLE IF EXISTS accounts")
-      db.execSQL("DROP TABLE IF EXISTS budgets")
-      db.execSQL("DROP TABLE IF EXISTS transactions")
-      db.execSQL("DROP TABLE IF EXISTS payment_methods")
-      db.execSQL("DROP TABLE IF EXISTS categories")
-      onCreate(db)
-      return
     }
-    if (oldVersion == 3) {
+    if (oldVersion < 4) {
       db.execSQL("ALTER TABLE categories ADD COLUMN parentCategoryId TEXT")
     }
     if (oldVersion < 5) {

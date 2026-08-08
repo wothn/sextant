@@ -130,7 +130,7 @@ fun QuickEntryDialog(
         selectedCategoryId = categoryId,
         onSelect = { category -> categoryId = category.id },
       )
-      Text("支付方式", style = MaterialTheme.typography.labelLarge)
+      Text("来源", style = MaterialTheme.typography.labelLarge)
       FlowChips(state.paymentMethods, paymentMethodId, { it.name }, { argbColor(it.color) }) { paymentMethodId = it.id }
       OutlinedTextField(
         value = description,

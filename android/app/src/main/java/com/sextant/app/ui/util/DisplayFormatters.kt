@@ -56,4 +56,4 @@ fun formatAmountPlain(valueCents: Long): String {
 fun parseAmountCents(value: String): Long? = value.trim().toBigDecimalOrNull()
   ?.takeIf { it.signum() > 0 && it.scale() <= 2 }
   ?.movePointRight(2)
-  ?.longValueExact()
+  ?.let { cents -> runCatching { cents.longValueExact() }.getOrNull() }
