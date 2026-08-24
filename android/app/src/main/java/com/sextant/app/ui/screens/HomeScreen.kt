@@ -52,6 +52,7 @@ import com.sextant.app.data.AppState
 import com.sextant.app.data.LedgerFilter
 import com.sextant.app.data.DailyTransactionGroup
 import com.sextant.app.data.TransactionListItem
+import com.sextant.app.data.EntryOrigin
 import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.components.EmptyCard
 import com.sextant.app.ui.components.CategoryPicker
@@ -374,6 +375,15 @@ private fun LedgerTransactionRow(item: TransactionListItem, onClick: (Transactio
             text = item.paymentMethodName,
             color = SextantColors.TextSubtle,
             fontSize = 12.sp,
+            maxLines = 1,
+            softWrap = false,
+          )
+        }
+        if (item.transaction.entryOrigin == EntryOrigin.Notification) {
+          Text(
+            text = if (item.transaction.isUserEdited) "自动·已修改" else "自动",
+            color = SextantColors.AccentStrong,
+            fontSize = 11.sp,
             maxLines = 1,
             softWrap = false,
           )

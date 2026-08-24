@@ -29,6 +29,7 @@ internal class BackupStore(private val database: SextantDatabase) {
       transactions = db.readTransactions(),
       budgets = db.readBudgets(),
       settings = db.readSettings(),
+      classificationRules = db.readClassificationRules(),
     )
     return BackupCodec.encode(document)
   }
@@ -39,6 +40,8 @@ internal class BackupStore(private val database: SextantDatabase) {
     db.beginTransaction()
     try {
       db.delete("budgets", null, null)
+      db.delete("classification_rules", null, null)
+      db.delete("automation_events", null, null)
       db.delete("transactions", null, null)
       db.delete("app_settings", null, null)
       db.delete("payment_methods", null, null)
@@ -64,10 +67,11 @@ internal class BackupStore(private val database: SextantDatabase) {
         db.execSQL(
           """
           INSERT INTO transactions
-            (id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt,
+             entryOrigin, automationKind, sourceEventId, isUserEdited)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
           """.trimIndent(),
-          arrayOf<Any?>(item.id, item.categoryId, item.paymentMethodId, item.amountCents, item.type, item.description, item.transactionDate, item.createdAt, item.updatedAt),
+          arrayOf<Any?>(item.id, item.categoryId, item.paymentMethodId, item.amountCents, item.type, item.description, item.transactionDate, item.createdAt, item.updatedAt, item.entryOrigin, item.automationKind, item.isUserEdited.asInt()),
         )
       }
       document.budgets.forEach { item ->
@@ -84,6 +88,16 @@ internal class BackupStore(private val database: SextantDatabase) {
         db.execSQL(
           "INSERT INTO app_settings (key, value) VALUES (?, ?)",
           arrayOf<Any>(item.key, item.value),
+        )
+      }
+      document.classificationRules.forEach { item ->
+        db.execSQL(
+          """
+          INSERT INTO classification_rules
+            (id, sourcePackage, direction, automationKind, matchMode, pattern, categoryId, priority, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          """.trimIndent(),
+          arrayOf<Any>(item.id, item.sourcePackage, item.direction, item.automationKind, item.matchMode, item.pattern, item.categoryId, item.priority, item.createdAt, item.updatedAt),
         )
       }
       db.setTransactionSuccessful()
@@ -129,6 +143,7 @@ internal object BackupCodec {
     requireUnique(document.transactions.map { it.id }, "交易 ID")
     requireUnique(document.budgets.map { it.id }, "预算 ID")
     requireUnique(document.settings.map { it.key }, "设置项")
+    requireUnique(document.classificationRules.map { it.id }, "分类规则 ID")
 
     val categoryIds = document.categories.mapTo(mutableSetOf()) { it.id }
     val paymentMethodIds = document.paymentMethods.mapTo(mutableSetOf()) { it.id }
@@ -149,6 +164,8 @@ internal object BackupCodec {
       requireBackup(item.amountCents >= 0) { "交易金额无效" }
       requireBackup(item.categoryId == null || item.categoryId in categoryIds) { "交易分类引用无效" }
       requireBackup(item.paymentMethodId == null || item.paymentMethodId in paymentMethodIds) { "交易来源引用无效" }
+      requireBackup(item.entryOrigin == "manual" || item.entryOrigin == "notification") { "交易来源类型无效" }
+      requireBackup(item.automationKind == null || item.automationKind in AUTOMATION_KINDS) { "自动交易类型无效" }
     }
     document.budgets.forEach { item ->
       requireBackup(item.id.isNotBlank() && item.categoryId in categoryIds) { "预算分类引用无效" }
@@ -157,6 +174,14 @@ internal object BackupCodec {
     }
     document.settings.forEach { item ->
       requireBackup(item.key.isNotBlank()) { "设置项名称不能为空" }
+      requireBackup(!item.key.startsWith("automation_")) { "备份不能包含自动记账敏感设置" }
+    }
+    document.classificationRules.forEach { item ->
+      requireBackup(item.id.isNotBlank() && item.sourcePackage.isNotBlank() && item.pattern.isNotBlank()) { "分类规则信息不完整" }
+      requireBackup(item.direction == "expense" || item.direction == "income") { "分类规则方向无效" }
+      requireBackup(item.automationKind in AUTOMATION_KINDS) { "分类规则事件类型无效" }
+      requireBackup(item.matchMode == "contains" || item.matchMode == "exact") { "分类规则匹配方式无效" }
+      requireBackup(item.categoryId in categoryIds) { "分类规则引用无效" }
     }
   }
 }
@@ -172,6 +197,7 @@ internal data class BackupDocument(
   val transactions: List<BackupTransaction> = emptyList(),
   val budgets: List<BackupBudget> = emptyList(),
   val settings: List<BackupSetting> = emptyList(),
+  val classificationRules: List<BackupClassificationRule> = emptyList(),
 ) {
   fun summary() = BackupSummary(transactions.size, categories.size, paymentMethods.size, budgets.size)
 }
@@ -210,6 +236,23 @@ internal data class BackupTransaction(
   val transactionDate: Long,
   val createdAt: Long,
   val updatedAt: Long,
+  val entryOrigin: String = "manual",
+  val automationKind: String? = null,
+  val isUserEdited: Boolean = false,
+)
+
+@Serializable
+internal data class BackupClassificationRule(
+  val id: String,
+  val sourcePackage: String,
+  val direction: String,
+  val automationKind: String,
+  val matchMode: String,
+  val pattern: String,
+  val categoryId: String,
+  val priority: Int,
+  val createdAt: Long,
+  val updatedAt: Long,
 )
 
 @Serializable
@@ -239,9 +282,9 @@ private fun SQLiteDatabase.readPaymentMethods(): List<BackupPaymentMethod> = rea
 }
 
 private fun SQLiteDatabase.readTransactions(): List<BackupTransaction> = readRows(
-  "SELECT id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt FROM transactions ORDER BY transactionDate ASC, createdAt ASC",
+  "SELECT id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt, entryOrigin, automationKind, isUserEdited FROM transactions ORDER BY transactionDate ASC, createdAt ASC",
 ) { cursor ->
-  BackupTransaction(cursor.getString(0), cursor.stringOrNull(1), cursor.stringOrNull(2), cursor.getLong(3), cursor.getString(4), cursor.getString(5), cursor.getLong(6), cursor.getLong(7), cursor.getLong(8))
+  BackupTransaction(cursor.getString(0), cursor.stringOrNull(1), cursor.stringOrNull(2), cursor.getLong(3), cursor.getString(4), cursor.getString(5), cursor.getLong(6), cursor.getLong(7), cursor.getLong(8), cursor.getString(9), cursor.stringOrNull(10), cursor.getInt(11) == 1)
 }
 
 private fun SQLiteDatabase.readBudgets(): List<BackupBudget> = readRows(
@@ -251,8 +294,14 @@ private fun SQLiteDatabase.readBudgets(): List<BackupBudget> = readRows(
 }
 
 private fun SQLiteDatabase.readSettings(): List<BackupSetting> = readRows(
-  "SELECT key, value FROM app_settings ORDER BY key ASC",
+  "SELECT key, value FROM app_settings WHERE key NOT LIKE 'automation_%' ORDER BY key ASC",
 ) { cursor -> BackupSetting(cursor.getString(0), cursor.getString(1)) }
+
+private fun SQLiteDatabase.readClassificationRules(): List<BackupClassificationRule> = readRows(
+  "SELECT id, sourcePackage, direction, automationKind, matchMode, pattern, categoryId, priority, createdAt, updatedAt FROM classification_rules ORDER BY priority DESC, createdAt ASC",
+) { cursor ->
+  BackupClassificationRule(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4), cursor.getString(5), cursor.getString(6), cursor.getInt(7), cursor.getLong(8), cursor.getLong(9))
+}
 
 private inline fun <T> SQLiteDatabase.readRows(sql: String, transform: (Cursor) -> T): List<T> {
   val rows = mutableListOf<T>()
@@ -284,5 +333,6 @@ private fun Cursor.stringOrNull(index: Int): String? = if (isNull(index)) null e
 private fun Boolean.asInt(): Int = if (this) 1 else 0
 
 private const val BACKUP_FORMAT = "sextant-backup"
-private const val BACKUP_VERSION = 1
+private const val BACKUP_VERSION = 2
 private val TRANSACTION_TYPES = setOf("expense", "income", "transfer")
+private val AUTOMATION_KINDS = setOf("purchase", "refund", "receipt", "transfer_in", "transfer_out", "recharge", "repayment", "red_packet", "withdrawal", "other")

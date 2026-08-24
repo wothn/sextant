@@ -12,25 +12,24 @@ android {
     applicationId = "com.sextant.app"
     minSdk = 26
     targetSdk = 36
-    versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 4
-    versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.1.3"
+    versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 5
+    versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.2.0"
   }
 
   val releaseStoreFile = providers.gradleProperty("RELEASE_STORE_FILE").orNull
   val releaseStorePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
   val releaseKeyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull
   val releaseKeyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
-  val hasReleaseSigning = listOf(
-    releaseStoreFile,
-    releaseStorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
-  ).all { !it.isNullOrBlank() }
+  val hasReleaseSigning =
+    !releaseStoreFile.isNullOrBlank() &&
+      !releaseStorePassword.isNullOrBlank() &&
+      !releaseKeyAlias.isNullOrBlank() &&
+      !releaseKeyPassword.isNullOrBlank()
 
   signingConfigs {
     if (hasReleaseSigning) {
       create("release") {
-        storeFile = file(releaseStoreFile!!)
+        storeFile = file(releaseStoreFile)
         storePassword = releaseStorePassword
         keyAlias = releaseKeyAlias
         keyPassword = releaseKeyPassword
@@ -39,6 +38,10 @@ android {
   }
 
   buildTypes {
+    getByName("debug") {
+      applicationIdSuffix = ".debug"
+      versionNameSuffix = "-debug"
+    }
     getByName("release") {
       signingConfig = signingConfigs.findByName("release")
     }
@@ -85,7 +88,9 @@ dependencies {
   implementation("androidx.compose.ui:ui-tooling-preview")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+  implementation("androidx.work:work-runtime:2.11.2")
   debugImplementation("androidx.compose.ui:ui-tooling")
   testImplementation("junit:junit:4.13.2")
   testImplementation("org.robolectric:robolectric:4.16")
+  testImplementation("androidx.work:work-testing:2.11.2")
 }

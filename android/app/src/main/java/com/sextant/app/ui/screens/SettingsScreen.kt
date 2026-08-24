@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material3.AlertDialog
@@ -101,6 +102,7 @@ fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: ()
 
   when (destination) {
     SettingsDestination.Overview -> SettingsOverview(
+      onAutomationClick = { destination = SettingsDestination.Automation },
       onCategoryManagementClick = { destination = SettingsDestination.CategoryManagement },
       onPaymentMethodManagementClick = { destination = SettingsDestination.PaymentMethodManagement },
       isBusy = isBusy,
@@ -117,6 +119,13 @@ fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: ()
     )
 
     SettingsDestination.PaymentMethodManagement -> PaymentMethodManagementScreen(
+      state = state,
+      repository = repository,
+      onChanged = onChanged,
+      onNavigateBack = { destination = SettingsDestination.Overview },
+    )
+
+    SettingsDestination.Automation -> AutomationSettingsScreen(
       state = state,
       repository = repository,
       onChanged = onChanged,
@@ -164,6 +173,7 @@ fun SettingsScreen(state: AppState, repository: SextantRepository, onChanged: ()
 
 @Composable
 private fun SettingsOverview(
+  onAutomationClick: () -> Unit,
   onCategoryManagementClick: () -> Unit,
   onPaymentMethodManagementClick: () -> Unit,
   isBusy: Boolean,
@@ -178,6 +188,14 @@ private fun SettingsOverview(
   ) {
     item {
       SectionTitle("设置")
+    }
+    item {
+      SettingsEntry(
+        title = "自动记账",
+        description = "从微信、支付宝支付通知自动生成流水",
+        icon = Icons.Outlined.AutoAwesome,
+        onClick = onAutomationClick,
+      )
     }
     item {
       SettingsEntry(
@@ -312,6 +330,7 @@ private fun SettingsEntry(
 
 private enum class SettingsDestination {
   Overview,
+  Automation,
   CategoryManagement,
   PaymentMethodManagement,
 }

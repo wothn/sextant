@@ -2,14 +2,25 @@ package com.sextant.app.data
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import com.sextant.app.automation.AutomationSecretStore
+import com.sextant.app.automation.AUTOMATION_WORK_TAG
+import androidx.work.WorkManager
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 class SextantRepository(context: Context) {
-  private val database = SextantDatabase(context)
+  private val appContext = context.applicationContext
+  internal val database = SextantDatabase(context)
   private val backupStore = BackupStore(database)
+  internal val automationStore = AutomationStore(database)
+  internal val automationSecretStore = AutomationSecretStore(context.applicationContext)
+  private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+  val changes: SharedFlow<Unit> = _changes.asSharedFlow()
 
   fun loadState(filter: LedgerFilter = LedgerFilter(Calendar.getInstance().startOfMonth())): AppState {
     val db = database.readableDatabase
@@ -59,6 +70,8 @@ class SextantRepository(context: Context) {
       previousMonthSummary = LedgerCalculations.summarize(previousTransactions),
       dailySpending = LedgerCalculations.dailySpending(analysisTransactions, monthStart),
       projectedExpenseCents = LedgerCalculations.projectedExpense(analysisSummary.expenseCents, monthStart),
+      automationSettings = automationStore.loadSettings(automationSecretStore.hasApiKey()),
+      automationEvents = automationStore.listRecentEvents(),
     )
   }
 
@@ -105,6 +118,7 @@ class SextantRepository(context: Context) {
     } finally {
       db.endTransaction()
     }
+    notifyChanged()
   }
 
   fun updateTransaction(
@@ -120,14 +134,85 @@ class SextantRepository(context: Context) {
     database.writableDatabase.execSQL(
       """
       UPDATE transactions SET type = ?, amountCents = ?, categoryId = ?, paymentMethodId = ?,
-        description = ?, transactionDate = ?, updatedAt = ? WHERE id = ?
+        description = ?, transactionDate = ?, updatedAt = ?,
+        isUserEdited = CASE WHEN entryOrigin = 'notification' THEN 1 ELSE isUserEdited END
+      WHERE id = ?
       """.trimIndent(),
       arrayOf<Any?>(type.dbValue, amountCents, categoryId, paymentMethodId, description.trim(), transactionDate, System.currentTimeMillis(), id),
     )
+    notifyChanged()
   }
 
   fun deleteTransaction(id: String) {
     database.writableDatabase.delete("transactions", "id = ?", arrayOf(id))
+    notifyChanged()
+  }
+
+  fun loadAutomationSettings(): AutomationSettings = automationStore.loadSettings(automationSecretStore.hasApiKey())
+
+  fun listActiveCategoryNames(): List<String> = listCategories(database.readableDatabase)
+    .asSequence()
+    .map(Category::name)
+    .distinct()
+    .toList()
+
+  fun updateAutomationSettings(settings: AutomationSettings) {
+    if (settings.cloudEnabled) {
+      require(settings.cloudBaseUrl.startsWith("https://")) { "云端接口必须使用 HTTPS" }
+      require(settings.cloudModel.isNotBlank()) { "模型名称不能为空" }
+      require(automationSecretStore.hasApiKey()) { "请先保存 API Key" }
+    }
+    automationStore.updateSettings(settings)
+    notifyChanged()
+  }
+
+  fun setAutomationApiKey(apiKey: String) {
+    automationSecretStore.setApiKey(apiKey)
+    notifyChanged()
+  }
+
+  fun clearAutomationApiKey() {
+    automationSecretStore.clearApiKey()
+    val settings = loadAutomationSettings()
+    if (settings.cloudEnabled) automationStore.updateSettings(settings.copy(cloudEnabled = false, hasCloudApiKey = false))
+    notifyChanged()
+  }
+
+  fun listAutomationEvents(): List<AutomationEventSummary> = automationStore.listRecentEvents()
+
+  fun findTransaction(id: String): TransactionListItem? {
+    val transactionDate = database.readableDatabase.rawQuery(
+      "SELECT transactionDate FROM transactions WHERE id = ?",
+      arrayOf(id),
+    ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null } ?: return null
+    val monthStart = Calendar.getInstance().apply {
+      timeInMillis = transactionDate
+      set(Calendar.DAY_OF_MONTH, 1)
+    }.startOfDay()
+    val categories = listCategories(database.readableDatabase)
+    val paymentMethods = listPaymentMethods(database.readableDatabase)
+    return listTransactions(
+      database.readableDatabase,
+      categories,
+      paymentMethods,
+      LedgerFilter(monthStart),
+      monthStart.endOfMonth(),
+    ).firstOrNull { it.transaction.id == id }
+  }
+
+  fun saveClassificationRule(
+    sourcePackage: String,
+    direction: TransactionType,
+    kind: AutomationKind,
+    pattern: String,
+    categoryId: String,
+  ) {
+    automationStore.saveRule(sourcePackage, direction, kind, pattern, categoryId)
+    notifyChanged()
+  }
+
+  internal fun notifyChanged() {
+    _changes.tryEmit(Unit)
   }
 
   fun upsertBudget(categoryId: String, amountCents: Long) {
@@ -297,7 +382,12 @@ class SextantRepository(context: Context) {
 
   fun exportBackup(): String = backupStore.export()
 
-  fun restoreBackup(content: String): BackupSummary = backupStore.restore(content)
+  fun restoreBackup(content: String): BackupSummary {
+    runCatching { WorkManager.getInstance(appContext).cancelAllWorkByTag(AUTOMATION_WORK_TAG) }
+    val summary = backupStore.restore(content)
+    notifyChanged()
+    return summary
+  }
 
   private fun listCategories(db: SQLiteDatabase): List<Category> {
     val rows = mutableListOf<Category>()
@@ -377,7 +467,8 @@ class SextantRepository(context: Context) {
     val rows = mutableListOf<TransactionListItem>()
     db.rawQuery(
       """
-      SELECT id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt
+      SELECT id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt,
+        entryOrigin, automationKind, isUserEdited
       FROM transactions
       WHERE transactionDate >= ? AND transactionDate < ?
         AND (? = '' OR description LIKE '%' || ? || '%')
@@ -408,6 +499,9 @@ class SextantRepository(context: Context) {
           transactionDate = cursor.getLong(6),
           createdAt = cursor.getLong(7),
           updatedAt = cursor.getLong(8),
+          entryOrigin = cursor.getString(9).toEntryOrigin(),
+          automationKind = cursor.getStringOrNull(10)?.toAutomationKind(),
+          isUserEdited = cursor.getInt(11) == 1,
         )
         rows += TransactionListItem(
           transaction = transaction,
@@ -507,6 +601,12 @@ private fun String.toTransactionType() = when (this) {
   "income" -> TransactionType.Income
   "transfer" -> TransactionType.Transfer
   else -> TransactionType.Expense
+}
+
+private fun String.toEntryOrigin() = if (this == "notification") EntryOrigin.Notification else EntryOrigin.Manual
+
+private fun String.toAutomationKind() = AutomationKind.entries.firstOrNull {
+  it.name.equals(this, ignoreCase = true)
 }
 
 private fun android.database.Cursor.getStringOrNull(index: Int): String? {
