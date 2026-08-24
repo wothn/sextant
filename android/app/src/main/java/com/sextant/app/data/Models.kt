@@ -6,6 +6,24 @@ enum class TransactionType {
   Transfer,
 }
 
+enum class EntryOrigin {
+  Manual,
+  Notification,
+}
+
+enum class AutomationKind {
+  Purchase,
+  Refund,
+  Receipt,
+  TransferIn,
+  TransferOut,
+  Recharge,
+  Repayment,
+  RedPacket,
+  Withdrawal,
+  Other,
+}
+
 data class Category(
   val id: String,
   val name: String,
@@ -34,6 +52,40 @@ data class Transaction(
   val transactionDate: Long,
   val createdAt: Long,
   val updatedAt: Long,
+  val entryOrigin: EntryOrigin = EntryOrigin.Manual,
+  val automationKind: AutomationKind? = null,
+  val isUserEdited: Boolean = false,
+)
+
+enum class AutomationEventStatus {
+  Captured,
+  WaitingCloud,
+  Posted,
+  Duplicate,
+  Failed,
+  Undone,
+}
+
+data class AutomationEventSummary(
+  val id: String,
+  val sourcePackage: String,
+  val postedAt: Long,
+  val status: AutomationEventStatus,
+  val parser: String?,
+  val failureCode: String?,
+  val parsedSummary: String?,
+  val transactionId: String?,
+)
+
+data class AutomationSettings(
+  val enabled: Boolean = false,
+  val wechatEnabled: Boolean = true,
+  val alipayEnabled: Boolean = true,
+  val resultNotificationsEnabled: Boolean = true,
+  val cloudEnabled: Boolean = false,
+  val cloudBaseUrl: String = "",
+  val cloudModel: String = "",
+  val hasCloudApiKey: Boolean = false,
 )
 
 data class Budget(
@@ -108,4 +160,6 @@ data class AppState(
   val previousMonthSummary: Summary = Summary(0, 0),
   val dailySpending: List<DailySpending> = emptyList(),
   val projectedExpenseCents: Long = 0,
+  val automationSettings: AutomationSettings = AutomationSettings(),
+  val automationEvents: List<AutomationEventSummary> = emptyList(),
 )

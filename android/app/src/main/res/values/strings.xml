@@ -1,0 +1,4 @@
+<resources>
+  <string name="app_name">Sextant</string>
+  <string name="automation_listener_name">Sextant 自动记账</string>
+</resources>

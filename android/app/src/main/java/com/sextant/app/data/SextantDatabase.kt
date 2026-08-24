@@ -7,7 +7,7 @@ import java.util.UUID
 
 class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, DATABASE_VERSION) {
   companion object {
-    const val DATABASE_VERSION = 8
+    const val DATABASE_VERSION = 9
   }
   init {
     setWriteAheadLoggingEnabled(true)
@@ -60,7 +60,11 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
         description TEXT NOT NULL DEFAULT '',
         transactionDate INTEGER NOT NULL,
         createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
+        updatedAt INTEGER NOT NULL,
+        entryOrigin TEXT NOT NULL DEFAULT 'manual',
+        automationKind TEXT,
+        sourceEventId TEXT,
+        isUserEdited INTEGER NOT NULL DEFAULT 0
       )
       """.trimIndent(),
     )
@@ -81,6 +85,7 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
     db.execSQL("CREATE INDEX idx_transactions_type_date ON transactions(type, transactionDate)")
     db.execSQL("CREATE INDEX idx_transactions_category_date ON transactions(categoryId, transactionDate)")
     db.execSQL("CREATE INDEX idx_transactions_payment_date ON transactions(paymentMethodId, transactionDate)")
+    createAutomationSchema(db)
     seedDefaults(db)
   }
 
@@ -116,6 +121,58 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
     if (oldVersion < 8) {
       db.execSQL("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)")
     }
+    if (oldVersion < 9) {
+      db.execSQL("ALTER TABLE transactions ADD COLUMN entryOrigin TEXT NOT NULL DEFAULT 'manual'")
+      db.execSQL("ALTER TABLE transactions ADD COLUMN automationKind TEXT")
+      db.execSQL("ALTER TABLE transactions ADD COLUMN sourceEventId TEXT")
+      db.execSQL("ALTER TABLE transactions ADD COLUMN isUserEdited INTEGER NOT NULL DEFAULT 0")
+      createAutomationSchema(db)
+    }
+  }
+
+  private fun createAutomationSchema(db: SQLiteDatabase) {
+    db.execSQL(
+      """
+      CREATE TABLE IF NOT EXISTS automation_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        eventKey TEXT NOT NULL UNIQUE,
+        sourcePackage TEXT NOT NULL,
+        notificationKey TEXT NOT NULL,
+        postedAt INTEGER NOT NULL,
+        payloadHash TEXT NOT NULL,
+        encryptedPayload BLOB,
+        payloadIv BLOB,
+        status TEXT NOT NULL,
+        parser TEXT,
+        providerReference TEXT,
+        failureCode TEXT,
+        parsedSummary TEXT,
+        transactionId TEXT,
+        createdAt INTEGER NOT NULL,
+        processedAt INTEGER
+      )
+      """.trimIndent(),
+    )
+    db.execSQL(
+      """
+      CREATE TABLE IF NOT EXISTS classification_rules (
+        id TEXT PRIMARY KEY NOT NULL,
+        sourcePackage TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        automationKind TEXT NOT NULL,
+        matchMode TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        categoryId TEXT NOT NULL,
+        priority INTEGER NOT NULL DEFAULT 0,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      )
+      """.trimIndent(),
+    )
+    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_source_event ON transactions(sourceEventId) WHERE sourceEventId IS NOT NULL")
+    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_automation_provider_reference ON automation_events(sourcePackage, providerReference) WHERE providerReference IS NOT NULL")
+    db.execSQL("CREATE INDEX IF NOT EXISTS idx_automation_status_created ON automation_events(status, createdAt)")
+    db.execSQL("CREATE INDEX IF NOT EXISTS idx_classification_rules_match ON classification_rules(sourcePackage, direction, automationKind, priority DESC)")
   }
 
   private fun seedDefaults(db: SQLiteDatabase) {

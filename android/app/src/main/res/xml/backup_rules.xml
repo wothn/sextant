@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+  <exclude domain="database" path="sextant.db" />
+  <exclude domain="database" path="sextant.db-wal" />
+  <exclude domain="database" path="sextant.db-shm" />
+</full-backup-content>

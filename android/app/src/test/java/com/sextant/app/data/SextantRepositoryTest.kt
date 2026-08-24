@@ -178,7 +178,7 @@ class SextantRepositoryTest {
     db.execSQL("DELETE FROM categories")
     db.execSQL("INSERT INTO categories VALUES ('category', '分类', 'expense', 1, 1, NULL, 0, 1, 1)")
     db.execSQL("INSERT INTO payment_methods VALUES ('source', '现金', 1, 0, 1, 1)")
-    db.execSQL("INSERT INTO transactions VALUES ('transaction', 'category', 'source', 100, 'expense', '备份值', 1, 1, 1)")
+    db.execSQL("INSERT INTO transactions (id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt) VALUES ('transaction', 'category', 'source', 100, 'expense', '备份值', 1, 1, 1)")
     val store = BackupStore(database)
     val backup = store.export()
     db.execSQL("UPDATE transactions SET description = '恢复前原值'")
