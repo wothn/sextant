@@ -194,4 +194,10 @@ fun sextantSwitchColors() = SwitchDefaults.colors(
   uncheckedThumbColor = SextantColors.Surface,
   uncheckedTrackColor = SextantColors.SurfaceStrong,
   uncheckedBorderColor = SextantColors.Border,
+  disabledCheckedThumbColor = SextantColors.OnAccent,
+  disabledCheckedTrackColor = SextantColors.Accent,
+  disabledCheckedBorderColor = SextantColors.Accent,
+  disabledUncheckedThumbColor = SextantColors.Surface,
+  disabledUncheckedTrackColor = SextantColors.SurfaceStrong,
+  disabledUncheckedBorderColor = SextantColors.Border,
 )

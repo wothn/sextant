@@ -83,6 +83,24 @@ class SextantRepository(context: Context) {
     )
   }
 
+  fun loadThemePreference(): ThemePreference {
+    database.readableDatabase.rawQuery(
+      "SELECT value FROM app_settings WHERE key = 'theme_preference'",
+      emptyArray(),
+    ).use { cursor ->
+      return ThemePreference.fromStorage(if (cursor.moveToFirst()) cursor.getString(0) else null)
+    }
+  }
+
+  fun setThemePreference(preference: ThemePreference) {
+    if (loadThemePreference() == preference) return
+    database.writableDatabase.execSQL(
+      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('theme_preference', ?)",
+      arrayOf(preference.storageValue),
+    )
+    notifyChanged()
+  }
+
   fun addTransaction(
     type: TransactionType,
     amountCents: Long,
@@ -348,36 +366,6 @@ class SextantRepository(context: Context) {
       require(cursor.getLong(1) == 0L) { "已被流水使用的来源不能删除" }
     }
     db.delete("payment_methods", "id = ?", arrayOf(id))
-  }
-
-  fun exportCsv(): String {
-    val rows = mutableListOf("date,type,category,source,amount,description")
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
-    database.readableDatabase.rawQuery(
-      """
-      SELECT t.transactionDate, t.type,
-        CASE WHEN parent.name IS NULL THEN COALESCE(c.name, '未分类') ELSE parent.name || ' / ' || c.name END,
-        COALESCE(p.name, '未设置'), t.amountCents, t.description
-      FROM transactions t
-      LEFT JOIN categories c ON c.id = t.categoryId
-      LEFT JOIN categories parent ON parent.id = c.parentCategoryId
-      LEFT JOIN payment_methods p ON p.id = t.paymentMethodId
-      ORDER BY t.transactionDate DESC
-      """.trimIndent(),
-      emptyArray(),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        rows += listOf(
-          dateFormat.format(cursor.getLong(0)),
-          cursor.getString(1),
-          cursor.getString(2),
-          cursor.getString(3),
-          "%.2f".format(Locale.US, cursor.getLong(4) / 100.0),
-          cursor.getString(5).replace("\"", "\"\""),
-        ).joinToString(",") { "\"$it\"" }
-      }
-    }
-    return rows.joinToString("\n")
   }
 
   fun exportBackup(): String = backupStore.export()

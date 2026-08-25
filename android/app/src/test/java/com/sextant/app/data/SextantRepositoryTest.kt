@@ -131,28 +131,6 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun csvUsesSourceHeaderAndEscapesDescription() {
-    val repository = SextantRepository(context)
-    val initial = repository.loadState(filter())
-    val category = initial.categories.first { it.type == TransactionType.Expense }
-    val source = initial.paymentMethods.first()
-    repository.addTransaction(
-      TransactionType.Expense,
-      1_299,
-      category.id,
-      source.id,
-      "咖啡, \"大杯\"",
-      now(),
-    )
-
-    val csv = repository.exportCsv()
-
-    assertTrue(csv.startsWith("date,type,category,source,amount,description\n"))
-    assertTrue(csv.contains("\"12.99\""))
-    assertTrue(csv.contains("\"咖啡, \"\"大杯\"\"\""))
-  }
-
-  @Test
   fun completeBackupRestoreRemovesLaterChanges() {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())
