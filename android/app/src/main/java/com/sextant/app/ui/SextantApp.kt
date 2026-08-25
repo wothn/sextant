@@ -21,6 +21,7 @@ import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.AutomationKind
 import com.sextant.app.data.EntryOrigin
 import com.sextant.app.data.SextantRepository
+import com.sextant.app.data.ThemePreference
 import com.sextant.app.data.TransactionType
 import com.sextant.app.automation.ALIPAY_PACKAGE
 import com.sextant.app.automation.WECHAT_PACKAGE
@@ -38,6 +39,8 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun SextantApp(
   repository: SextantRepository,
+  themePreference: ThemePreference,
+  onThemePreferenceChanged: (ThemePreference) -> Unit,
   requestedEditTransactionId: String? = null,
   onEditRequestConsumed: () -> Unit = {},
 ) {
@@ -56,7 +59,10 @@ fun SextantApp(
   }
 
   LaunchedEffect(repository) {
-    repository.changes.collect { reloadKey++ }
+    repository.changes.collect {
+      reloadKey++
+      onThemePreferenceChanged(repository.loadThemePreference())
+    }
   }
 
   LaunchedEffect(requestedEditTransactionId) {
@@ -95,7 +101,16 @@ fun SextantApp(
         )
         Tab.Analytics -> AnalyticsScreen(state)
         Tab.Discover -> BudgetScreen(state, repository) { reloadKey++ }
-        Tab.Settings -> SettingsScreen(state, repository) { reloadKey++ }
+        Tab.Settings -> SettingsScreen(
+          state = state,
+          repository = repository,
+          themePreference = themePreference,
+          onThemePreferenceChanged = { preference ->
+            repository.setThemePreference(preference)
+            onThemePreferenceChanged(preference)
+          },
+          onChanged = { reloadKey++ },
+        )
       }
     }
   }

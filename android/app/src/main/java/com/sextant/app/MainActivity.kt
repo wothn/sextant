@@ -18,10 +18,13 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     requestedEditTransactionId = intent.getStringExtra(AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID)
     val repository = (application as SextantApplication).repository
+    var themePreference by mutableStateOf(repository.loadThemePreference())
     setContent {
-      SextantTheme {
+      SextantTheme(themePreference = themePreference) {
         SextantApp(
           repository = repository,
+          themePreference = themePreference,
+          onThemePreferenceChanged = { themePreference = it },
           requestedEditTransactionId = requestedEditTransactionId,
           onEditRequestConsumed = { requestedEditTransactionId = null },
         )
