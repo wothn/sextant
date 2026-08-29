@@ -51,10 +51,10 @@ fun LedgerNavigationBar(
       onClick = onQuickEntry,
       icon = {
         Box(
-          Modifier.size(58.dp).clip(CircleShape).background(SextantColors.Accent),
+          Modifier.size(50.dp).clip(CircleShape).background(SextantColors.Accent),
           contentAlignment = Alignment.Center,
         ) {
-          Icon(Icons.Outlined.Add, contentDescription = "记一笔", tint = SextantColors.OnAccent, modifier = Modifier.size(34.dp))
+          Icon(Icons.Outlined.Add, contentDescription = "记一笔", tint = SextantColors.OnAccent, modifier = Modifier.size(28.dp))
         }
       },
       label = null,
