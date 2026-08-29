@@ -31,7 +31,6 @@ object NotificationParserRegistry {
     val reference = REFERENCE_REGEX.find(content)?.groupValues?.getOrNull(1)?.trim()?.takeIf(String::isNotBlank)
     val merchant = ruleMatch?.merchant.cleanParty()
       ?: extractMerchant(content, directionMatch.first)
-      ?: notification.title.trim().takeIf { it.isNotBlank() && it !in GENERIC_TITLES }
     val counterparty = ruleMatch?.counterparty.cleanParty()
       ?: extractCounterparty(content, directionMatch.first)
     val categoryHint = inferCategory(content, directionMatch.first)
@@ -376,9 +375,6 @@ private val PROMOTIONAL_KEYWORDS = listOf(
 )
 private val CONFIRMED_PAYMENT_PHRASES = listOf(
   "支付成功", "付款成功", "成功付款", "已支付", "已付款", "成功收款", "收款成功", "收款到账", "退款成功", "退款到账", "收到退款", "已退款",
-)
-private val GENERIC_TITLES = setOf(
-  "微信", "微信支付", "微信收款助手", "支付宝", "支付宝支付", "付款成功", "支付通知", "收款通知", "服务通知", "服务提醒",
 )
 private val WECHAT_FINANCIAL_TITLES = listOf("微信支付", "微信收款助手", "支付通知", "收款通知", "服务通知")
 private val ALIPAY_FINANCIAL_TITLES = listOf("支付宝", "付款成功", "支付通知", "收款通知", "账单", "资金", "服务提醒")
