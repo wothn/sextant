@@ -106,6 +106,15 @@ class NotificationParsersTest {
   }
 
   @Test
+  fun doesNotUseNotificationTitleAsMerchantFallback() {
+    val result = NotificationParserRegistry.parse(
+      notification(ALIPAY_PACKAGE, "交易提醒", "你有一笔 88.00 元的支出"),
+    ) as LocalParseOutcome.Parsed
+
+    assertNull(result.candidate.merchant)
+  }
+
+  @Test
   fun ignoresOrdinaryChatAndMarketingNotifications() {
     assertTrue(
       NotificationParserRegistry.parse(
