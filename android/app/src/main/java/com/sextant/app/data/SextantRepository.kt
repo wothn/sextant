@@ -70,7 +70,7 @@ class SextantRepository(context: Context) {
       previousMonthSummary = LedgerCalculations.summarize(previousTransactions),
       dailySpending = LedgerCalculations.dailySpending(analysisTransactions, monthStart),
       projectedExpenseCents = LedgerCalculations.projectedExpense(analysisSummary.expenseCents, monthStart),
-      automationSettings = automationStore.loadSettings(automationSecretStore.hasApiKey()),
+      automationSettings = automationStore.loadSettings(),
       automationEvents = automationStore.listRecentEvents(),
     )
   }
@@ -166,33 +166,10 @@ class SextantRepository(context: Context) {
     notifyChanged()
   }
 
-  fun loadAutomationSettings(): AutomationSettings = automationStore.loadSettings(automationSecretStore.hasApiKey())
-
-  fun listActiveCategoryNames(): List<String> = listCategories(database.readableDatabase)
-    .asSequence()
-    .map(Category::name)
-    .distinct()
-    .toList()
+  fun loadAutomationSettings(): AutomationSettings = automationStore.loadSettings()
 
   fun updateAutomationSettings(settings: AutomationSettings) {
-    if (settings.cloudEnabled) {
-      require(settings.cloudBaseUrl.startsWith("https://")) { "云端接口必须使用 HTTPS" }
-      require(settings.cloudModel.isNotBlank()) { "模型名称不能为空" }
-      require(automationSecretStore.hasApiKey()) { "请先保存 API Key" }
-    }
     automationStore.updateSettings(settings)
-    notifyChanged()
-  }
-
-  fun setAutomationApiKey(apiKey: String) {
-    automationSecretStore.setApiKey(apiKey)
-    notifyChanged()
-  }
-
-  fun clearAutomationApiKey() {
-    automationSecretStore.clearApiKey()
-    val settings = loadAutomationSettings()
-    if (settings.cloudEnabled) automationStore.updateSettings(settings.copy(cloudEnabled = false, hasCloudApiKey = false))
     notifyChanged()
   }
 

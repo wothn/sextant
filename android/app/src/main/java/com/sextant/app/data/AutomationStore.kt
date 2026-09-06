@@ -11,7 +11,7 @@ import java.security.MessageDigest
 import java.util.UUID
 
 internal class AutomationStore(private val database: SextantDatabase) {
-  fun loadSettings(hasApiKey: Boolean = false): AutomationSettings {
+  fun loadSettings(): AutomationSettings {
     val values = mutableMapOf<String, String>()
     database.readableDatabase.rawQuery(
       "SELECT key, value FROM app_settings WHERE key LIKE 'automation_%'",
@@ -24,10 +24,6 @@ internal class AutomationStore(private val database: SextantDatabase) {
       wechatEnabled = values[KEY_WECHAT].toBooleanSetting(default = true),
       alipayEnabled = values[KEY_ALIPAY].toBooleanSetting(default = true),
       resultNotificationsEnabled = values[KEY_RESULT_NOTIFICATIONS].toBooleanSetting(default = true),
-      cloudEnabled = values[KEY_CLOUD_ENABLED].toBooleanSetting(),
-      cloudBaseUrl = values[KEY_CLOUD_BASE_URL].orEmpty(),
-      cloudModel = values[KEY_CLOUD_MODEL].orEmpty(),
-      hasCloudApiKey = hasApiKey,
     )
   }
 
@@ -37,9 +33,6 @@ internal class AutomationStore(private val database: SextantDatabase) {
       KEY_WECHAT to settings.wechatEnabled.asSetting(),
       KEY_ALIPAY to settings.alipayEnabled.asSetting(),
       KEY_RESULT_NOTIFICATIONS to settings.resultNotificationsEnabled.asSetting(),
-      KEY_CLOUD_ENABLED to settings.cloudEnabled.asSetting(),
-      KEY_CLOUD_BASE_URL to settings.cloudBaseUrl.trim(),
-      KEY_CLOUD_MODEL to settings.cloudModel.trim(),
     )
     val db = database.writableDatabase
     db.beginTransaction()
@@ -94,10 +87,6 @@ internal class AutomationStore(private val database: SextantDatabase) {
       encrypted = if (cursor.isNull(4) || cursor.isNull(5)) null else EncryptedValue(cursor.getBlob(4), cursor.getBlob(5)),
       status = cursor.getString(6).toAutomationEventStatus(),
     )
-  }
-
-  fun markWaitingCloud(id: String, failureCode: String) {
-    updateEvent(id, AutomationEventStatus.WaitingCloud, failureCode = failureCode)
   }
 
   fun markFailed(id: String, failureCode: String, clearPayload: Boolean = false) {
@@ -353,9 +342,6 @@ internal class AutomationStore(private val database: SextantDatabase) {
     const val KEY_WECHAT = "automation_wechat_enabled"
     const val KEY_ALIPAY = "automation_alipay_enabled"
     const val KEY_RESULT_NOTIFICATIONS = "automation_result_notifications_enabled"
-    const val KEY_CLOUD_ENABLED = "automation_cloud_enabled"
-    const val KEY_CLOUD_BASE_URL = "automation_cloud_base_url"
-    const val KEY_CLOUD_MODEL = "automation_cloud_model"
     const val RAW_RETENTION_MILLIS = 7L * 24 * 60 * 60 * 1000
     const val AUDIT_RETENTION_MILLIS = 90L * 24 * 60 * 60 * 1000
   }
