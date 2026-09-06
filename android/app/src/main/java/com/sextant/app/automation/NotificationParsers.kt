@@ -4,8 +4,6 @@ import com.sextant.app.data.AutomationKind
 import com.sextant.app.data.TransactionType
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.time.Instant
-import kotlin.math.abs
 
 object NotificationParserRegistry {
   fun parse(notification: CapturedNotification): LocalParseOutcome {
@@ -23,10 +21,7 @@ object NotificationParserRegistry {
       }
     val directionMatch = ruleMatch?.let { it.direction to it.directionEvidence }
       ?: findDirection(content)
-      ?: return LocalParseOutcome.NeedsEnhancement(
-        "direction_missing",
-        AiEnhancementContext(amountCents = amount.first, amountEvidence = amount.second),
-      )
+      ?: return LocalParseOutcome.Insufficient("direction_missing")
     val kind = findKind(content, directionMatch.first)
     val reference = REFERENCE_REGEX.find(content)?.groupValues?.getOrNull(1)?.trim()?.takeIf(String::isNotBlank)
     val merchant = ruleMatch?.merchant.cleanParty()
@@ -34,7 +29,7 @@ object NotificationParserRegistry {
     val counterparty = ruleMatch?.counterparty.cleanParty()
       ?: extractCounterparty(content, directionMatch.first)
     val categoryHint = inferCategory(content, directionMatch.first)
-    val description = buildDescription(kind, merchant ?: counterparty, content)
+    val description = (merchant ?: counterparty).orEmpty()
 
     return LocalParseOutcome.Parsed(
       ParsedTransactionCandidate(
@@ -72,62 +67,6 @@ object NotificationParserRegistry {
       PAY_TO_MERCHANT_REGEX.containsMatchIn(content) ||
       AMOUNTLESS_INCOMING_REGEX.containsMatchIn(content)
     return (trustedSource || strongSignal) && strongSignal
-  }
-
-  fun validateCloudPayload(
-    payload: CloudParsePayload,
-    notification: CapturedNotification,
-    expectedAmountCents: Long? = null,
-    allowedCategoryHints: Set<String>? = null,
-  ): ParsedTransactionCandidate? {
-    val content = notification.normalizedText()
-    if (!isPlausibleFinancial(notification)) return null
-    if (payload.currency.uppercase() != "CNY") return null
-    if (payload.evidence.amount.isBlank() || !content.contains(payload.evidence.amount)) return null
-    if (payload.evidence.direction.isBlank() || !content.contains(payload.evidence.direction)) return null
-
-    val amountCents = parseAmountCents(payload.amount) ?: return null
-    val normalizedAmountEvidence = normalizeContent(payload.evidence.amount)
-    val evidenceAmount = AMOUNT_REGEX.find(normalizedAmountEvidence)?.amountText()
-      ?.let(::parseAmountCents)
-      ?: parseAmountCents(normalizedAmountEvidence)
-      ?: return null
-    if (amountCents != evidenceAmount) return null
-    if (expectedAmountCents != null && amountCents != expectedAmountCents) return null
-
-    val direction = when (payload.direction.lowercase()) {
-      "outgoing", "expense" -> TransactionType.Expense
-      "incoming", "income" -> TransactionType.Income
-      else -> return null
-    }
-    val kind = payload.kind.toAutomationKind() ?: return null
-    val occurredAt = payload.occurredAt?.let {
-      runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
-    } ?: notification.postedAt
-    if (abs(occurredAt - notification.postedAt) > MAX_EVENT_TIME_DRIFT) return null
-
-    val merchant = validateOptionalEvidence(payload.merchant, payload.evidence.merchant, content) ?: return null
-    val counterparty = validateOptionalEvidence(payload.counterparty, payload.evidence.counterparty, content) ?: return null
-    val providerReference = payload.providerReference.clean()?.let { reference ->
-      reference.takeIf(content::contains) ?: return null
-    }
-    val description = payload.description.trim().ifBlank {
-      buildDescription(kind, merchant.value ?: counterparty.value, content)
-    }.take(MAX_DESCRIPTION_LENGTH)
-    return ParsedTransactionCandidate(
-      direction = direction,
-      kind = kind,
-      amountCents = amountCents,
-      occurredAt = occurredAt,
-      merchant = merchant.value,
-      counterparty = counterparty.value,
-      description = description,
-      categoryHint = payload.categoryHint.clean()?.takeIf { allowedCategoryHints == null || it in allowedCategoryHints },
-      providerReference = providerReference,
-      amountEvidence = payload.evidence.amount,
-      directionEvidence = payload.evidence.direction,
-      parser = "ai-enhancement",
-    )
   }
 
   private fun findDirection(content: String): Pair<TransactionType, String>? {
@@ -199,28 +138,6 @@ object NotificationParserRegistry {
       pattern.find(content)?.groups?.get("counterparty")?.value.cleanParty()
     }
   }
-
-  private fun buildDescription(kind: AutomationKind, merchant: String?, content: String): String {
-    val prefix = kind.displayName
-    val detail = merchant?.takeIf(String::isNotBlank)
-      ?: content.lineSequence().firstOrNull { it.isNotBlank() }?.take(60)
-    return listOfNotNull(prefix, detail).distinct().joinToString(" · ").take(MAX_DESCRIPTION_LENGTH)
-  }
-}
-
-private data class ValidatedOptionalEvidence(val value: String?)
-
-private fun validateOptionalEvidence(
-  proposed: String?,
-  evidence: String?,
-  content: String,
-): ValidatedOptionalEvidence? {
-  val value = proposed.clean()
-  if (value == null) return ValidatedOptionalEvidence(null)
-  val literalEvidence = evidence.clean() ?: return null
-  if (!content.contains(literalEvidence)) return null
-  if (value != literalEvidence) return null
-  return ValidatedOptionalEvidence(value)
 }
 
 private data class PaymentRule(
@@ -244,20 +161,6 @@ fun parseAmountCents(value: String): Long? = runCatching {
   if (decimal <= BigDecimal.ZERO) return null
   decimal.movePointRight(2).longValueExact()
 }.getOrNull()
-
-private fun String.toAutomationKind(): AutomationKind? = when (lowercase()) {
-  "purchase" -> AutomationKind.Purchase
-  "refund" -> AutomationKind.Refund
-  "receipt" -> AutomationKind.Receipt
-  "transfer_in" -> AutomationKind.TransferIn
-  "transfer_out" -> AutomationKind.TransferOut
-  "recharge" -> AutomationKind.Recharge
-  "repayment" -> AutomationKind.Repayment
-  "red_packet" -> AutomationKind.RedPacket
-  "withdrawal" -> AutomationKind.Withdrawal
-  "other" -> AutomationKind.Other
-  else -> null
-}
 
 private fun String?.clean(): String? = this?.trim()?.take(MAX_DESCRIPTION_LENGTH)?.takeIf(String::isNotBlank)
 
@@ -289,20 +192,6 @@ private fun localParserName(packageName: String) = when (packageName) {
   ALIPAY_PACKAGE -> "alipay-local-v1"
   else -> "local-v1"
 }
-
-val AutomationKind.displayName: String
-  get() = when (this) {
-    AutomationKind.Purchase -> "消费"
-    AutomationKind.Refund -> "退款"
-    AutomationKind.Receipt -> "收款"
-    AutomationKind.TransferIn -> "转入"
-    AutomationKind.TransferOut -> "转出"
-    AutomationKind.Recharge -> "充值"
-    AutomationKind.Repayment -> "还款"
-    AutomationKind.RedPacket -> "红包"
-    AutomationKind.Withdrawal -> "提现"
-    AutomationKind.Other -> "资金变动"
-  }
 
 private val SUPPORTED_PACKAGES = setOf(WECHAT_PACKAGE, ALIPAY_PACKAGE)
 private val AMOUNT_REGEX = Regex("(?:CNY|RMB|人民币|[￥¥])\\s*([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*元?|([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*元")
@@ -408,4 +297,3 @@ private val CATEGORY_KEYWORDS = linkedMapOf(
   "信用卡还款" to listOf("信用卡还款"),
 )
 private const val MAX_DESCRIPTION_LENGTH = 120
-private const val MAX_EVENT_TIME_DRIFT = 7L * 24 * 60 * 60 * 1000

@@ -24,7 +24,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,13 +31,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.sextant.app.SextantApplication
 import com.sextant.app.automation.ALIPAY_PACKAGE
@@ -52,9 +49,6 @@ import com.sextant.app.ui.theme.SextantColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun AutomationSettingsScreen(
@@ -64,9 +58,7 @@ fun AutomationSettingsScreen(
   onNavigateBack: () -> Unit,
 ) {
   val context = LocalContext.current
-  val scope = rememberCoroutineScope()
   var draft by remember(state.automationSettings) { mutableStateOf(state.automationSettings) }
-  var apiKey by remember { mutableStateOf("") }
   var message by remember { mutableStateOf<String?>(null) }
   var listenerRefresh by remember { mutableIntStateOf(0) }
   val listenerEnabled = remember(listenerRefresh) {
@@ -147,75 +139,11 @@ fun AutomationSettingsScreen(
       }
     }
     item {
-      Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-          InlineSwitch("AI 增强", "金额明确后，增强收支方向、商户、分类和描述", draft.cloudEnabled) {
-            draft = draft.copy(cloudEnabled = it)
-          }
-          if (draft.cloudEnabled) {
-            Text(
-              "启用后，仅将已确认含有明确金额的通知发送到你配置的第三方接口。AI 不会猜测缺失金额；请求失败时使用可信的本地结果。",
-              color = SextantColors.Danger,
-            )
-            OutlinedTextField(
-              value = draft.cloudBaseUrl,
-              onValueChange = { draft = draft.copy(cloudBaseUrl = it) },
-              label = { Text("HTTPS Base URL") },
-              singleLine = true,
-              modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-              value = draft.cloudModel,
-              onValueChange = { draft = draft.copy(cloudModel = it) },
-              label = { Text("模型名称") },
-              singleLine = true,
-              modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-              value = apiKey,
-              onValueChange = { apiKey = it },
-              label = { Text(if (draft.hasCloudApiKey) "API Key（已保存，留空则不修改）" else "API Key") },
-              visualTransformation = PasswordVisualTransformation(),
-              singleLine = true,
-              modifier = Modifier.fillMaxWidth(),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              OutlinedButton(onClick = {
-                scope.launch {
-                  val result = runCatching {
-                    if (apiKey.isNotBlank()) repository.setAutomationApiKey(apiKey)
-                    repository.updateAutomationSettings(draft)
-                    withContext(Dispatchers.IO) {
-                      (context.applicationContext as SextantApplication).automationCoordinator.testCloudConnection()
-                    }
-                  }
-                  message = if (result.getOrDefault(false)) "连接测试成功。" else "连接测试失败，请检查接口、模型和密钥。"
-                  onChanged()
-                }
-              }) { Text("测试连接") }
-              OutlinedButton(onClick = {
-                repository.clearAutomationApiKey()
-                apiKey = ""
-                draft = draft.copy(cloudEnabled = false, hasCloudApiKey = false)
-                message = "已清除 API Key。"
-              }) { Text("清除密钥") }
-            }
-          }
-        }
-      }
-    }
-    item {
       Button(
         onClick = {
-          val result = runCatching {
-            if (apiKey.isNotBlank()) repository.setAutomationApiKey(apiKey)
-            repository.updateAutomationSettings(draft)
-          }
+          val result = runCatching { repository.updateAutomationSettings(draft) }
           message = result.fold({ "自动记账设置已保存。" }, { it.message ?: "保存失败。" })
-          if (result.isSuccess) {
-            apiKey = ""
-            onChanged()
-          }
+          if (result.isSuccess) onChanged()
         },
         modifier = Modifier.fillMaxWidth(),
       ) { Text("保存设置") }
@@ -296,7 +224,6 @@ private fun String.sourceName() = when (this) {
 
 private fun AutomationEventStatus.label() = when (this) {
   AutomationEventStatus.Captured -> "等待处理"
-  AutomationEventStatus.WaitingCloud -> "等待 AI 增强"
   AutomationEventStatus.Posted -> "已入账"
   AutomationEventStatus.Duplicate -> "已去重"
   AutomationEventStatus.Failed -> "处理失败"
@@ -306,9 +233,6 @@ private fun AutomationEventStatus.label() = when (this) {
 private fun String.failureLabel() = when (this) {
   "amount_missing" -> "通知未包含明确金额"
   "amount_ambiguous" -> "通知包含多个可能的金额"
-  "direction_missing" -> "无法确定收支方向，且 AI 增强未启用"
-  "ai_not_configured", "cloud_not_configured" -> "AI 增强配置不可用"
-  "ai_validation_failed", "cloud_validation_failed" -> "AI 返回内容未通过本地校验"
-  "cloud_request_failed" -> "AI 请求失败"
+  "direction_missing" -> "无法确定收支方向"
   else -> this
 }

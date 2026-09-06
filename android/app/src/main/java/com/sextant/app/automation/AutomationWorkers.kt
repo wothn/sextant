@@ -13,13 +13,6 @@ class LocalParseWorker(context: Context, parameters: WorkerParameters) : Worker(
   }
 }
 
-class CloudParseWorker(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
-  override fun doWork(): Result {
-    val eventId = inputData.getString(EVENT_ID_KEY) ?: return Result.failure()
-    return applicationContext.coordinator().processCloud(eventId, runAttemptCount + 1).toWorkResult()
-  }
-}
-
 class AutomationCleanupWorker(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
   override fun doWork(): Result {
     applicationContext.coordinator().cleanup()

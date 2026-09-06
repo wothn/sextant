@@ -67,38 +67,7 @@ data class ParsedTransactionCandidate(
 sealed interface LocalParseOutcome {
   data object NotFinancial : LocalParseOutcome
   data class Parsed(val candidate: ParsedTransactionCandidate) : LocalParseOutcome
-  data class NeedsEnhancement(val reason: String, val context: AiEnhancementContext) : LocalParseOutcome
   data class Insufficient(val reason: String) : LocalParseOutcome
 }
-
-data class AiEnhancementContext(
-  val amountCents: Long,
-  val amountEvidence: String,
-  val localCandidate: ParsedTransactionCandidate? = null,
-  val categoryHints: List<String> = emptyList(),
-)
-
-@Serializable
-data class CloudParsePayload(
-  val direction: String,
-  val kind: String,
-  val amount: String,
-  val currency: String = "CNY",
-  val occurredAt: String? = null,
-  val merchant: String? = null,
-  val counterparty: String? = null,
-  val description: String = "",
-  val categoryHint: String? = null,
-  val providerReference: String? = null,
-  val evidence: CloudEvidence,
-)
-
-@Serializable
-data class CloudEvidence(
-  val amount: String,
-  val direction: String,
-  val merchant: String? = null,
-  val counterparty: String? = null,
-)
 
 internal const val MAX_NOTIFICATION_TEXT_LENGTH = 8_000

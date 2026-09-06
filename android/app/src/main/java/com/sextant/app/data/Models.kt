@@ -59,7 +59,6 @@ data class Transaction(
 
 enum class AutomationEventStatus {
   Captured,
-  WaitingCloud,
   Posted,
   Duplicate,
   Failed,
@@ -82,10 +81,6 @@ data class AutomationSettings(
   val wechatEnabled: Boolean = true,
   val alipayEnabled: Boolean = true,
   val resultNotificationsEnabled: Boolean = true,
-  val cloudEnabled: Boolean = false,
-  val cloudBaseUrl: String = "",
-  val cloudModel: String = "",
-  val hasCloudApiKey: Boolean = false,
 )
 
 data class Budget(

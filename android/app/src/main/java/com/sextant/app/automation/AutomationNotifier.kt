@@ -45,7 +45,7 @@ internal class AutomationNotifier(private val context: Context) {
     val notification = Notification.Builder(context, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.ic_menu_save)
       .setContentTitle("已自动记录$direction ${formatAmount(transaction.amountCents)}")
-      .setContentText("${transaction.categoryName} · ${transaction.description}")
+      .setContentText(listOf(transaction.categoryName, transaction.description).filter(String::isNotBlank).joinToString(" · "))
       .setContentIntent(editPendingIntent)
       .setAutoCancel(true)
       .setGroup(GROUP_KEY)
