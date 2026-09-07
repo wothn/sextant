@@ -1,23 +1,18 @@
 package com.sextant.app.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.Category
+import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 
 @Composable
@@ -28,178 +23,39 @@ fun CategoryPicker(
   selectedCategoryId: String?,
   onSelect: (Category) -> Unit,
 ) {
-  val selectedChildren = selectedParentId?.let { parentId ->
-    typeCategories.filter { it.parentCategoryId == parentId }
-  }.orEmpty()
-
-  StableCategoryPickerLayout(
-    parentCount = parentCategories.size,
-    selectedParentIndex = parentCategories.indexOfFirst { it.id == selectedParentId },
-    hasChildren = selectedChildren.isNotEmpty(),
-  ) {
-    parentCategories.forEach { parent ->
-      CategoryChip(
-        category = parent,
-        selected = parent.id == selectedParentId,
-        onSelect = { onSelect(parent) },
+  val children = typeCategories.filter { it.parentCategoryId == selectedParentId && selectedParentId != null }
+  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      parentCategories.forEach { category ->
+        CategoryChip(category, category.id == selectedParentId) { onSelect(category) }
+      }
+    }
+    if (children.isNotEmpty()) {
+      HorizontalDivider(color = SextantColors.Border)
+      Text(
+        "${parentCategories.firstOrNull { it.id == selectedParentId }?.name.orEmpty()} · 子分类",
+        style = MaterialTheme.typography.labelMedium,
+        color = SextantColors.TextMuted,
       )
+      FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        children.forEach { category ->
+          CategoryChip(category, category.id == selectedCategoryId) { onSelect(category) }
+        }
+      }
     }
-    if (selectedChildren.isNotEmpty()) {
-      ChildCategoryBranch(
-        children = selectedChildren,
-        selectedCategoryId = selectedCategoryId,
-        parentColor = parentCategories.firstOrNull { it.id == selectedParentId }?.let { argbColor(it.color) }
-          ?: Color.Gray,
-        onSelect = onSelect,
-      )
+    if (parentCategories.isEmpty()) {
+      Text("暂无可选分类", color = SextantColors.TextMuted)
     }
   }
 }
 
 @Composable
-private fun ChildCategoryBranch(
-  children: List<Category>,
-  selectedCategoryId: String?,
-  parentColor: Color,
-  onSelect: (Category) -> Unit,
-) {
-  Row(
-    modifier = Modifier
-      .fillMaxWidth()
-      .padding(start = 12.dp)
-      .drawBehind {
-        val stroke = 2.dp.toPx()
-        val railX = 1.dp.toPx()
-        val branchY = 16.dp.toPx()
-        drawLine(parentColor.copy(alpha = 0.48f), start = androidx.compose.ui.geometry.Offset(railX, 0f), end = androidx.compose.ui.geometry.Offset(railX, branchY), strokeWidth = stroke)
-        drawLine(parentColor.copy(alpha = 0.48f), start = androidx.compose.ui.geometry.Offset(railX, branchY), end = androidx.compose.ui.geometry.Offset(14.dp.toPx(), branchY), strokeWidth = stroke)
-      }
-      .padding(start = 18.dp),
-  ) {
-    FlowRow(
-      modifier = Modifier.weight(1f),
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      children.forEach { child ->
-        val selected = child.id == selectedCategoryId
-        AssistChip(
-          onClick = { onSelect(child) },
-          label = { Text(child.name) },
-          leadingIcon = if (selected) {
-            { Icon(Icons.Outlined.Check, contentDescription = null) }
-          } else {
-            null
-          },
-          colors = AssistChipDefaults.assistChipColors(
-            containerColor = if (selected) parentColor else parentColor.copy(alpha = 0.12f),
-            labelColor = if (selected) Color.White else parentColor,
-            leadingIconContentColor = Color.White,
-          ),
-          border = null,
-        )
-      }
-    }
-  }
-}
-
-@Composable
-private fun StableCategoryPickerLayout(
-  parentCount: Int,
-  selectedParentIndex: Int,
-  hasChildren: Boolean,
-  content: @Composable () -> Unit,
-) {
-  val horizontalGap = 8.dp
-  val verticalGap = 8.dp
-
-  Layout(content = content) { measurables, constraints ->
-    val horizontalGapPx = horizontalGap.roundToPx()
-    val verticalGapPx = verticalGap.roundToPx()
-    val parentPlaceables = measurables.take(parentCount).map { measurable ->
-      measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-    }
-    val childPlaceable = if (hasChildren) {
-      measurables.getOrNull(parentCount)?.measure(constraints.copy(minWidth = 0, minHeight = 0))
-    } else {
-      null
-    }
-
-    val placements = mutableListOf<CategoryPlacement>()
-    val rowHeights = mutableListOf<Int>()
-    val rowTops = mutableListOf<Int>()
-    var x = 0
-    var y = 0
-    var row = 0
-    var rowHeight = 0
-    parentPlaceables.forEachIndexed { index, placeable ->
-      if (x > 0 && x + placeable.width > constraints.maxWidth) {
-        rowHeights += rowHeight
-        y += rowHeight + verticalGapPx
-        x = 0
-        row += 1
-        rowHeight = 0
-      }
-      if (rowTops.size <= row) {
-        rowTops += y
-      }
-      placements += CategoryPlacement(index, x, y, row)
-      x += placeable.width + horizontalGapPx
-      rowHeight = maxOf(rowHeight, placeable.height)
-    }
-    if (parentPlaceables.isNotEmpty()) {
-      rowHeights += rowHeight
-    }
-
-    val selectedRow = if (hasChildren) {
-      placements.firstOrNull { it.index == selectedParentIndex }?.row ?: -1
-    } else {
-      -1
-    }
-
-    val parentHeight = if (rowHeights.isEmpty()) 0 else rowTops.last() + rowHeights.last()
-    val childExtraHeight = if (childPlaceable != null && selectedRow >= 0) {
-      verticalGapPx + childPlaceable.height
-    } else {
-      0
-    }
-
-    layout(constraints.maxWidth, parentHeight + childExtraHeight) {
-      val childTop = if (childPlaceable != null && selectedRow >= 0) {
-        rowTops[selectedRow] + rowHeights[selectedRow] + verticalGapPx
-      } else {
-        -1
-      }
-      placements.forEach { placement ->
-        val rowOffset = if (childTop >= 0 && placement.row > selectedRow) childExtraHeight else 0
-        parentPlaceables[placement.index].placeRelative(placement.x, placement.y + rowOffset)
-      }
-      childPlaceable?.placeRelative(0, childTop)
-    }
-  }
-}
-
-private data class CategoryPlacement(
-  val index: Int,
-  val x: Int,
-  val y: Int,
-  val row: Int,
-)
-
-@Composable
-private fun CategoryChip(
-  category: Category,
-  selected: Boolean,
-  onSelect: () -> Unit,
-) {
-  val itemColor = argbColor(category.color)
-  AssistChip(
+private fun CategoryChip(category: Category, selected: Boolean, onSelect: () -> Unit) {
+  FilterChip(
+    selected = selected,
     onClick = onSelect,
     label = { Text(category.name) },
-    colors = AssistChipDefaults.assistChipColors(
-      containerColor = if (selected) itemColor else itemColor.copy(alpha = 0.14f),
-      labelColor = if (selected) Color.White else itemColor,
-    ),
-    border = null,
+    leadingIcon = { ColorDot(argbColor(category.color)) },
+    colors = sextantFilterChipColors(),
   )
 }
