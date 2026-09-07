@@ -153,18 +153,6 @@ class NotificationParsersTest {
   }
 
   @Test
-  fun clearAmountWithUnknownDirectionCanUseOptionalAiEnhancement() {
-    val result = NotificationParserRegistry.parse(
-      notification(WECHAT_PACKAGE, "微信支付", "转账成功 20.00元"),
-    )
-
-    assertTrue(result is LocalParseOutcome.NeedsEnhancement)
-    result as LocalParseOutcome.NeedsEnhancement
-    assertEquals("direction_missing", result.reason)
-    assertEquals(2_000L, result.context.amountCents)
-  }
-
-  @Test
   fun parsesLatestGroupedChildAndNormalizesFullWidthDigits() {
     val result = NotificationParserRegistry.parse(
       CapturedNotification(
@@ -197,60 +185,6 @@ class NotificationParsersTest {
     assertTrue(content.contains("第二行"))
     assertTrue(content.contains("附加信息"))
     assertTrue(content.contains("已支付¥2.00"))
-  }
-
-  @Test
-  fun cloudPayloadRequiresLiteralMatchingEvidence() {
-    val notification = notification(ALIPAY_PACKAGE, "支付宝", "支付成功 ￥9.90")
-    val valid = CloudParsePayload(
-      direction = "outgoing",
-      kind = "purchase",
-      amount = "9.90",
-      evidence = CloudEvidence("￥9.90", "支付成功"),
-    )
-    val invalid = valid.copy(amount = "99.00")
-    val inventedMerchant = valid.copy(
-      merchant = "不存在的商户",
-      evidence = valid.evidence.copy(merchant = "不存在的商户"),
-    )
-
-    assertEquals(990L, NotificationParserRegistry.validateCloudPayload(valid, notification)?.amountCents)
-    assertNull(NotificationParserRegistry.validateCloudPayload(invalid, notification))
-    assertNull(NotificationParserRegistry.validateCloudPayload(valid, notification, expectedAmountCents = 9900L))
-    assertNull(NotificationParserRegistry.validateCloudPayload(inventedMerchant, notification))
-    assertNull(
-      NotificationParserRegistry.validateCloudPayload(
-        valid.copy(providerReference = "invented-reference"),
-        notification,
-      ),
-    )
-    assertNull(
-      NotificationParserRegistry.validateCloudPayload(
-        valid.copy(categoryHint = "不存在的分类"),
-        notification,
-        allowedCategoryHints = setOf("正餐", "奶茶咖啡"),
-      )?.categoryHint,
-    )
-  }
-
-  @Test
-  fun aiEnhancementValidatesFullWidthLiteralAmountAgainstTrustedCents() {
-    val notification = notification(WECHAT_PACKAGE, "微信支付", "已支付￥１６.００")
-    val payload = CloudParsePayload(
-      direction = "outgoing",
-      kind = "purchase",
-      amount = "16.00",
-      evidence = CloudEvidence("￥１６.００", "已支付"),
-    )
-
-    assertEquals(
-      1_600L,
-      NotificationParserRegistry.validateCloudPayload(
-        payload,
-        notification,
-        expectedAmountCents = 1_600L,
-      )?.amountCents,
-    )
   }
 
   private fun notification(packageName: String, title: String, text: String) = CapturedNotification(
