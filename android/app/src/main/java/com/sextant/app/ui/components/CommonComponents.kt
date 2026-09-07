@@ -14,8 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChipDefaults
@@ -120,7 +119,7 @@ fun SectionTitle(text: String) {
 
 @Composable
 fun ColorDot(color: Color) {
-  Canvas(Modifier.size(14.dp)) {
+  Canvas(Modifier.size(8.dp)) {
     drawCircle(color)
   }
 }
@@ -132,7 +131,6 @@ fun <T> FlowChips(
   label: (T) -> String,
   color: (T) -> Color,
   modifier: Modifier = Modifier,
-  useColorContainer: Boolean = false,
   onSelect: (T) -> Unit,
 ) {
   FlowRow(
@@ -150,28 +148,12 @@ fun <T> FlowChips(
       }
       val isSelected = id == selectedId
       val itemColor = color(item)
-      AssistChip(
+      FilterChip(
+        selected = isSelected,
         onClick = { onSelect(item) },
         label = { Text(label(item)) },
-        leadingIcon = if (useColorContainer) null else {
-          { ColorDot(itemColor) }
-        },
-        colors = AssistChipDefaults.assistChipColors(
-          containerColor = when {
-            useColorContainer && isSelected -> itemColor
-            useColorContainer -> itemColor.copy(alpha = 0.14f)
-            isSelected -> SextantColors.AccentSoft
-            else -> SextantColors.Surface
-          },
-          labelColor = when {
-            useColorContainer && isSelected -> Color.White
-            useColorContainer -> itemColor
-            isSelected -> SextantColors.AccentStrong
-            else -> SextantColors.Text
-          },
-          leadingIconContentColor = SextantColors.TextMuted,
-        ),
-        border = if (useColorContainer || isSelected) null else AssistChipDefaults.assistChipBorder(enabled = true),
+        leadingIcon = { ColorDot(itemColor) },
+        colors = sextantFilterChipColors(),
       )
     }
   }
@@ -201,3 +183,4 @@ fun sextantSwitchColors() = SwitchDefaults.colors(
   disabledUncheckedTrackColor = SextantColors.SurfaceStrong,
   disabledUncheckedBorderColor = SextantColors.Border,
 )
+
