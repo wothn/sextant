@@ -6,14 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -36,41 +35,69 @@ fun LedgerNavigationBar(
 ) {
   Surface(color = SextantColors.Surface, tonalElevation = 0.dp) {
     Row(
-      modifier = Modifier.fillMaxWidth().navigationBarsPadding()
-        .padding(horizontal = 8.dp, vertical = 6.dp).selectableGroup(),
+      modifier = Modifier
+        .fillMaxWidth()
+        .navigationBarsPadding()
+        .padding(horizontal = 10.dp, vertical = 4.dp)
+        .selectableGroup(),
       verticalAlignment = Alignment.CenterVertically,
     ) {
       listOf(Tab.Home, Tab.Analytics, null, Tab.Discover, Tab.Settings).forEach { tab ->
         if (tab == null) {
           Column(
-            Modifier.weight(1f).height(64.dp),
+            modifier = Modifier.weight(1f).height(58.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
           ) {
             FilledIconButton(
               onClick = onQuickEntry,
-              modifier = Modifier.offset(y = (-6).dp).size(52.dp),
-              shape = CircleShape,
+              modifier = Modifier.size(width = 44.dp, height = 38.dp),
+              shape = RoundedCornerShape(14.dp),
               colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = SextantColors.Accent,
                 contentColor = SextantColors.OnAccent,
               ),
             ) {
-              Icon(Icons.Outlined.Add, contentDescription = "记一笔", modifier = Modifier.size(28.dp))
+              Icon(
+                Icons.Outlined.Edit,
+                contentDescription = "记一笔",
+                modifier = Modifier.size(21.dp),
+              )
             }
+            Text(
+              text = "记账",
+              color = SextantColors.AccentStrong,
+              style = MaterialTheme.typography.labelSmall,
+              fontWeight = FontWeight.SemiBold,
+            )
           }
         } else {
           val selected = tab == selectedTab
           val color = if (selected) SextantColors.AccentStrong else SextantColors.TextSubtle
           Column(
-            modifier = Modifier.weight(1f).height(64.dp)
-              .selectable(selected = selected, role = Role.Tab, onClick = { onTabSelected(tab) }),
+            modifier = Modifier
+              .weight(1f)
+              .height(58.dp)
+              .selectable(
+                selected = selected,
+                role = Role.Tab,
+                onClick = { onTabSelected(tab) },
+              ),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
           ) {
-            Icon(tab.icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
-            Text(tab.title, color = color, style = MaterialTheme.typography.labelSmall,
-              fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+            Icon(
+              tab.icon,
+              contentDescription = null,
+              tint = color,
+              modifier = Modifier.size(23.dp),
+            )
+            Text(
+              tab.title,
+              color = color,
+              style = MaterialTheme.typography.labelSmall,
+              fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            )
           }
         }
       }
