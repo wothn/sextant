@@ -86,6 +86,8 @@ fun QuickEntryDialog(
   ModalBottomSheet(
     onDismissRequest = onDismiss,
     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    // Keep boundary flings inside selection lists instead of moving the sheet.
+    sheetGesturesEnabled = panel == EntryPanel.Form,
     shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     containerColor = SextantColors.Background,
     tonalElevation = 0.dp,
@@ -93,8 +95,10 @@ fun QuickEntryDialog(
   ) {
     val focus = LocalFocusManager.current
     BackHandler(enabled = panel != EntryPanel.Form) { panel = EntryPanel.Form }
+    val panelHeight = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
     Column(
-      Modifier.fillMaxWidth().heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.86f).dp)
+      Modifier.fillMaxWidth()
+        .then(if (panel == EntryPanel.Form) Modifier.heightIn(max = panelHeight) else Modifier.height(panelHeight))
         .padding(horizontal = 24.dp),
     ) {
       Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -125,7 +129,7 @@ fun QuickEntryDialog(
       // Only the body scrolls. The action stays within reach when the IME or a large font reduces space.
       key(panel) {
         Column(
-          Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+          Modifier.weight(1f, fill = panel != EntryPanel.Form).verticalScroll(rememberScrollState()),
           verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
           when (panel) {
