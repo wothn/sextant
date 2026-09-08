@@ -36,11 +36,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,7 +63,6 @@ import com.sextant.app.ui.util.label
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import kotlin.math.abs
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -261,9 +260,9 @@ private fun LedgerOverview(state: AppState) {
     verticalArrangement = Arrangement.spacedBy(18.dp),
   ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text("本月结余", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelLarge)
+      Text("今日支出", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelLarge)
       Text(
-        formatBalance(state.monthSummary.netCents),
+        "¥${formatAmountPlain(state.todaySummary.expenseCents)}",
         color = SextantColors.Text,
         fontSize = 38.sp,
         fontWeight = FontWeight.Bold,
@@ -271,9 +270,8 @@ private fun LedgerOverview(state: AppState) {
       )
     }
     Row(Modifier.fillMaxWidth()) {
-      OverviewMetric("支出", state.monthSummary.expenseCents, Modifier.weight(1f))
-      OverviewMetric("收入", state.monthSummary.incomeCents, Modifier.weight(1f))
-      OverviewMetric("今日支出", state.todaySummary.expenseCents, Modifier.weight(1f))
+      OverviewMetric("本月支出", state.monthSummary.expenseCents, Modifier.weight(1f))
+      OverviewMetric("本月收入", state.monthSummary.incomeCents, Modifier.weight(1f))
     }
     state.monthlyBudgetCents?.let { total ->
       MonthlyBudgetProgress(spent = state.monthSummary.expenseCents, total = total)
@@ -287,15 +285,6 @@ private fun OverviewMetric(label: String, value: Long, modifier: Modifier = Modi
     Text(label, color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
     Text(formatAmountPlain(value), fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = SextantColors.Text)
   }
-}
-
-private fun formatBalance(valueCents: Long): String {
-  val sign = when {
-    valueCents < 0 -> "−"
-    valueCents > 0 -> "+"
-    else -> ""
-  }
-  return "$sign¥${formatAmountPlain(abs(valueCents))}"
 }
 
 @Composable
@@ -460,3 +449,4 @@ private fun LedgerCategoryIcon(item: TransactionListItem) {
     )
   }
 }
+

@@ -1,5 +1,9 @@
 package com.sextant.app.ui.components
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -22,11 +24,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -142,6 +144,7 @@ private fun PaymentMethodRow(
   onActiveChanged: (Boolean) -> Unit,
   onDelete: (() -> Unit)?,
 ) {
+  var showActions by remember { mutableStateOf(false) }
   Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
     Row(
       modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -153,7 +156,6 @@ private fun PaymentMethodRow(
         Text(method.name, fontWeight = FontWeight.SemiBold)
         Text(
           buildList {
-            add(if (method.isBuiltIn) "内置来源" else "自定义来源")
             add(if (method.isActive) "使用中" else "已停用")
             if (method.transactionCount > 0) add("${method.transactionCount} 笔流水")
           }.joinToString(" · "),
@@ -161,20 +163,24 @@ private fun PaymentMethodRow(
           style = MaterialTheme.typography.bodySmall,
         )
       }
-      if (onDelete != null) {
-        IconButton(onClick = onDelete) {
-          Icon(Icons.Outlined.Delete, contentDescription = "删除${method.name}")
-        }
-      }
-      IconButton(onClick = onEdit) {
-        Icon(Icons.Outlined.Edit, contentDescription = "编辑${method.name}")
-      }
       Switch(
         checked = method.isActive,
         onCheckedChange = onActiveChanged,
         colors = sextantSwitchColors(),
         modifier = Modifier.semantics { contentDescription = if (method.isActive) "停用${method.name}" else "启用${method.name}" },
       )
+      Box {
+        IconButton(onClick = { showActions = true }) {
+          Icon(Icons.Outlined.MoreVert, contentDescription = "管理${method.name}", tint = SextantColors.TextMuted)
+        }
+        DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+          DropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
+          if (onDelete != null) {
+            DropdownMenuItem(text = { Text("删除", color = SextantColors.Danger) },
+              onClick = { showActions = false; onDelete() })
+          }
+        }
+      }
     }
   }
 }
@@ -230,3 +236,4 @@ private fun PaymentMethodDialog(
     dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
   )
 }
+
