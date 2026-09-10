@@ -6,6 +6,23 @@ import android.service.notification.StatusBarNotification
 import com.sextant.app.SextantApplication
 
 class SextantNotificationListenerService : NotificationListenerService() {
+  private val connection: NotificationListenerConnection
+    get() = (application as SextantApplication).notificationListenerConnection
+
+  override fun onListenerConnected() {
+    super.onListenerConnected()
+    connection.markConnected()
+  }
+
+  override fun onListenerDisconnected() {
+    // 系统或厂商的后台清理会断开这个绑定，系统设置里的授权开关却仍然是开着的。
+    // 这里主动要求重新绑定，避免用户“重新打开应用之后还是监听不到”。
+    // 注意：requestRebind() 在 onListenerDisconnected 之后立刻调用会被系统丢弃，
+    // 所以交给 connection 延迟一小段时间再试，并带上失败退避。
+    connection.markDisconnected()
+    connection.scheduleRebind(this, (application as SextantApplication).applicationScope)
+  }
+
   override fun onNotificationPosted(sbn: StatusBarNotification?) {
     val posted = sbn ?: return
     if (posted.packageName != WECHAT_PACKAGE && posted.packageName != ALIPAY_PACKAGE) return

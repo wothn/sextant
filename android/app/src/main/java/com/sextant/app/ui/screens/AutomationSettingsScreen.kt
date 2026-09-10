@@ -1,7 +1,6 @@
 package com.sextant.app.ui.screens
 
 import android.Manifest
-import android.content.ComponentName
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
@@ -27,19 +26,24 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.sextant.app.SextantApplication
 import com.sextant.app.automation.ALIPAY_PACKAGE
-import com.sextant.app.automation.SextantNotificationListenerService
+import com.sextant.app.automation.ListenerConnectionState
 import com.sextant.app.automation.WECHAT_PACKAGE
 import com.sextant.app.data.AppState
 import com.sextant.app.data.AutomationEventStatus
@@ -49,6 +53,7 @@ import com.sextant.app.ui.theme.SextantColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 fun AutomationSettingsScreen(
@@ -60,24 +65,32 @@ fun AutomationSettingsScreen(
   val context = LocalContext.current
   var draft by remember(state.automationSettings) { mutableStateOf(state.automationSettings) }
   var message by remember { mutableStateOf<String?>(null) }
-  var listenerRefresh by remember { mutableIntStateOf(0) }
-  val listenerEnabled = remember(listenerRefresh) {
-    val expected = ComponentName(context, SextantNotificationListenerService::class.java)
-    Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
-      .orEmpty()
-      .split(':')
-      .mapNotNull(ComponentName::unflattenFromString)
-      .any { it == expected }
-  }
+  val scope = rememberCoroutineScope()
+  val connection = repository.notificationListenerConnection
+  val listenerStatus by connection.collectAsState()
+  val listenerEnabled = listenerStatus.authorized
+  val listenerConnected = listenerStatus.connection == ListenerConnectionState.Connected
+
   val notificationAccessLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.StartActivityForResult(),
   ) {
-    listenerRefresh++
+    scope.launch { connection.rebind(context) }
     onChanged()
   }
   val notificationPermissionLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.RequestPermission(),
   ) { granted -> message = if (granted) "已允许显示自动记账结果通知。" else "未允许结果通知，自动入账仍会继续。" }
+
+  // 从系统设置返回时（onResume）重新确认授权状态，并顺手尝试恢复一次绑定。
+  // 首次进入页面也主动查一次，因为状态是进程级的，可能还是上一次会话的旧值。
+  val lifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(lifecycleOwner, connection) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) scope.launch { connection.rebind(context) }
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
 
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
@@ -98,7 +111,25 @@ fun AutomationSettingsScreen(
             "Sextant 只处理微信和支付宝中包含金额与支付关键词的通知。普通聊天不会保存或上传。功能默认关闭，可随时撤销系统授权。",
             color = SextantColors.TextMuted,
           )
-          Text(if (listenerEnabled) "状态：已授权" else "状态：未授权", color = if (listenerEnabled) SextantColors.Success else SextantColors.Danger)
+          Text(
+            text = when {
+              !listenerEnabled -> "状态：未授权，不会记录任何通知"
+              listenerConnected -> "状态：监听中"
+              else -> "状态：已授权，但监听服务当前没有运行"
+            },
+            color = when {
+              !listenerEnabled -> SextantColors.Danger
+              listenerConnected -> SextantColors.Success
+              else -> SextantColors.Danger
+            },
+          )
+          (listenerStatus.lastCapturedAt)?.let { capturedAt ->
+            Text(
+              "最近捕获支付通知：${SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(capturedAt))}",
+              color = SextantColors.TextMuted,
+              style = MaterialTheme.typography.bodySmall,
+            )
+          }
           OutlinedButton(onClick = {
             val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             runCatching { notificationAccessLauncher.launch(intent) }

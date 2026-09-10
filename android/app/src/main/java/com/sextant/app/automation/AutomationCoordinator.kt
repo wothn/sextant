@@ -26,6 +26,7 @@ class AutomationCoordinator(
       json.encodeToString(notification).toByteArray(Charsets.UTF_8),
     )
     val eventId = repository.automationStore.capture(notification, encrypted) ?: return
+    repository.notificationListenerConnection.noteCaptured()
     enqueueLocal(eventId)
     repository.notifyChanged()
   }

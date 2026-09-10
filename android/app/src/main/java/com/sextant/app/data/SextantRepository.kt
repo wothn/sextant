@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import com.sextant.app.automation.AutomationSecretStore
 import com.sextant.app.automation.AUTOMATION_WORK_TAG
+import com.sextant.app.automation.NotificationListenerConnection
 import androidx.work.WorkManager
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -19,6 +20,7 @@ class SextantRepository(context: Context) {
   private val backupStore = BackupStore(database)
   internal val automationStore = AutomationStore(database)
   internal val automationSecretStore = AutomationSecretStore(context.applicationContext)
+  val notificationListenerConnection = NotificationListenerConnection.create(appContext)
   private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
   val changes: SharedFlow<Unit> = _changes.asSharedFlow()
 
