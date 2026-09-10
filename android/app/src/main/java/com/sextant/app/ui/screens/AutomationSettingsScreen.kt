@@ -67,7 +67,7 @@ fun AutomationSettingsScreen(
   var message by remember { mutableStateOf<String?>(null) }
   val scope = rememberCoroutineScope()
   val connection = repository.notificationListenerConnection
-  val listenerStatus by connection.collectAsState()
+  val listenerStatus by connection.status.collectAsState()
   val listenerEnabled = listenerStatus.authorized
   val listenerConnected = listenerStatus.connection == ListenerConnectionState.Connected
 
