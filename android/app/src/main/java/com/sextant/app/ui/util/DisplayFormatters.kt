@@ -1,10 +1,13 @@
 package com.sextant.app.ui.util
 
 import com.sextant.app.data.Category
+import com.sextant.app.data.LedgerFilter
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
+import com.sextant.app.data.toLocalDate
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
+import java.time.YearMonth
 import java.util.Locale
 
 val TransactionType.label: String
@@ -57,3 +60,20 @@ fun parseAmountCents(value: String): Long? = value.trim().toBigDecimalOrNull()
   ?.takeIf { it.signum() > 0 && it.scale() <= 2 }
   ?.movePointRight(2)
   ?.let { cents -> runCatching { cents.longValueExact() }.getOrNull() }
+
+fun monthLabel(millis: Long): String {
+  val date = millis.toLocalDate()
+  return "${date.year}年${date.monthValue}月"
+}
+
+fun isCurrentMonth(millis: Long): Boolean = YearMonth.from(millis.toLocalDate()) == YearMonth.now()
+
+/** 筛选面板里显示的完整起止文案。 */
+fun LedgerFilter.rangeLabel(): String {
+  val start = rangeStart.toLocalDate()
+  val end = (rangeEnd - 1).coerceAtLeast(rangeStart).toLocalDate()
+  return "${start.year}年${start.monthValue}月${start.dayOfMonth}日 - ${end.year}年${end.monthValue}月${end.dayOfMonth}日"
+}
+
+fun LedgerFilter.isCurrentMonth(): Boolean = YearMonth.from(rangeStart.toLocalDate()) == YearMonth.now() &&
+  YearMonth.from((rangeEnd - 1).coerceAtLeast(rangeStart).toLocalDate()) == YearMonth.now()

@@ -44,10 +44,12 @@ import com.sextant.app.ui.components.SectionTitle
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatCurrency
+import com.sextant.app.ui.util.isCurrentMonth
+import com.sextant.app.ui.util.monthLabel
 import kotlin.math.abs
 
 @Composable
-fun AnalyticsScreen(state: AppState) {
+fun AnalyticsScreen(state: AppState, monthStart: Long) {
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 20.dp),
@@ -55,7 +57,7 @@ fun AnalyticsScreen(state: AppState) {
   ) {
     item {
       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SectionTitle("本月分析")
+        SectionTitle(if (isCurrentMonth(monthStart)) "本月分析" else "${monthLabel(monthStart)}分析")
         Text(monthInsight(state), color = SextantColors.TextSubtle)
       }
     }

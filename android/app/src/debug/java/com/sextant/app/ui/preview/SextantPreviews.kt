@@ -69,7 +69,7 @@ private fun HomeScreenPreview() {
 private fun AnalyticsScreenPreview() {
   SextantTheme(themePreference = ThemePreference.System) {
     PreviewAppShell(selectedTab = Tab.Analytics) {
-      AnalyticsScreen(populatedPreviewState)
+      AnalyticsScreen(state = populatedPreviewState, monthStart = previewFilter.rangeStart)
     }
   }
 }
@@ -112,7 +112,7 @@ private fun PreviewAppShell(selectedTab: Tab, content: @Composable () -> Unit) {
   }
 }
 
-private val previewFilter = LedgerFilter(monthStart = previewTime(day = 1))
+private val previewFilter = LedgerFilter.forMonth(previewTime(day = 1))
 
 private val previewCategories = listOf(
   Category("dining", "餐饮", TransactionType.Expense, 0xFFFF7043L, true, null),
@@ -195,6 +195,7 @@ private val populatedPreviewState = AppState(
     DailyTransactionGroup("8月28日 · 周五", listOf(previewTransactions[3])),
   ),
   todaySummary = Summary(incomeCents = 0, expenseCents = 3_880),
+  rangeSummary = Summary(incomeCents = 1_680_000, expenseCents = 638_220),
   monthSummary = Summary(incomeCents = 1_680_000, expenseCents = 638_220),
   categoryBreakdown = listOf(
     CategoryBreakdown("餐饮", 0xFFFF7043L, 214_800, 187_200),

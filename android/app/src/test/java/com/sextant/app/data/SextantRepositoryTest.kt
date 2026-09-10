@@ -174,10 +174,100 @@ class SextantRepositoryTest {
     database.close()
   }
 
+  @Test
+  fun filtersByDateRangeWhileTodaySummaryStaysCurrent() {
+    val repository = SextantRepository(context)
+    val initial = repository.loadState(filter())
+    val category = initial.categories.first { it.type == TransactionType.Expense }
+    val source = initial.paymentMethods.first()
+    val earlierDay = now() - 40 * 86_400_000L
+    repository.addTransaction(TransactionType.Expense, 1_000, category.id, source.id, "今天", now())
+    repository.addTransaction(TransactionType.Expense, 2_000, category.id, source.id, "早前", earlierDay)
+
+    val thisMonth = repository.loadState(LedgerFilter.currentMonth())
+    assertEquals(listOf("今天"), thisMonth.transactions.map { it.transaction.description })
+    assertEquals(1_000, thisMonth.rangeSummary.expenseCents)
+    assertEquals(1_000, thisMonth.todaySummary.expenseCents)
+    assertEquals(1_000, thisMonth.monthSummary.expenseCents)
+
+    val earlierMonth = repository.loadState(LedgerFilter.forMonth(earlierDay))
+    assertEquals(listOf("早前"), earlierMonth.transactions.map { it.transaction.description })
+    assertEquals(2_000, earlierMonth.rangeSummary.expenseCents)
+    // 今日支出与所选区间无关，始终是今天的真实流水。
+    assertEquals(1_000, earlierMonth.todaySummary.expenseCents)
+    assertEquals(2_000, earlierMonth.monthSummary.expenseCents)
+
+    // 跨月区间同时包含两笔，区间合计取整个区间。
+    val spanning = LedgerFilter(
+      rangeStart = LedgerFilter.forMonth(earlierDay).rangeStart,
+      rangeEnd = LedgerFilter.currentMonth().rangeEnd,
+    )
+    val spanningState = repository.loadState(spanning)
+    assertEquals(setOf("今天", "早前"), spanningState.transactions.map { it.transaction.description }.toSet())
+    assertEquals(3_000, spanningState.rangeSummary.expenseCents)
+  }
+
+  @Test
+  fun filtersByAmountRange() {
+    val repository = SextantRepository(context)
+    val initial = repository.loadState(filter())
+    val category = initial.categories.first { it.type == TransactionType.Expense }
+    val source = initial.paymentMethods.first()
+    repository.addTransaction(TransactionType.Expense, 500, category.id, source.id, "小额", now())
+    repository.addTransaction(TransactionType.Expense, 5_000, category.id, source.id, "中额", now())
+    repository.addTransaction(TransactionType.Expense, 50_000, category.id, source.id, "大额", now())
+    val base = LedgerFilter.currentMonth()
+
+    assertEquals(
+      listOf("中额", "大额", "小额"),
+      repository.loadState(base).transactions.map { it.transaction.description }.sorted(),
+    )
+    assertEquals(
+      listOf("中额"),
+      repository.loadState(base.copy(minAmountCents = 1_000, maxAmountCents = 10_000)).transactions.map { it.transaction.description },
+    )
+    assertEquals(
+      listOf("中额", "大额"),
+      repository.loadState(base.copy(minAmountCents = 1_000)).transactions.map { it.transaction.description }.sorted(),
+    )
+    assertEquals(
+      listOf("小额"),
+      repository.loadState(base.copy(maxAmountCents = 1_000)).transactions.map { it.transaction.description },
+    )
+  }
+
+  @Test
+  fun countsOnlyConditionsOutsideTheDateRange() {
+    val base = LedgerFilter.currentMonth()
+    assertEquals(0, base.conditionCount)
+    assertFalse(base.hasConditions)
+    assertEquals(1, base.copy(type = TransactionType.Income).conditionCount)
+    assertEquals(1, base.copy(minAmountCents = 100).conditionCount)
+    assertEquals(1, base.copy(maxAmountCents = 100).conditionCount)
+    assertEquals(5, base.copy(
+      query = "午饭",
+      type = TransactionType.Expense,
+      categoryId = "category",
+      paymentMethodId = "source",
+      minAmountCents = 100,
+    ).conditionCount)
+    assertEquals(0, base.copy(type = TransactionType.Expense).cleared().conditionCount)
+    assertEquals(base, base.copy(type = TransactionType.Expense).cleared())
+  }
+
+  @Test
+  fun anchorsTheAnalysisMonthOnTheLastDayOfTheRange() {
+    val march = LedgerFilter.forMonth(now())
+    assertEquals(march.rangeStart, march.anchorMonthStart)
+
+    val spansTwoMonths = LedgerFilter(rangeStart = march.rangeStart, rangeEnd = march.rangeEnd + 86_400_000L)
+    assertTrue(spansTwoMonths.anchorMonthStart > march.anchorMonthStart)
+  }
+
   private fun filter(
     query: String = "",
     type: TransactionType? = null,
-  ) = LedgerFilter(monthStart = monthStart(), query = query, type = type)
+  ) = LedgerFilter.forMonth(monthStart()).copy(query = query, type = type)
 
   private fun monthStart(): Long = Calendar.getInstance().run {
     set(Calendar.DAY_OF_MONTH, 1)

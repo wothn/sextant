@@ -33,7 +33,6 @@ import com.sextant.app.ui.screens.BudgetScreen
 import com.sextant.app.ui.screens.HomeScreen
 import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
-import java.util.Calendar
 import kotlinx.coroutines.flow.collect
 
 @Composable
@@ -50,7 +49,7 @@ fun SextantApp(
   var editingTransaction by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingDelete by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingRule by remember { mutableStateOf<ClassificationRulePrompt?>(null) }
-  var filter by remember { mutableStateOf(LedgerFilter(Calendar.getInstance().run { set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0); timeInMillis })) }
+  var filter by remember { mutableStateOf(LedgerFilter.currentMonth()) }
   var lastPaymentMethodId by remember { mutableStateOf<String?>(null) }
   var reloadKey by remember { mutableIntStateOf(0) }
 
@@ -69,14 +68,7 @@ fun SextantApp(
     val id = requestedEditTransactionId ?: return@LaunchedEffect
     repository.findTransaction(id)?.let { item ->
       editingTransaction = item
-      filter = filter.copy(monthStart = Calendar.getInstance().apply {
-        timeInMillis = item.transaction.transactionDate
-        set(Calendar.DAY_OF_MONTH, 1)
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-      }.timeInMillis)
+      filter = LedgerFilter.forMonth(item.transaction.transactionDate)
     }
     onEditRequestConsumed()
   }
@@ -99,7 +91,7 @@ fun SextantApp(
           onFilterChanged = { filter = it },
           onTransactionClick = { editingTransaction = it },
         )
-        Tab.Analytics -> AnalyticsScreen(state)
+        Tab.Analytics -> AnalyticsScreen(state = state, monthStart = filter.anchorMonthStart)
         Tab.Discover -> BudgetScreen(state, repository) { reloadKey++ }
         Tab.Settings -> SettingsScreen(
           state = state,

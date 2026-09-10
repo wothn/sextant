@@ -134,12 +134,49 @@ data class BudgetProgress(
 )
 
 data class LedgerFilter(
-  val monthStart: Long,
+  /** 左闭右开区间的开始毫秒。 */
+  val rangeStart: Long,
+  /** 左闭右开区间的结束毫秒（不含）。 */
+  val rangeEnd: Long,
   val query: String = "",
   val categoryId: String? = null,
   val paymentMethodId: String? = null,
   val type: TransactionType? = null,
-)
+  val minAmountCents: Long? = null,
+  val maxAmountCents: Long? = null,
+) {
+  /** 分析口径锚定的月份：区间最后一天所在的月份。 */
+  val anchorMonthStart: Long
+    get() = monthRangeOf((rangeEnd - 1).coerceAtLeast(rangeStart)).first
+
+  /** 除时间范围以外的条件数量，用于概览入口的角标。 */
+  val conditionCount: Int
+    get() = listOf(
+      query.isNotBlank(),
+      categoryId != null,
+      paymentMethodId != null,
+      type != null,
+      minAmountCents != null || maxAmountCents != null,
+    ).count { it }
+
+  val hasConditions: Boolean
+    get() = conditionCount > 0
+
+  /** 只保留时间范围，清掉其它筛选条件。 */
+  fun cleared(): LedgerFilter = LedgerFilter(rangeStart = rangeStart, rangeEnd = rangeEnd)
+
+  companion object {
+    fun forMonth(monthMillis: Long): LedgerFilter = monthRangeOf(monthMillis).let { (start, end) ->
+      LedgerFilter(rangeStart = start, rangeEnd = end)
+    }
+
+    fun forDay(dayMillis: Long): LedgerFilter = dayRangeOf(dayMillis).let { (start, end) ->
+      LedgerFilter(rangeStart = start, rangeEnd = end)
+    }
+
+    fun currentMonth(): LedgerFilter = forMonth(System.currentTimeMillis())
+  }
+}
 
 data class AppState(
   val categories: List<Category> = emptyList(),
@@ -148,6 +185,8 @@ data class AppState(
   val transactions: List<TransactionListItem> = emptyList(),
   val groups: List<DailyTransactionGroup> = emptyList(),
   val todaySummary: Summary = Summary(0, 0),
+  /** 当前筛选时间范围内的合计。 */
+  val rangeSummary: Summary = Summary(0, 0),
   val monthSummary: Summary = Summary(0, 0),
   val categoryBreakdown: List<CategoryBreakdown> = emptyList(),
   val budgets: List<BudgetProgress> = emptyList(),

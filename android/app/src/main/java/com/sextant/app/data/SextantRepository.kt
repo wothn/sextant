@@ -7,7 +7,6 @@ import com.sextant.app.automation.AUTOMATION_WORK_TAG
 import com.sextant.app.automation.NotificationListenerConnection
 import androidx.work.WorkManager
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,31 +23,34 @@ class SextantRepository(context: Context) {
   private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
   val changes: SharedFlow<Unit> = _changes.asSharedFlow()
 
-  fun loadState(filter: LedgerFilter = LedgerFilter(Calendar.getInstance().startOfMonth())): AppState {
+  fun loadState(filter: LedgerFilter = LedgerFilter.currentMonth()): AppState {
     val db = database.readableDatabase
     val categories = listCategories(db)
     val allPaymentMethods = listPaymentMethods(db)
     val paymentMethods = allPaymentMethods.filter { it.isActive }
-    val monthEnd = filter.monthStart.endOfMonth()
-    val transactions = listTransactions(db, categories, allPaymentMethods, filter, monthEnd)
-    val now = Calendar.getInstance()
-    val todayStart = now.startOfDay()
-    val monthStart = filter.monthStart
+    val transactions = listTransactions(db, categories, allPaymentMethods, filter)
+    val (todayStart, todayEnd) = todayRange()
+    val todayTransactions = listTransactions(
+      db,
+      categories,
+      allPaymentMethods,
+      LedgerFilter(rangeStart = todayStart, rangeEnd = todayEnd),
+    )
+    val monthStart = filter.anchorMonthStart
+    val monthEnd = monthRangeOf(monthStart).second
     val groups = transactions.groupByDay()
     val analysisTransactions = listTransactions(
       db,
       categories,
       allPaymentMethods,
-      LedgerFilter(monthStart),
-      monthEnd,
+      LedgerFilter(rangeStart = monthStart, rangeEnd = monthEnd),
     )
-    val previousMonthStart = monthStart.shiftMonth(-1)
+    val previousMonthStart = monthRangeOf(monthStart - 1).first
     val previousTransactions = listTransactions(
       db,
       categories,
       allPaymentMethods,
-      LedgerFilter(previousMonthStart),
-      monthStart,
+      LedgerFilter(rangeStart = previousMonthStart, rangeEnd = monthStart),
     )
     val currentBreakdown = LedgerCalculations.breakdown(analysisTransactions.filter {
       it.transaction.type == TransactionType.Expense && it.includeInSpending
@@ -64,7 +66,8 @@ class SextantRepository(context: Context) {
       allPaymentMethods = allPaymentMethods,
       transactions = transactions,
       groups = groups,
-      todaySummary = LedgerCalculations.summarize(transactions.filter { it.transaction.transactionDate >= todayStart && it.transaction.transactionDate < todayStart + DAY_MILLIS }),
+      todaySummary = LedgerCalculations.summarize(todayTransactions),
+      rangeSummary = LedgerCalculations.summarize(transactions),
       monthSummary = analysisSummary,
       categoryBreakdown = currentBreakdown.map { it.copy(previousAmountCents = previousBreakdown[it.categoryName]?.amountCents ?: 0) },
       budgets = budgetProgress(db, categories, analysisTransactions, monthStart),
@@ -182,18 +185,13 @@ class SextantRepository(context: Context) {
       "SELECT transactionDate FROM transactions WHERE id = ?",
       arrayOf(id),
     ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null } ?: return null
-    val monthStart = Calendar.getInstance().apply {
-      timeInMillis = transactionDate
-      set(Calendar.DAY_OF_MONTH, 1)
-    }.startOfDay()
     val categories = listCategories(database.readableDatabase)
     val paymentMethods = listPaymentMethods(database.readableDatabase)
     return listTransactions(
       database.readableDatabase,
       categories,
       paymentMethods,
-      LedgerFilter(monthStart),
-      monthStart.endOfMonth(),
+      LedgerFilter.forMonth(transactionDate),
     ).firstOrNull { it.transaction.id == id }
   }
 
@@ -216,7 +214,7 @@ class SextantRepository(context: Context) {
     require(categoryId.isNotBlank()) { "预算分类不能为空" }
     require(amountCents > 0) { "预算金额必须大于 0" }
     val db = database.writableDatabase
-    val startDate = Calendar.getInstance().startOfMonth()
+    val startDate = LedgerFilter.currentMonth().rangeStart
     val existing = db.rawQuery(
       "SELECT id FROM budgets WHERE categoryId = ? AND period = 'month' AND startDate = ?",
       arrayOf(categoryId, startDate.toString()),
@@ -427,7 +425,6 @@ class SextantRepository(context: Context) {
     categories: List<Category>,
     paymentMethods: List<PaymentMethod>,
     filter: LedgerFilter,
-    monthEnd: Long,
   ): List<TransactionListItem> {
     val categoryById = categories.associateBy { it.id }
     val paymentById = paymentMethods.associateBy { it.id }
@@ -444,13 +441,17 @@ class SextantRepository(context: Context) {
         ))
         AND (? = '' OR paymentMethodId = ?)
         AND (? = '' OR type = ?)
+        AND (CAST(? AS INTEGER) < 0 OR amountCents >= CAST(? AS INTEGER))
+        AND (CAST(? AS INTEGER) < 0 OR amountCents <= CAST(? AS INTEGER))
       ORDER BY transactionDate DESC
       """.trimIndent(),
       arrayOf(
-        filter.monthStart.toString(), monthEnd.toString(), filter.query.trim(), filter.query.trim(),
+        filter.rangeStart.toString(), filter.rangeEnd.toString(), filter.query.trim(), filter.query.trim(),
         filter.categoryId.orEmpty(), filter.categoryId.orEmpty(), filter.categoryId.orEmpty(),
         filter.paymentMethodId.orEmpty(), filter.paymentMethodId.orEmpty(),
         filter.type?.dbValue.orEmpty(), filter.type?.dbValue.orEmpty(),
+        (filter.minAmountCents ?: -1L).toString(), (filter.minAmountCents ?: -1L).toString(),
+        (filter.maxAmountCents ?: -1L).toString(), (filter.maxAmountCents ?: -1L).toString(),
       ),
     ).use { cursor ->
       while (cursor.moveToNext()) {
@@ -529,32 +530,6 @@ private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> 
     .map { (label, items) -> DailyTransactionGroup(label, items) }
 }
 
-private fun Calendar.startOfDay(): Long {
-  set(Calendar.HOUR_OF_DAY, 0)
-  set(Calendar.MINUTE, 0)
-  set(Calendar.SECOND, 0)
-  set(Calendar.MILLISECOND, 0)
-  return timeInMillis
-}
-
-private fun Calendar.startOfMonth(): Long {
-  set(Calendar.DAY_OF_MONTH, 1)
-  return startOfDay()
-}
-
-private fun Long.endOfMonth(): Long = Calendar.getInstance().run {
-  timeInMillis = this@endOfMonth
-  add(Calendar.MONTH, 1)
-  timeInMillis
-}
-
-private fun Long.shiftMonth(amount: Int): Long = Calendar.getInstance().run {
-  timeInMillis = this@shiftMonth
-  add(Calendar.MONTH, amount)
-  timeInMillis
-}
-
-private const val DAY_MILLIS = 86_400_000L
 private const val MAX_PAYMENT_METHOD_NAME_LENGTH = 40
 
 private val TransactionType.dbValue: String
