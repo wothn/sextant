@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
@@ -80,8 +81,16 @@ fun HomeScreen(
       item { EmptyLedgerCard(filter) }
     }
     state.groups.forEach { group ->
-      item {
-        DailyLedgerCard(group, onTransactionClick)
+      item(key = "day:${group.label}", contentType = "dayHeader") {
+        DailyLedgerHeader(group)
+      }
+      itemsIndexed(group.items, key = { _, item -> item.transaction.id }, contentType = { _, _ -> "transaction" }) { index, item ->
+        Column {
+          if (index > 0) {
+            Box(Modifier.fillMaxWidth().padding(start = 48.dp).height(1.dp).background(SextantColors.Border))
+          }
+          LedgerTransactionRow(item, onTransactionClick)
+        }
       }
     }
   }
@@ -101,7 +110,7 @@ fun HomeScreen(
 
 @Composable
 private fun EmptyLedgerCard(filter: LedgerFilter) {
-  if (filter.hasConditions || !filter.isCurrentMonth()) {
+  if (filter.hasConditions || !filter.isAllTime) {
     EmptyCard("这个条件下还没有记录", "换个时间范围，或清除筛选条件后再看看。")
   } else {
     EmptyCard("还没有记录", "记一笔后，这里会按日期排好最近的明细。")
@@ -122,7 +131,7 @@ private fun LedgerHeader(filter: LedgerFilter, onFilterClick: () -> Unit) {
 
 @Composable
 private fun FilterTrigger(filter: LedgerFilter, onClick: () -> Unit) {
-  val highlighted = filter.hasConditions || !filter.isCurrentMonth()
+  val highlighted = filter.hasConditions || !filter.isAllTime
   Box(
     modifier = Modifier
       .size(40.dp)
@@ -176,12 +185,12 @@ private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
       )
     }
     Row(Modifier.fillMaxWidth()) {
-      OverviewMetric(if (currentMonth) "本月支出" else "区间支出", state.rangeSummary.expenseCents, Modifier.weight(1f))
-      OverviewMetric(if (currentMonth) "本月收入" else "区间收入", state.rangeSummary.incomeCents, Modifier.weight(1f))
+      OverviewMetric(if (filter.isAllTime) "累计支出" else "区间支出", state.rangeSummary.expenseCents, Modifier.weight(1f))
+      OverviewMetric(if (filter.isAllTime) "累计收入" else "区间收入", state.rangeSummary.incomeCents, Modifier.weight(1f))
     }
     state.monthlyBudgetCents?.let { total ->
       MonthlyBudgetProgress(
-        label = if (currentMonth) "本月预算进度" else "${monthLabel(filter.anchorMonthStart)}预算进度",
+        label = if (filter.isAllTime || currentMonth) "本月预算进度" else "${monthLabel(filter.anchorMonthStart)}预算进度",
         spent = state.monthSummary.expenseCents,
         total = total,
       )
@@ -235,7 +244,7 @@ private fun RecentLedgerHeader(count: Int) {
 }
 
 @Composable
-private fun DailyLedgerCard(group: DailyTransactionGroup, onTransactionClick: (TransactionListItem) -> Unit) {
+private fun DailyLedgerHeader(group: DailyTransactionGroup) {
   val income = group.items.filter { it.transaction.type == TransactionType.Income }.sumOf { it.transaction.amountCents }
   val expense = group.items
     .filter { it.transaction.type == TransactionType.Expense && it.includeInSpending }
@@ -264,12 +273,6 @@ private fun DailyLedgerCard(group: DailyTransactionGroup, onTransactionClick: (T
         maxLines = 1,
         softWrap = false,
       )
-    }
-    group.items.forEachIndexed { index, item ->
-      if (index > 0) {
-        Box(Modifier.fillMaxWidth().padding(start = 48.dp).height(1.dp).background(SextantColors.Border))
-      }
-      LedgerTransactionRow(item, onTransactionClick)
     }
   }
 }

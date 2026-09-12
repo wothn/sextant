@@ -82,6 +82,7 @@ import java.util.Locale
 
 /** 快捷时间范围。 */
 private enum class RangePreset(val label: String) {
+  AllTime("全部时间"),
   ThisMonth("本月"),
   LastMonth("上月"),
   ThisYear("今年"),
@@ -91,6 +92,7 @@ private enum class RangePreset(val label: String) {
   fun range(): Pair<Long, Long> {
     val now = YearMonth.now()
     return when (this) {
+      AllTime -> Long.MIN_VALUE to Long.MAX_VALUE
       ThisMonth -> now.toRange()
       LastMonth -> now.minusMonths(1).toRange()
       ThisYear -> YearMonth.of(now.year, 1).toRange().first to YearMonth.of(now.year + 1, 1).toRange().first
@@ -172,7 +174,7 @@ fun LedgerFilterSheet(
           categoryName = selectedCategory?.name,
           methodName = selectedMethod?.name,
           onClearRange = {
-            val current = LedgerFilter.currentMonth()
+            val current = LedgerFilter.allTime()
             draft = draft.copy(rangeStart = current.rangeStart, rangeEnd = current.rangeEnd)
           },
           onClearQuery = {
@@ -219,13 +221,13 @@ fun LedgerFilterSheet(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
               DateFieldTile(
                 label = "开始日期",
-                value = formatDay(draft.rangeStart),
+                value = if (draft.isAllTime) "不限" else formatDay(draft.rangeStart),
                 modifier = Modifier.weight(1f),
                 onClick = { picking = DateField.Start },
               )
               DateFieldTile(
                 label = "结束日期",
-                value = formatDay((draft.rangeEnd - 1).coerceAtLeast(draft.rangeStart)),
+                value = if (draft.isAllTime) "不限" else formatDay((draft.rangeEnd - 1).coerceAtLeast(draft.rangeStart)),
                 modifier = Modifier.weight(1f),
                 onClick = { picking = DateField.End },
               )
@@ -353,13 +355,13 @@ fun LedgerFilterSheet(
         ) {
           OutlinedButton(
             onClick = {
-              draft = LedgerFilter.currentMonth()
+              draft = LedgerFilter.allTime()
               queryText = ""
               minAmountText = ""
               maxAmountText = ""
             },
             modifier = Modifier.weight(1f),
-          ) { Text("回到本月") }
+          ) { Text("重置筛选") }
           Button(
             onClick = { onApply(draft) },
             modifier = Modifier.weight(1.6f),
@@ -372,7 +374,7 @@ fun LedgerFilterSheet(
 
   when (picking) {
     DateField.Start -> {
-      val pickerState = rememberDatePickerState(initialSelectedDateMillis = localMillisToUtcPickerMillis(draft.rangeStart))
+      val pickerState = rememberDatePickerState(initialSelectedDateMillis = localMillisToUtcPickerMillis(if (draft.isAllTime) System.currentTimeMillis() else draft.rangeStart))
       DatePickerDialog(
         onDismissRequest = { picking = null },
         confirmButton = {
@@ -381,7 +383,7 @@ fun LedgerFilterSheet(
               val dayStart = utcPickerMillisToLocalStartOfDay(picked)
               draft = draft.copy(
                 rangeStart = dayStart,
-                rangeEnd = maxOf(draft.rangeEnd, dayRangeOf(dayStart).second),
+                rangeEnd = if (draft.isAllTime) dayRangeOf(maxOf(dayStart, System.currentTimeMillis())).second else maxOf(draft.rangeEnd, dayRangeOf(dayStart).second),
               )
             }
             picking = null
@@ -392,7 +394,7 @@ fun LedgerFilterSheet(
     }
 
     DateField.End -> {
-      val pickerState = rememberDatePickerState(initialSelectedDateMillis = localMillisToUtcPickerMillis(draft.rangeEnd - 1))
+      val pickerState = rememberDatePickerState(initialSelectedDateMillis = localMillisToUtcPickerMillis(if (draft.isAllTime) System.currentTimeMillis() else draft.rangeEnd - 1))
       DatePickerDialog(
         onDismissRequest = { picking = null },
         confirmButton = {
@@ -400,7 +402,7 @@ fun LedgerFilterSheet(
             pickerState.selectedDateMillis?.let { picked ->
               val dayStart = utcPickerMillisToLocalStartOfDay(picked)
               draft = draft.copy(
-                rangeStart = minOf(draft.rangeStart, dayStart),
+                rangeStart = if (draft.isAllTime) dayRangeOf(dayStart).first else minOf(draft.rangeStart, dayStart),
                 rangeEnd = dayRangeOf(dayStart).second,
               )
             }
@@ -428,8 +430,7 @@ private fun ActiveFilterChips(
   onClearMethod: () -> Unit,
   onClearAmount: () -> Unit,
 ) {
-  val currentMonth = LedgerFilter.currentMonth()
-  val isDefaultRange = draft.rangeStart == currentMonth.rangeStart && draft.rangeEnd == currentMonth.rangeEnd
+  val isDefaultRange = draft.isAllTime
   val hasAmount = draft.minAmountCents != null || draft.maxAmountCents != null
 
   if (!draft.hasConditions && isDefaultRange) {

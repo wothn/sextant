@@ -23,7 +23,7 @@ class SextantRepository(context: Context) {
   private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
   val changes: SharedFlow<Unit> = _changes.asSharedFlow()
 
-  fun loadState(filter: LedgerFilter = LedgerFilter.currentMonth()): AppState {
+  fun loadState(filter: LedgerFilter = LedgerFilter.allTime()): AppState {
     val db = database.readableDatabase
     val categories = listCategories(db)
     val allPaymentMethods = listPaymentMethods(db)
@@ -525,7 +525,7 @@ private fun Category.childInclusiveIds(categories: List<Category>): Set<String> 
 }
 
 private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> {
-  val formatter = SimpleDateFormat("M月d日 EEEE", Locale.CHINA)
+  val formatter = SimpleDateFormat("yyyy年M月d日 EEEE", Locale.CHINA)
   return groupBy { formatter.format(it.transaction.transactionDate) }
     .map { (label, items) -> DailyTransactionGroup(label, items) }
 }

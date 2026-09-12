@@ -31,6 +31,29 @@ class SextantRepositoryTest {
   }
 
   @Test
+  fun defaultLedgerIncludesPastYearsWithoutMergingDaysAndKeepsMonthlySummary() {
+    val repository = SextantRepository(context)
+    val originalZone = java.util.TimeZone.getDefault()
+    try {
+      java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+      val today = java.time.LocalDate.now()
+      val current = today.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+      val historical = today.minusYears(28).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+      repository.addTransaction(TransactionType.Expense, 100, null, null, "current", current)
+      repository.addTransaction(TransactionType.Expense, 200, null, null, "historical", historical)
+
+      val state = repository.loadState()
+      assertEquals(2, state.transactions.size)
+      assertEquals(2, state.groups.size)
+      assertEquals(300L, state.rangeSummary.expenseCents)
+      assertEquals(100L, state.monthSummary.expenseCents)
+      assertEquals(1, repository.loadState(LedgerFilter.currentMonth()).transactions.size)
+    } finally {
+      java.util.TimeZone.setDefault(originalZone)
+    }
+  }
+
+  @Test
   fun addUpdateFilterAndDeleteTransaction() {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())

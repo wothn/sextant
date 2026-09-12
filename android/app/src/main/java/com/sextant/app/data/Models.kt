@@ -147,7 +147,11 @@ data class LedgerFilter(
 ) {
   /** 分析口径锚定的月份：区间最后一天所在的月份。 */
   val anchorMonthStart: Long
-    get() = monthRangeOf((rangeEnd - 1).coerceAtLeast(rangeStart)).first
+    get() = if (isAllTime) monthRangeOf(System.currentTimeMillis()).first
+      else monthRangeOf((rangeEnd - 1).coerceAtLeast(rangeStart)).first
+
+  val isAllTime: Boolean
+    get() = rangeStart == Long.MIN_VALUE && rangeEnd == Long.MAX_VALUE
 
   /** 除时间范围以外的条件数量，用于概览入口的角标。 */
   val conditionCount: Int
@@ -173,6 +177,8 @@ data class LedgerFilter(
     fun forDay(dayMillis: Long): LedgerFilter = dayRangeOf(dayMillis).let { (start, end) ->
       LedgerFilter(rangeStart = start, rangeEnd = end)
     }
+
+    fun allTime(): LedgerFilter = LedgerFilter(Long.MIN_VALUE, Long.MAX_VALUE)
 
     fun currentMonth(): LedgerFilter = forMonth(System.currentTimeMillis())
   }

@@ -49,7 +49,7 @@ fun SextantApp(
   var editingTransaction by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingDelete by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingRule by remember { mutableStateOf<ClassificationRulePrompt?>(null) }
-  var filter by remember { mutableStateOf(LedgerFilter.currentMonth()) }
+  var filter by remember { mutableStateOf(LedgerFilter.allTime()) }
   var lastPaymentMethodId by remember { mutableStateOf<String?>(null) }
   var reloadKey by remember { mutableIntStateOf(0) }
 
