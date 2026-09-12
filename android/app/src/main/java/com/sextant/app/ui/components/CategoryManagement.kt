@@ -21,6 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -161,7 +163,7 @@ private fun CategoryDialog(
   SextantAlertDialog(
     onDismissRequest = onDismiss,
     confirmButton = {
-      SextantButton(onClick = {
+      SextantButton(enabled = name.isNotBlank(), onClick = {
         if (name.isNotBlank()) {
           onSubmit(name, type, color, includeInSpending, fixedParent?.id ?: parentCategoryId)
         }
@@ -214,6 +216,7 @@ private fun CategoryDialog(
         ) {
           Text("计入支出统计")
           SextantSwitch(
+            modifier = Modifier.semantics { contentDescription = "计入支出统计" },
             checked = includeInSpending,
             onCheckedChange = { includeInSpending = it },
           )

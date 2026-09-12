@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +27,6 @@ import com.sextant.app.ui.components.LedgerFilterSheet
 import com.sextant.app.ui.components.SextantBadge
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantHeading
-import com.sextant.app.ui.components.SextantRevealItem
 import com.sextant.app.ui.components.SextantSurface
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
@@ -87,7 +87,7 @@ fun HomeScreen(
       contentPadding = PaddingValues(bottom = 28.dp),
     ) {
       item {
-        SextantRevealItem(index = 0) {
+        Box {
           Column(Modifier.padding(ScreenPadding)) { LedgerOverview(state, filter) }
         }
       }
@@ -107,7 +107,7 @@ fun HomeScreen(
         }
         itemsIndexed(group.items, key = { _, item -> item.transaction.id }, contentType = { _, _ -> "transaction" }) { index, item ->
           val category = categoriesById[item.transaction.categoryId]
-          SextantRevealItem(index = index + 1) {
+          Box {
             Column(Modifier.padding(ScreenPadding)) {
               LedgerTransactionRow(
                 item = item,
@@ -234,7 +234,7 @@ private fun MonthlyBudgetProgress(label: String, spent: Long, total: Long) {
     else -> SextantColors.Accent
   }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
       Text(label, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
       Text(
         "${(ratio * 100).toInt()}%  ·  ${formatAmountPlain(spent)} / ${formatAmountPlain(total)}",
@@ -265,26 +265,23 @@ private fun DailyLedgerHeader(group: DailyTransactionGroup) {
     .filter { it.transaction.type == TransactionType.Expense && it.includeInSpending }
     .sumOf { it.transaction.amountCents }
 
-  Row(
+  FlowRow(
     Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp),
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     Text(
       text = group.label,
-      modifier = Modifier.weight(1f),
       color = SextantColors.Text,
       style = MaterialTheme.typography.titleSmall,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
     )
-    Spacer(Modifier.width(12.dp))
     Text(
       text = dailySummary(expense, income),
       color = SextantColors.TextSubtle,
       style = MaterialTheme.typography.labelMedium,
-      maxLines = 1,
-      softWrap = false,
+      softWrap = true,
     )
   }
 }
@@ -317,13 +314,12 @@ private fun LedgerTransactionRow(
       modifier = Modifier.weight(1f),
       verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
+      FlowRow(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
       ) {
         Text(
           text = categoryName,
-          modifier = Modifier.weight(1f),
           color = SextantColors.Text,
           style = MaterialTheme.typography.bodyLarge,
           fontWeight = FontWeight.Medium,
@@ -334,8 +330,7 @@ private fun LedgerTransactionRow(
           text = signedAmountPlain(item),
           color = SextantColors.Text,
           style = MaterialTheme.typography.titleMedium,
-          maxLines = 1,
-          softWrap = false,
+          softWrap = true,
         )
       }
       Text(

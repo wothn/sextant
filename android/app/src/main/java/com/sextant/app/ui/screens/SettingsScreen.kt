@@ -13,6 +13,9 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -189,7 +192,7 @@ fun SettingsScreen(
       },
       title = { Text("主题") },
       text = {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
           Text("选择应用的显示方式", color = SextantColors.TextMuted)
           listOf(ThemePreference.Light, ThemePreference.Dark, ThemePreference.System).forEach { item ->
             ThemePreferenceOption(
@@ -433,13 +436,13 @@ private fun ThemePreferenceOption(
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .clickable(onClick = onClick)
+      .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
       .padding(vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     SextantRadioButton(
       selected = selected,
-      onClick = onClick,
+      onClick = null,
     )
     Spacer(Modifier.width(8.dp))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

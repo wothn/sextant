@@ -13,7 +13,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -156,7 +155,7 @@ fun SextantAlertDialog(
 ) {
   AlertDialog(onDismissRequest = onDismissRequest, confirmButton = confirmButton, dismissButton = dismissButton,
     title = title, text = text?.let { body -> { Column(Modifier.verticalScroll(rememberScrollState())) { body() } } },
-    shape = MaterialTheme.shapes.extraLarge, containerColor = SextantColors.SurfaceContainerHigh,
+    shape = MaterialTheme.shapes.extraLarge, containerColor = SextantColors.SurfaceContainerLow,
     titleContentColor = SextantColors.Text, textContentColor = SextantColors.TextMuted, tonalElevation = 0.dp)
 }
 
@@ -185,13 +184,12 @@ fun SextantButton(
   content: @Composable RowScope.() -> Unit,
 ) {
   val interactionSource = remember { MutableInteractionSource() }
-  val pressed by interactionSource.collectIsPressedAsState()
   val shapes = size.shapes()
   Button(
     onClick = onClick,
     modifier = modifier.heightIn(min = size.height),
     enabled = enabled,
-    shape = if (pressed) shapes.pressedShape else shapes.shape,
+    shapes = shapes,
     colors = colors,
     elevation = null,
     contentPadding = size.contentPadding,
@@ -242,13 +240,12 @@ fun SextantOutlinedButton(
   content: @Composable RowScope.() -> Unit,
 ) {
   val interactionSource = remember { MutableInteractionSource() }
-  val pressed by interactionSource.collectIsPressedAsState()
   val shapes = size.shapes()
   OutlinedButton(
     onClick = onClick,
     modifier = modifier.heightIn(min = size.height),
     enabled = enabled,
-    shape = if (pressed) shapes.pressedShape else shapes.shape,
+    shapes = shapes,
     border = BorderStroke(1.dp, if (enabled) SextantColors.Border else SextantColors.Border.copy(alpha = 0.5f)),
     colors = ButtonDefaults.outlinedButtonColors(
       contentColor = SextantColors.Text,
@@ -474,7 +471,7 @@ fun sextantFilterChipColors() = FilterChipDefaults.filterChipColors(
  * 筛选 chip：胶囊形状，未选中 SurfaceContainer 淡底，选中 AccentSoft 底，都不描边。
  *
  * 未选中不能用纯白 Surface 底：浅色主题下白底比页面背景更亮，会让「没选」看起来像「选了」。
- * 选中且调用方没有提供前导图标时补一个勾——只靠颜色区分选中对色觉障碍不友好。
+ * 选中时保留前导图标并补一个勾——只靠颜色区分选中对色觉障碍不友好。
  */
 @Composable
 fun SextantFilterChip(
@@ -486,10 +483,15 @@ fun SextantFilterChip(
 ) {
   FilterChip(selected = selected, onClick = onClick, label = label, modifier = modifier,
     enabled = enabled,
-    leadingIcon = leadingIcon ?: if (selected) {
-      { Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+    leadingIcon = if (selected) {
+      {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+          leadingIcon?.invoke()
+          Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+      }
     } else {
-      null
+      leadingIcon
     },
     trailingIcon = trailingIcon,
     shape = SextantFullShape, colors = colors, border = null)
@@ -881,7 +883,7 @@ fun SextantTimePickerDialog(
   dismissButton: (@Composable () -> Unit)? = null, content: @Composable () -> Unit,
 ) {
   AlertDialog(onDismissRequest = onDismissRequest, confirmButton = confirmButton, dismissButton = dismissButton,
-    shape = MaterialTheme.shapes.extraLarge, containerColor = SextantColors.SurfaceContainerHigh,
+    shape = MaterialTheme.shapes.extraLarge, containerColor = SextantColors.SurfaceContainerLow,
     titleContentColor = SextantColors.Text, textContentColor = SextantColors.Text,
     tonalElevation = 0.dp, text = content)
 }

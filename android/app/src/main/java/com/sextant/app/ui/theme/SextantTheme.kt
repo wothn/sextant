@@ -80,11 +80,11 @@ private val LightPalette = SextantPalette(
   backgroundSoft = Color(0xFFEAE6DE),
   text = Color(0xFF262724),
   textMuted = Color(0xFF5B5D57),
-  textSubtle = Color(0xFF70726B),
+  textSubtle = Color(0xFF60625B),
   border = Color(0xFFDCD8D0),
   success = Color(0xFF2F7D5B),
   danger = Color(0xFFB64B45),
-  warning = Color(0xFF9A6B21),
+  warning = Color(0xFF865B18),
   info = Color(0xFF3E708F),
   tabInactive = Color(0xFF75776F),
 )
@@ -213,8 +213,8 @@ private val SextantLightScheme: ColorScheme = lightColorScheme(
   surfaceContainer = LightPalette.surfaceAlt,
   surfaceContainerHigh = LightPalette.backgroundSoft,
   surfaceContainerHighest = LightPalette.surfaceStrong,
-  surfaceContainerLow = LightPalette.background,
-  surfaceContainerLowest = LightPalette.surface,
+  surfaceContainerLow = LightPalette.surface,
+  surfaceContainerLowest = LightPalette.background,
   surfaceDim = LightPalette.surfaceStrong,
 )
 

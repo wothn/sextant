@@ -1,7 +1,5 @@
 package com.sextant.app.ui.screens
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,6 +7,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import com.sextant.app.ui.components.SextantTextButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -100,7 +103,7 @@ private fun MonthComparison(state: AppState) {
   Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
     Text("本月支出", color = SextantColors.TextMuted, fontWeight = FontWeight.SemiBold)
     Text(formatCurrency(current), style = MaterialTheme.typography.headlineLarge)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       ComparisonMetric("上月支出", formatCurrency(previous))
       ComparisonMetric(
         "环比变化",
@@ -131,7 +134,7 @@ private fun SpendingChart(points: List<DailySpending>) {
   val peak = points.maxByOrNull { it.amountCents }
   var selectedPoint by remember(points) { mutableStateOf(peak) }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text("${selectedPoint?.dayOfMonth ?: peak?.dayOfMonth}日支出", color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
         Text(formatCurrency(selectedPoint?.amountCents ?: 0), fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -171,11 +174,20 @@ private fun SpendingChart(points: List<DailySpending>) {
                 .height((3 + 126 * ratio).dp)
                 .clip(SextantBarShape)
                 .background(if (selected) SextantColors.AccentStrong else SextantColors.AccentSoft)
+                .semantics {
+                  contentDescription = "${point.dayOfMonth}日，支出${formatCurrency(point.amountCents)}"
+                  this.selected = selected
+                }
                 .clickable { selectedPoint = point },
             )
           }
         }
       }
+    }
+    val selectedIndex = points.indexOf(selectedPoint)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      SextantTextButton(enabled = selectedIndex > 0, onClick = { selectedPoint = points[selectedIndex - 1] }) { Text("前一天") }
+      SextantTextButton(enabled = selectedIndex >= 0 && selectedIndex < points.lastIndex, onClick = { selectedPoint = points[selectedIndex + 1] }) { Text("后一天") }
     }
     Row(Modifier.fillMaxWidth().padding(start = 66.dp), horizontalArrangement = Arrangement.SpaceBetween) {
       Text("1日", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
@@ -200,7 +212,7 @@ private fun CategoryStructure(items: List<CategoryBreakdown>, total: Long) {
       val change = if (item.previousAmountCents <= 0) null else (item.amountCents - item.previousAmountCents).toDouble() / item.previousAmountCents
       val color = argbColor(item.color)
       Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(8.dp).height(8.dp).clip(CircleShape).background(color))
             Spacer(Modifier.width(9.dp))
@@ -227,8 +239,7 @@ private fun CategoryStructure(items: List<CategoryBreakdown>, total: Long) {
 
 @Composable
 private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
-  val reveal by animateFloatAsState(targetValue = 1f, animationSpec = tween(650), label = "categoryDonutReveal")
-  Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
       Canvas(Modifier.matchParentSize().padding(7.dp)) {
         val stroke = 22.dp.toPx()
@@ -241,7 +252,7 @@ private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
         )
         var startAngle = -90f
         slices.forEach { slice ->
-          val sweep = if (total <= 0) 0f else slice.amountCents.toFloat() / total * 360f * reveal
+          val sweep = if (total <= 0) 0f else slice.amountCents.toFloat() / total * 360f
           val gap = if (sweep > 4f) 2f else 0f
           drawArc(
             color = slice.color,
@@ -259,7 +270,7 @@ private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
       }
     }
     Spacer(Modifier.width(18.dp))
-    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
       slices.forEach { slice ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
           Box(Modifier.size(8.dp).clip(CircleShape).background(slice.color))
@@ -315,7 +326,7 @@ private fun BudgetForecast(state: AppState) {
             Spacer(Modifier.height(2.dp))
             SextantHeading("需要关注")
             riskBudgets.forEach { item ->
-              Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+              FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.categoryName, color = SextantColors.TextMuted)
                 Text(
                   "${((item.spentCents.toFloat() / item.amountCents.coerceAtLeast(1)) * 100).toInt()}%",
