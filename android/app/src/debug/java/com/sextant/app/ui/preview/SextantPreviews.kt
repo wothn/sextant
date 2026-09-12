@@ -101,7 +101,6 @@ private fun PreviewAppShell(selectedTab: Tab, content: @Composable () -> Unit) {
       LedgerNavigationBar(
         selectedTab = selectedTab,
         onTabSelected = {},
-        onQuickEntry = {},
       )
     },
     containerColor = SextantColors.Background,

@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,8 +40,12 @@ import com.sextant.app.data.AppState
 import com.sextant.app.data.CategoryBreakdown
 import com.sextant.app.data.DailySpending
 import com.sextant.app.ui.components.EmptyCard
-import com.sextant.app.ui.components.SectionTitle
+import com.sextant.app.ui.components.SextantFlexibleHeader
+import com.sextant.app.ui.components.SextantHeading
+import com.sextant.app.ui.components.SextantSurface
+import com.sextant.app.ui.components.SextantHeading
 import com.sextant.app.ui.theme.SextantColors
+import com.sextant.app.ui.theme.SextantBarShape
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.isCurrentMonth
@@ -50,37 +54,41 @@ import kotlin.math.abs
 
 @Composable
 fun AnalyticsScreen(state: AppState, monthStart: Long) {
-  LazyColumn(
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 20.dp),
-    verticalArrangement = Arrangement.spacedBy(22.dp),
-  ) {
-    item {
-      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SectionTitle(if (isCurrentMonth(monthStart)) "本月分析" else "${monthLabel(monthStart)}分析")
-        Text(monthInsight(state), color = SextantColors.TextSubtle)
-      }
-    }
-    item { MonthComparison(state) }
-    item {
-      AnalyticsSection("每日支出", "查看这个月的消费节奏") {
-        if (state.dailySpending.none { it.amountCents > 0 }) {
-          EmptyCard("暂无趋势", "录入支出后，这里会显示每日消费变化。")
-        } else {
-          SpendingChart(state.dailySpending)
+  val listState = rememberLazyListState()
+  Column(Modifier.fillMaxSize()) {
+    SextantFlexibleHeader(
+      title = if (isCurrentMonth(monthStart)) "本月分析" else "${monthLabel(monthStart)}分析",
+      scrollState = listState,
+      subtitle = monthInsight(state),
+      modifier = Modifier.padding(horizontal = 20.dp),
+    )
+    LazyColumn(
+      state = listState,
+      modifier = Modifier.fillMaxSize(),
+      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+      verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+      item { MonthComparison(state) }
+      item {
+        AnalyticsSection("每日支出", "查看这个月的消费节奏") {
+          if (state.dailySpending.none { it.amountCents > 0 }) {
+            EmptyCard("暂无趋势", "录入支出后，这里会显示每日消费变化。")
+          } else {
+            SpendingChart(state.dailySpending)
+          }
         }
       }
-    }
-    item {
-      AnalyticsSection("支出结构", "本月金额最高的消费分类") {
-        if (state.categoryBreakdown.isEmpty()) {
-          EmptyCard("暂无分析", "录入支出后会展示分类占比。")
-        } else {
-          CategoryStructure(state.categoryBreakdown, state.monthSummary.expenseCents)
+      item {
+        AnalyticsSection("支出结构", "本月金额最高的消费分类") {
+          if (state.categoryBreakdown.isEmpty()) {
+            EmptyCard("暂无分析", "录入支出后会展示分类占比。")
+          } else {
+            CategoryStructure(state.categoryBreakdown, state.monthSummary.expenseCents)
+          }
         }
       }
+      item { BudgetForecast(state) }
     }
-    item { BudgetForecast(state) }
   }
 }
 
@@ -91,7 +99,7 @@ private fun MonthComparison(state: AppState) {
   val change = if (previous <= 0) null else (current - previous).toDouble() / previous
   Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
     Text("本月支出", color = SextantColors.TextMuted, fontWeight = FontWeight.SemiBold)
-    Text(formatCurrency(current), fontSize = 38.sp, fontWeight = FontWeight.Bold)
+    Text(formatCurrency(current), style = MaterialTheme.typography.headlineLarge)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
       ComparisonMetric("上月支出", formatCurrency(previous))
       ComparisonMetric(
@@ -146,7 +154,7 @@ private fun SpendingChart(points: List<DailySpending>) {
       Box(Modifier.weight(1f).height(132.dp)) {
         Canvas(Modifier.matchParentSize()) {
           listOf(0f, size.height / 2f, size.height - 1f).forEach { y ->
-            drawLine(SextantColors.Border, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
+            drawLine(SextantColors.SurfaceContainerHighest, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
           }
         }
         Row(
@@ -161,7 +169,7 @@ private fun SpendingChart(points: List<DailySpending>) {
               Modifier
                 .weight(1f)
                 .height((3 + 126 * ratio).dp)
-                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                .clip(SextantBarShape)
                 .background(if (selected) SextantColors.AccentStrong else SextantColors.AccentSoft)
                 .clickable { selectedPoint = point },
             )
@@ -200,7 +208,7 @@ private fun CategoryStructure(items: List<CategoryBreakdown>, total: Long) {
           }
           Text("${formatCurrency(item.amountCents)}  ·  ${(ratio * 100).toInt()}%", fontWeight = FontWeight.SemiBold)
         }
-        Box(Modifier.fillMaxWidth().height(7.dp).clip(CircleShape).background(SextantColors.SurfaceStrong)) {
+        Box(Modifier.fillMaxWidth().height(7.dp).clip(CircleShape).background(SextantColors.SurfaceContainerHighest)) {
           Box(Modifier.fillMaxWidth(ratio.coerceIn(0f, 1f)).height(7.dp).clip(CircleShape).background(color))
         }
         Text(
@@ -225,7 +233,7 @@ private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
       Canvas(Modifier.matchParentSize().padding(7.dp)) {
         val stroke = 22.dp.toPx()
         drawArc(
-          color = SextantColors.SurfaceStrong,
+          color = SextantColors.SurfaceContainerHighest,
           startAngle = -90f,
           sweepAngle = 360f,
           useCenter = false,
@@ -290,25 +298,30 @@ private fun BudgetForecast(state: AppState) {
       val projected = state.projectedExpenseCents
       val difference = budget - projected
       val riskColor = if (difference < 0) SextantColors.Danger else SextantColors.Success
-      Column(
-        modifier = Modifier.fillMaxWidth().background(SextantColors.SurfaceAlt, RoundedCornerShape(20.dp)).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        Text("预计月底支出", color = SextantColors.TextMuted)
-        Text(formatCurrency(projected), fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text(
-          if (difference < 0) "预计超出预算 ${formatCurrency(-difference)}" else "预计低于预算 ${formatCurrency(difference)}",
-          color = riskColor,
-          fontWeight = FontWeight.SemiBold,
-        )
-        val riskBudgets = state.budgets.sortedByDescending { if (it.amountCents <= 0) 0f else it.spentCents.toFloat() / it.amountCents }.take(3)
-        if (riskBudgets.isNotEmpty()) {
-          Spacer(Modifier.height(2.dp))
-          Text("需要关注", fontWeight = FontWeight.SemiBold)
-          riskBudgets.forEach { item ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-              Text(item.categoryName, color = SextantColors.TextMuted)
-              Text("${((item.spentCents.toFloat() / item.amountCents.coerceAtLeast(1)) * 100).toInt()}%", fontWeight = FontWeight.Bold)
+      SextantSurface(modifier = Modifier.fillMaxWidth(), color = SextantColors.SurfaceContainer) {
+        Column(
+          modifier = Modifier.fillMaxWidth().padding(20.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Text("预计月底支出", color = SextantColors.TextMuted)
+          Text(formatCurrency(projected), style = MaterialTheme.typography.headlineSmall)
+          Text(
+            if (difference < 0) "预计超出预算 ${formatCurrency(-difference)}" else "预计低于预算 ${formatCurrency(difference)}",
+            color = riskColor,
+            style = MaterialTheme.typography.titleSmall,
+          )
+          val riskBudgets = state.budgets.sortedByDescending { if (it.amountCents <= 0) 0f else it.spentCents.toFloat() / it.amountCents }.take(3)
+          if (riskBudgets.isNotEmpty()) {
+            Spacer(Modifier.height(2.dp))
+            SextantHeading("需要关注")
+            riskBudgets.forEach { item ->
+              Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(item.categoryName, color = SextantColors.TextMuted)
+                Text(
+                  "${((item.spentCents.toFloat() / item.amountCents.coerceAtLeast(1)) * 100).toInt()}%",
+                  style = MaterialTheme.typography.titleSmall,
+                )
+              }
             }
           }
         }
@@ -321,7 +334,7 @@ private fun BudgetForecast(state: AppState) {
 private fun AnalyticsSection(title: String, subtitle: String, content: @Composable () -> Unit) {
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+      SextantHeading(title)
       Text(subtitle, color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
     }
     content()

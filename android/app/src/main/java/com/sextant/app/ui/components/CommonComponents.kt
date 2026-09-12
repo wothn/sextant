@@ -7,114 +7,88 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.Category
 import com.sextant.app.data.PaymentMethod
-import com.sextant.app.data.TransactionListItem
-import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.theme.SextantColors
-import com.sextant.app.ui.theme.argbColor
-import com.sextant.app.ui.util.formatCurrency
-import com.sextant.app.ui.util.signedAmount
+import com.sextant.app.ui.theme.SextantFullShape
 
-@Composable
-fun SummaryCard(title: String, income: Long, expense: Long) {
-  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Metric("收入", income, SextantColors.Success)
-        Metric("支出", expense, SextantColors.Danger)
-        Metric("结余", income - expense, SextantColors.Accent)
-      }
-    }
-  }
-}
+/**
+ * 跨页面复用的展示型组件。
+ *
+ * 这里只放「没有交互状态」的东西——有空状态、区块标题、色点、chip 选择器。
+ * 带交互的控件（按钮、输入框、可选项、面板）在 `SextantControls.kt`，
+ * 两者共用同一套 token，但职责分开。
+ */
 
-@Composable
-private fun Metric(label: String, value: Long, color: Color) {
-  Column {
-    Text(label, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
-    Text(formatCurrency(value), color = color, fontWeight = FontWeight.Bold)
-  }
-}
-
-@Composable
-fun TransactionRow(item: TransactionListItem) {
-  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
-    Row(
-      Modifier.fillMaxWidth().padding(14.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        ColorDot(argbColor(item.categoryColor))
-        Spacer(Modifier.width(12.dp))
-        Column {
-          Text(item.categoryName, fontWeight = FontWeight.SemiBold)
-          Text(
-            item.paymentMethodName,
-            color = SextantColors.TextMuted,
-            style = MaterialTheme.typography.bodySmall,
-          )
-        }
-      }
-      Text(
-        text = signedAmount(item),
-        color = if (item.transaction.type == TransactionType.Expense) SextantColors.Danger else SextantColors.Success,
-        fontWeight = FontWeight.Bold,
-      )
-    }
-  }
-}
-
-@Composable
-fun ProgressRow(label: String, value: Long, total: Long, color: Color) {
-  val percent = if (total <= 0) 0f else (value.toDouble() / total).toFloat().coerceIn(0f, 1f)
-  Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontWeight = FontWeight.SemiBold)
-        Text("${formatCurrency(value)} / ${formatCurrency(total)}", color = SextantColors.TextMuted)
-      }
-      Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(SextantColors.SurfaceStrong)) {
-        Box(Modifier.fillMaxWidth(percent).height(8.dp).clip(CircleShape).background(color))
-      }
-  }
-}
-
+/** 空状态：凹槽色底，不再描边——空状态本来就是「没有内容」，不该比有内容时更抢眼。 */
 @Composable
 fun EmptyCard(title: String, description: String) {
-  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.SurfaceAlt)) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-      Text(title, fontWeight = FontWeight.SemiBold)
-      Text(description, color = SextantColors.TextMuted)
+  SextantSurface(color = SextantColors.SurfaceContainer) {
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Text(title, style = MaterialTheme.typography.titleMedium, color = SextantColors.Text)
+      Text(description, style = MaterialTheme.typography.bodyMedium, color = SextantColors.TextMuted)
     }
   }
 }
 
+/**
+ * 页面级标题：六分仪标记 + headlineMedium。
+ *
+ * 不带滚动收起的页面（设置子页、自动记账、分类管理）用它；主页面用
+ * [SextantFlexibleHeader]，两者字号与标记一致，切换页面时标题不会跳。
+ */
 @Composable
 fun SectionTitle(text: String) {
-  Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    SextantMark()
+    Text(text, style = MaterialTheme.typography.headlineMedium, color = SextantColors.Text)
+  }
+}
+
+/**
+ * 页面内区块标题（明细 / 分类预算 / 筛选流水 / 面板标题）。
+ *
+ * 字重来自主题的 titleLarge（expressive 档位已经是 SemiBold），调用处不再叠加
+ * `fontWeight`——之前每个调用点各写一遍，字重迟早会分叉。
+ */
+@Composable
+fun SextantHeading(text: String, modifier: Modifier = Modifier) {
+  Text(
+    text = text,
+    modifier = modifier,
+    style = MaterialTheme.typography.titleLarge,
+    color = SextantColors.Text,
+  )
+}
+
+/** 小计数徽标，用在筛选入口这类「有条件的数量」提示上。 */
+@Composable
+fun SextantBadge(count: Int, modifier: Modifier = Modifier) {
+  Box(
+    modifier = modifier.size(18.dp).clip(SextantFullShape).background(SextantColors.Accent),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text(
+      text = count.toString(),
+      color = SextantColors.OnAccent,
+      style = MaterialTheme.typography.labelSmall,
+      maxLines = 1,
+    )
+  }
 }
 
 @Composable
@@ -124,6 +98,12 @@ fun ColorDot(color: Color) {
   }
 }
 
+/**
+ * 可换行的 chip 选择器，用于分类颜色、来源颜色和上级分类等紧凑选择。
+ *
+ * [icon] 未提供时前导元素是颜色圆点，适合「挑一个颜色」；提供时改为分类图标底块，
+ * 适合「挑一个分类」——分类在两处必须长得一样，只有纯颜色选择才用圆点。
+ */
 @Composable
 fun <T> FlowChips(
   items: List<T>,
@@ -131,6 +111,7 @@ fun <T> FlowChips(
   label: (T) -> String,
   color: (T) -> Color,
   modifier: Modifier = Modifier,
+  icon: ((T) -> ImageVector)? = null,
   onSelect: (T) -> Unit,
 ) {
   FlowRow(
@@ -148,39 +129,24 @@ fun <T> FlowChips(
       }
       val isSelected = id == selectedId
       val itemColor = color(item)
-      FilterChip(
+      SextantFilterChip(
         selected = isSelected,
         onClick = { onSelect(item) },
-        label = { Text(label(item)) },
-        leadingIcon = { ColorDot(itemColor) },
-        colors = sextantFilterChipColors(),
+        label = { Text(label(item), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { FlowChipLeading(itemColor, icon?.invoke(item)) },
       )
     }
   }
 }
 
 @Composable
-fun sextantFilterChipColors() = FilterChipDefaults.filterChipColors(
-  selectedContainerColor = SextantColors.AccentSoft,
-  selectedLabelColor = SextantColors.AccentStrong,
-  selectedLeadingIconColor = SextantColors.AccentStrong,
-  containerColor = SextantColors.Surface,
-  labelColor = SextantColors.Text,
-)
+private fun FlowChipLeading(color: Color, icon: ImageVector?) {
+  if (icon == null) {
+    ColorDot(color)
+  } else {
+    CategoryIcon(icon, color, size = 20.dp, iconSize = 12.dp)
+  }
+}
 
-@Composable
-fun sextantSwitchColors() = SwitchDefaults.colors(
-  checkedThumbColor = SextantColors.OnAccent,
-  checkedTrackColor = SextantColors.Accent,
-  checkedBorderColor = SextantColors.Accent,
-  uncheckedThumbColor = SextantColors.Surface,
-  uncheckedTrackColor = SextantColors.SurfaceStrong,
-  uncheckedBorderColor = SextantColors.Border,
-  disabledCheckedThumbColor = SextantColors.OnAccent,
-  disabledCheckedTrackColor = SextantColors.Accent,
-  disabledCheckedBorderColor = SextantColors.Accent,
-  disabledUncheckedThumbColor = SextantColors.Surface,
-  disabledUncheckedTrackColor = SextantColors.SurfaceStrong,
-  disabledUncheckedBorderColor = SextantColors.Border,
-)
-
+/** 胶囊形状。chip、已选条件标签这类小标签共用。 */
+val SextantChipShape: Shape = SextantFullShape

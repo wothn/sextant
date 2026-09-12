@@ -2,8 +2,6 @@ package com.sextant.app.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,18 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
@@ -53,7 +43,6 @@ fun CategoryManagement(
   var editingCategory by remember { mutableStateOf<Category?>(null) }
   var parentForNewChild by remember { mutableStateOf<Category?>(null) }
   var showAddRoot by remember { mutableStateOf(false) }
-  val rootCategories = categories.filter { it.parentCategoryId == null }
 
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -62,50 +51,28 @@ fun CategoryManagement(
         verticalAlignment = Alignment.CenterVertically,
       ) {
         if (onNavigateBack != null) {
-          IconButton(onClick = onNavigateBack) {
+          SextantIconButton(onClick = onNavigateBack) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回设置")
           }
         }
         SectionTitle("分类管理")
       }
-      TextButton(onClick = { showAddRoot = true }) { Text("新增分类") }
+      SextantTextButton(onClick = { showAddRoot = true }) { Text("新增分类") }
     }
     if (categories.isEmpty()) {
       EmptyCard("暂无分类", "新增收入或支出分类后，就可以在记账时选择。")
     } else {
-      rootCategories.forEach { category ->
-        Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
-          Column {
-            CategoryRow(
-              category = category,
-              categories = categories,
-              level = 0,
-              onAddChild = { parentForNewChild = category },
-              onEdit = { editingCategory = category },
-              onArchive = {
-                repository.archiveCategory(category.id)
-                onChanged()
-              },
-            )
-            categories.filter { it.parentCategoryId == category.id }.forEach { child ->
-              CategoryRow(
-                category = child,
-                categories = categories,
-                level = 1,
-                onAddChild = { parentForNewChild = child },
-                onEdit = { editingCategory = child },
-                onArchive = {
-                  repository.archiveCategory(child.id)
-                  onChanged()
-                },
-              )
-            }
-          }
-        }
-      }
+      CategoryBrowser(categories = categories, actions = { category ->
+        CategoryActions(
+          category = category,
+          categories = categories,
+          onAddChild = { parentForNewChild = category },
+          onEdit = { editingCategory = category },
+          onArchive = { repository.archiveCategory(category.id); onChanged() },
+        )
+      })
     }
   }
-
   if (showAddRoot) {
     CategoryDialog(
       categories = categories,
@@ -150,53 +117,28 @@ fun CategoryManagement(
 }
 
 @Composable
-private fun CategoryRow(
+private fun CategoryActions(
   category: Category,
   categories: List<Category>,
-  level: Int,
   onAddChild: () -> Unit,
   onEdit: () -> Unit,
   onArchive: () -> Unit,
 ) {
   var showActions by remember { mutableStateOf(false) }
-    Row(
-      Modifier.fillMaxWidth().padding(14.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-      Row(
-        modifier = Modifier.weight(1f),
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Spacer(Modifier.width((level * 20).dp))
-        ColorDot(argbColor(category.color))
-        Spacer(Modifier.width(12.dp))
-        Column {
-          Text(category.name, fontWeight = FontWeight.SemiBold)
-          Text(
-            listOf(category.type.label, if (category.includeInSpending) "计入支出" else "不计支出")
-              .joinToString(" · "),
-            color = SextantColors.TextMuted,
-            style = MaterialTheme.typography.bodySmall,
-          )
-        }
-      }
-      Box {
-        IconButton(onClick = { showActions = true }) {
-          Icon(Icons.Outlined.MoreVert, contentDescription = "管理${category.displayName(categories)}", tint = SextantColors.TextMuted)
-        }
-        DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
-          if (level == 0) {
-            DropdownMenuItem(text = { Text("添加子分类") }, onClick = { showActions = false; onAddChild() })
-          }
-          DropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
-          DropdownMenuItem(text = { Text("停用", color = SextantColors.Danger) },
-            onClick = { showActions = false; onArchive() })
-        }
-      }
+  Box {
+    SextantIconButton(onClick = { showActions = true }) {
+      Icon(Icons.Outlined.MoreVert, contentDescription = "管理${category.displayName(categories)}")
     }
+    SextantDropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+      if (category.parentCategoryId == null) {
+        SextantDropdownMenuItem(text = { Text("添加子分类") }, onClick = { showActions = false; onAddChild() })
+      }
+      SextantDropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
+      SextantDropdownMenuItem(text = { Text("停用", color = SextantColors.Danger) },
+        onClick = { showActions = false; onArchive() })
+    }
+  }
 }
-
 @Composable
 private fun CategoryDialog(
   categories: List<Category>,
@@ -216,10 +158,10 @@ private fun CategoryDialog(
     it.parentCategoryId == null && it.type == type && it.id != initial?.id
   }
 
-  AlertDialog(
+  SextantAlertDialog(
     onDismissRequest = onDismiss,
     confirmButton = {
-      Button(onClick = {
+      SextantButton(onClick = {
         if (name.isNotBlank()) {
           onSubmit(name, type, color, includeInSpending, fixedParent?.id ?: parentCategoryId)
         }
@@ -227,14 +169,14 @@ private fun CategoryDialog(
         Text("保存")
       }
     },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    dismissButton = { SextantTextButton(onClick = onDismiss) { Text("取消") } },
     title = { Text(if (initial == null) "添加分类" else "编辑分类") },
     text = {
       Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("分类名称") }, singleLine = true)
+        SextantTextField(value = name, onValueChange = { name = it }, label = { Text("分类名称") }, singleLine = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           listOf(TransactionType.Expense, TransactionType.Income).forEach { option ->
-            FilterChip(
+            SextantFilterChip(
               selected = type == option,
               enabled = fixedParent == null,
               onClick = {
@@ -242,7 +184,6 @@ private fun CategoryDialog(
                 parentCategoryId = null
               },
               label = { Text(option.label) },
-              colors = sextantFilterChipColors(),
             )
           }
         }
@@ -260,6 +201,7 @@ private fun CategoryDialog(
             selectedId = parentCategoryId,
             label = { it?.name ?: "无" },
             color = { it?.let { item -> argbColor(item.color) } ?: SextantColors.TextMuted },
+            icon = { it?.let { item -> categoryIcon(item.name) } ?: Icons.Outlined.Remove },
             onSelect = { parentCategoryId = it?.id },
           )
         } else {
@@ -271,10 +213,9 @@ private fun CategoryDialog(
           horizontalArrangement = Arrangement.SpaceBetween,
         ) {
           Text("计入支出统计")
-          Switch(
+          SextantSwitch(
             checked = includeInSpending,
             onCheckedChange = { includeInSpending = it },
-            colors = sextantSwitchColors(),
           )
         }
       }

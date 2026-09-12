@@ -6,7 +6,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.key
 import com.sextant.app.data.Category
 import com.sextant.app.ui.util.displayName
@@ -25,27 +24,16 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -138,13 +126,9 @@ fun LedgerFilterSheet(
     maxAmountText = ""
   }
 
-  ModalBottomSheet(
+  SextantBottomSheet(
     onDismissRequest = onDismiss,
     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-    containerColor = SextantColors.Background,
-    tonalElevation = 0.dp,
-    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    dragHandle = { BottomSheetDefaults.DragHandle(color = SextantColors.Border) },
   ) {
     if (choosingCategory) {
       FilterCategoryPage(
@@ -164,8 +148,8 @@ fun LedgerFilterSheet(
           Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 4.dp),
           verticalAlignment = Alignment.CenterVertically,
         ) {
-          Text("筛选流水", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-          TextButton(onClick = { resetConditions() }) { Text("清除条件") }
+          SextantHeading("筛选流水", modifier = Modifier.weight(1f))
+          SextantTextButton(onClick = { resetConditions() }) { Text("清除条件") }
         }
 
         // 已启用的条件即时可见，点一下就能单独清除，不用滚回对应分区。
@@ -207,14 +191,13 @@ fun LedgerFilterSheet(
           FilterSection("时间范围") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
               RangePreset.entries.forEach { preset ->
-                FilterChip(
+                SextantFilterChip(
                   selected = preset.matches(draft),
                   onClick = {
                     val (start, end) = preset.range()
                     draft = draft.copy(rangeStart = start, rangeEnd = end)
                   },
                   label = { Text(preset.label) },
-                  colors = sextantFilterChipColors(),
                 )
               }
             }
@@ -254,21 +237,19 @@ fun LedgerFilterSheet(
 
           FilterSection("收支类型") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              FilterChip(
+              SextantFilterChip(
                 selected = draft.type == null,
                 onClick = { draft = draft.copy(type = null) },
                 label = { Text("全部") },
-                colors = sextantFilterChipColors(),
               )
               TransactionType.entries.forEach { type ->
-                FilterChip(
+                SextantFilterChip(
                   selected = draft.type == type,
                   onClick = {
                     val keepCategory = state.categories.any { it.id == draft.categoryId && it.type == type }
                     draft = draft.copy(type = type, categoryId = draft.categoryId.takeIf { keepCategory })
                   },
                   label = { Text(type.label) },
-                  colors = sextantFilterChipColors(),
                 )
               }
             }
@@ -276,25 +257,23 @@ fun LedgerFilterSheet(
 
           FilterSection("账单来源") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              FilterChip(
+              SextantFilterChip(
                 selected = draft.paymentMethodId == null,
                 onClick = { draft = draft.copy(paymentMethodId = null) },
                 label = { Text("全部来源") },
-                colors = sextantFilterChipColors(),
               )
               state.paymentMethods.forEach { method ->
-                FilterChip(
+                SextantFilterChip(
                   selected = draft.paymentMethodId == method.id,
                   onClick = { draft = draft.copy(paymentMethodId = method.id) },
                   label = { Text(method.name) },
-                  colors = sextantFilterChipColors(),
                 )
               }
             }
           }
 
           FilterSection("备注关键词") {
-            OutlinedTextField(
+            SextantTextField(
               value = queryText,
               onValueChange = {
                 queryText = it
@@ -344,17 +323,16 @@ fun LedgerFilterSheet(
           Spacer(Modifier.height(2.dp))
         }
 
-        HorizontalDivider(color = SextantColors.Border)
+        SextantDivider(color = SextantColors.SurfaceContainer)
 
         Row(
           Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
           horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-          OutlinedButton(
-            onClick = {
+          SextantOutlinedButton(onClick = {
               draft = LedgerFilter.allTime()
               queryText = ""
               minAmountText = ""
@@ -362,10 +340,8 @@ fun LedgerFilterSheet(
             },
             modifier = Modifier.weight(1f),
           ) { Text("重置筛选") }
-          Button(
-            onClick = { onApply(draft) },
+          SextantButton(onClick = { onApply(draft) },
             modifier = Modifier.weight(1.6f),
-            colors = ButtonDefaults.buttonColors(containerColor = SextantColors.Accent, contentColor = SextantColors.OnAccent),
           ) { Text("查看结果") }
         }
       }
@@ -375,10 +351,10 @@ fun LedgerFilterSheet(
   when (picking) {
     DateField.Start -> {
       val pickerState = rememberDatePickerState(initialSelectedDateMillis = localMillisToUtcPickerMillis(if (draft.isAllTime) System.currentTimeMillis() else draft.rangeStart))
-      DatePickerDialog(
+      SextantDatePickerDialog(
         onDismissRequest = { picking = null },
         confirmButton = {
-          TextButton(onClick = {
+          SextantTextButton(onClick = {
             pickerState.selectedDateMillis?.let { picked ->
               val dayStart = utcPickerMillisToLocalStartOfDay(picked)
               draft = draft.copy(
@@ -389,16 +365,16 @@ fun LedgerFilterSheet(
             picking = null
           }) { Text("确定") }
         },
-        dismissButton = { TextButton(onClick = { picking = null }) { Text("取消") } },
-      ) { DatePicker(state = pickerState) }
+        dismissButton = { SextantTextButton(onClick = { picking = null }) { Text("取消") } },
+      ) { SextantDatePicker(state = pickerState) }
     }
 
     DateField.End -> {
       val pickerState = rememberDatePickerState(initialSelectedDateMillis = localMillisToUtcPickerMillis(if (draft.isAllTime) System.currentTimeMillis() else draft.rangeEnd - 1))
-      DatePickerDialog(
+      SextantDatePickerDialog(
         onDismissRequest = { picking = null },
         confirmButton = {
-          TextButton(onClick = {
+          SextantTextButton(onClick = {
             pickerState.selectedDateMillis?.let { picked ->
               val dayStart = utcPickerMillisToLocalStartOfDay(picked)
               draft = draft.copy(
@@ -409,8 +385,8 @@ fun LedgerFilterSheet(
             picking = null
           }) { Text("确定") }
         },
-        dismissButton = { TextButton(onClick = { picking = null }) { Text("取消") } },
-      ) { DatePicker(state = pickerState) }
+        dismissButton = { SextantTextButton(onClick = { picking = null }) { Text("取消") } },
+      ) { SextantDatePicker(state = pickerState) }
     }
 
     null -> Unit
@@ -469,7 +445,7 @@ private fun ActiveFilterChips(
 private fun ActiveFilterChip(label: String, onClick: () -> Unit) {
   Row(
     modifier = Modifier
-      .clip(RoundedCornerShape(10.dp))
+      .clip(SextantChipShape)
       .background(SextantColors.AccentSoft)
       .clickable(onClickLabel = "清除条件 $label", onClick = onClick)
       .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -509,79 +485,29 @@ private fun FilterCategoryPage(
   onBack: () -> Unit,
   onSelect: (String?) -> Unit,
 ) {
-  var parent by remember { mutableStateOf<Category?>(null) }
-  val activeParent = parent
-  val visible = categories.filter { it.parentCategoryId == activeParent?.id }
-  fun goBack() {
-    if (parent != null) parent = null else onBack()
-  }
-  BackHandler { goBack() }
+  BackHandler { onBack() }
   Column(modifier.navigationBarsPadding()) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-      IconButton(onClick = { goBack() }) {
-        Icon(Icons.AutoMirrored.Outlined.ArrowBack, if (activeParent == null) "返回筛选" else "返回全部分类")
+      SextantIconButton(onClick = onBack) {
+        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回筛选")
       }
-      Text(activeParent?.name ?: "选择分类", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-      TextButton(onClick = onBack) { Text("取消") }
+      SextantHeading("选择分类", modifier = Modifier.weight(1f))
+      SextantTextButton(onClick = onBack) { Text("取消") }
     }
-    Text("选择后返回筛选，点击查看结果生效", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
-    HorizontalDivider(color = SextantColors.Border)
-    key(activeParent?.id) {
-      LazyColumn(Modifier.weight(1f).padding(horizontal = 20.dp)) {
-        item {
-          FilterCategoryRow(
-            label = activeParent?.let { "全部${it.name}" } ?: "全部分类",
-            selected = selectedId == activeParent?.id,
-            onClick = { onSelect(activeParent?.id) },
-          )
-        }
-        items(visible, key = { it.id }) { category ->
-          val hasChildren = categories.any { it.parentCategoryId == category.id }
-          FilterCategoryRow(
-            label = category.name,
-            detail = if (activeParent == null) category.type.label else null,
-            selected = selectedId == category.id || categories.any { it.id == selectedId && it.parentCategoryId == category.id },
-            opensChildren = hasChildren,
-            onClick = { if (hasChildren) parent = category else onSelect(category.id) },
-          )
-        }
-        if (visible.isEmpty()) {
-          item { Text("暂无可选分类", Modifier.padding(vertical = 20.dp), color = SextantColors.TextMuted) }
-        }
-      }
+    Text("选择后返回筛选，点击查看结果生效", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+      style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
+    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+      CategoryBrowser(categories = categories, selectedId = selectedId, allowAll = true,
+        onSelect = { onSelect(it?.id) })
     }
   }
 }
-
-@Composable
-private fun FilterCategoryRow(
-  label: String,
-  selected: Boolean,
-  detail: String? = null,
-  opensChildren: Boolean = false,
-  onClick: () -> Unit,
-) {
-  Row(
-    Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(10.dp))
-      .background(if (selected) SextantColors.AccentSoft else SextantColors.Background)
-      .clickable(onClickLabel = if (opensChildren) "查看${label}子分类" else "选择$label", onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 12.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(10.dp),
-  ) {
-    Text(label, Modifier.weight(1f), color = if (selected) SextantColors.AccentStrong else SextantColors.Text, style = MaterialTheme.typography.bodyLarge)
-    if (detail != null) Text(detail, color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
-    if (selected) Icon(Icons.Outlined.Check, "已选", tint = SextantColors.AccentStrong, modifier = Modifier.size(18.dp))
-    if (opensChildren) Icon(Icons.Outlined.ChevronRight, null, tint = SextantColors.TextSubtle, modifier = Modifier.size(18.dp))
-  }
-}
-
 @Composable
 private fun DateFieldTile(label: String, value: String, modifier: Modifier, onClick: () -> Unit) {
   Row(
     modifier = modifier
-      .clip(RoundedCornerShape(16.dp))
-      .background(SextantColors.SurfaceAlt)
+      .clip(MaterialTheme.shapes.large)
+      .background(SextantColors.SurfaceContainer)
       .clickable(onClickLabel = "选择$label", onClick = onClick)
       .padding(horizontal = 14.dp, vertical = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
@@ -597,7 +523,7 @@ private fun DateFieldTile(label: String, value: String, modifier: Modifier, onCl
 
 @Composable
 private fun AmountField(label: String, value: String, modifier: Modifier, onValueChange: (String) -> Unit) {
-  OutlinedTextField(
+  SextantTextField(
     value = value,
     onValueChange = onValueChange,
     label = { Text(label) },

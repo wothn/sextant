@@ -1,5 +1,13 @@
 package com.sextant.app.ui.screens
 
+import com.sextant.app.ui.components.SextantAlertDialog
+import com.sextant.app.ui.components.SextantFlexibleHeader
+import com.sextant.app.ui.components.SextantLoadingIndicator
+import com.sextant.app.ui.components.SextantWavyProgressIndicator
+import com.sextant.app.ui.components.SextantRadioButton
+import com.sextant.app.ui.components.SextantSurface
+import com.sextant.app.ui.components.SextantTextButton
+
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -18,7 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -27,15 +35,9 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Payments
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -143,10 +145,10 @@ fun SettingsScreen(
   }
 
   pendingRestoreUri?.let { uri ->
-    AlertDialog(
+    SextantAlertDialog(
       onDismissRequest = { pendingRestoreUri = null },
       confirmButton = {
-        TextButton(onClick = {
+        SextantTextButton(onClick = {
           pendingRestoreUri = null
           isBusy = true
           scope.launch {
@@ -164,26 +166,26 @@ fun SettingsScreen(
           }
         }) { Text("覆盖并恢复") }
       },
-      dismissButton = { TextButton(onClick = { pendingRestoreUri = null }) { Text("取消") } },
+      dismissButton = { SextantTextButton(onClick = { pendingRestoreUri = null }) { Text("取消") } },
       title = { Text("恢复这份备份？") },
       text = { Text("当前账本中的分类、来源、流水、预算和设置将被完整替换。文件校验或写入失败时不会修改原数据。") },
     )
   }
 
   operationMessage?.let { message ->
-    AlertDialog(
+    SextantAlertDialog(
       onDismissRequest = { operationMessage = null },
-      confirmButton = { TextButton(onClick = { operationMessage = null }) { Text("完成") } },
+      confirmButton = { SextantTextButton(onClick = { operationMessage = null }) { Text("完成") } },
       title = { Text(message.title) },
       text = { Text(message.body) },
     )
   }
 
   if (showThemeDialog) {
-    AlertDialog(
+    SextantAlertDialog(
       onDismissRequest = { showThemeDialog = false },
       confirmButton = {
-        TextButton(onClick = { showThemeDialog = false }) { Text("完成") }
+        SextantTextButton(onClick = { showThemeDialog = false }) { Text("完成") }
       },
       title = { Text("主题") },
       text = {
@@ -213,65 +215,71 @@ private fun SettingsOverview(
   onBackupExport: () -> Unit,
   onBackupImport: () -> Unit,
 ) {
-  LazyColumn(
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 28.dp),
-    verticalArrangement = Arrangement.spacedBy(20.dp),
-  ) {
-    item {
-      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("设置", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-        Text("管理账本、外观与数据", color = SextantColors.TextMuted)
+  val listState = rememberLazyListState()
+  Column(Modifier.fillMaxSize()) {
+    SextantFlexibleHeader(
+      title = "设置",
+      scrollState = listState,
+      subtitle = "管理账本、外观与数据",
+      modifier = Modifier.padding(horizontal = 20.dp),
+    )
+    LazyColumn(
+      state = listState,
+      modifier = Modifier.fillMaxSize(),
+      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+      verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+      item {
+        SettingsSection("账本") {
+          SettingsEntry(
+            title = "自动记账",
+            description = "从微信、支付宝支付通知生成流水",
+            icon = Icons.Outlined.AutoAwesome,
+            onClick = onAutomationClick,
+          )
+          SettingsEntry(
+            title = "分类管理",
+            description = "管理收入、支出分类与子分类",
+            icon = Icons.Outlined.Category,
+            onClick = onCategoryManagementClick,
+          )
+          SettingsEntry(
+            title = "来源管理",
+            description = "管理现金、银行卡和支付平台",
+            icon = Icons.Outlined.Payments,
+            onClick = onPaymentMethodManagementClick,
+          )
+        }
       }
-    }
-    item {
-      SettingsSection("账本") {
-        SettingsEntry(
-          title = "自动记账",
-          description = "从微信、支付宝支付通知生成流水",
-          icon = Icons.Outlined.AutoAwesome,
-          onClick = onAutomationClick,
-        )
-        SettingsDivider()
-        SettingsEntry(
-          title = "分类管理",
-          description = "管理收入、支出分类与子分类",
-          icon = Icons.Outlined.Category,
-          onClick = onCategoryManagementClick,
-        )
-        SettingsDivider()
-        SettingsEntry(
-          title = "来源管理",
-          description = "管理现金、银行卡和支付平台",
-          icon = Icons.Outlined.Payments,
-          onClick = onPaymentMethodManagementClick,
-        )
+      item {
+        SettingsSection("外观") {
+          ThemeSettingsEntry(preference = themePreference, onClick = onThemeClick)
+        }
       }
-    }
-    item {
-      SettingsSection("外观") {
-        ThemeSettingsEntry(preference = themePreference, onClick = onThemeClick)
-      }
-    }
-    item {
-      SettingsSection("数据") {
-        SettingsEntry(
-          title = "导出完整备份",
-          description = "将分类、流水、预算和设置保存为 JSON 文件",
-          icon = Icons.Outlined.ArrowDownward,
-          enabled = !isBusy,
-          trailingLabel = if (isBusy) "处理中" else "导出",
-          onClick = onBackupExport,
-        )
-        SettingsDivider()
-        SettingsEntry(
-          title = "从备份恢复",
-          description = "用备份文件覆盖当前账本，恢复前会再次确认",
-          icon = Icons.Outlined.ArrowUpward,
-          enabled = !isBusy,
-          trailingLabel = "导入",
-          onClick = onBackupImport,
-        )
+      item {
+        SettingsSection("数据") {
+          // 备份读写没有可报的百分比，用波浪进度条说明「还在动」，而不是假装有进度。
+          if (isBusy) {
+            SextantWavyProgressIndicator(modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
+          }
+          SettingsEntry(
+            title = "导出完整备份",
+            description = "将分类、流水、预算和设置保存为 JSON 文件",
+            icon = Icons.Outlined.ArrowDownward,
+            enabled = !isBusy,
+            trailing = if (isBusy) { { SextantLoadingIndicator(size = 22.dp) } } else null,
+            trailingLabel = if (isBusy) null else "导出",
+            onClick = onBackupExport,
+          )
+          SettingsEntry(
+            title = "从备份恢复",
+            description = "用备份文件覆盖当前账本，恢复前会再次确认",
+            icon = Icons.Outlined.ArrowUpward,
+            enabled = !isBusy,
+            trailingLabel = "导入",
+            onClick = onBackupImport,
+          )
+        }
       }
     }
   }
@@ -284,24 +292,11 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
       title,
       color = SextantColors.TextSubtle,
       style = MaterialTheme.typography.labelLarge,
-      fontWeight = FontWeight.SemiBold,
     )
-    Surface(
-      modifier = Modifier.fillMaxWidth(),
-      color = SextantColors.Surface,
-      shape = RoundedCornerShape(20.dp),
-      tonalElevation = 1.dp,
-      content = { Column(content = content) },
-    )
+    SextantSurface(modifier = Modifier.fillMaxWidth()) {
+      Column(content = content)
+    }
   }
-}
-
-@Composable
-private fun SettingsDivider() {
-  HorizontalDivider(
-    modifier = Modifier.padding(horizontal = 16.dp),
-    color = SextantColors.Border,
-  )
 }
 
 @Composable
@@ -359,13 +354,13 @@ private fun ThemeSettingsEntry(
     modifier = Modifier
       .fillMaxWidth()
       .clickable(onClick = onClick)
-      .padding(horizontal = 16.dp, vertical = 14.dp),
+      .padding(horizontal = 18.dp, vertical = 18.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     SettingsIcon(Icons.Outlined.Palette)
     Spacer(Modifier.width(14.dp))
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-      Text("主题", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      Text("主题", style = MaterialTheme.typography.titleMedium)
       Text(preference.label(), color = SextantColors.AccentStrong, style = MaterialTheme.typography.bodySmall)
     }
     Icon(Icons.Outlined.ChevronRight, contentDescription = "选择主题", tint = SextantColors.TextMuted)
@@ -379,6 +374,7 @@ private fun SettingsEntry(
   icon: ImageVector,
   enabled: Boolean = true,
   trailingLabel: String? = null,
+  trailing: (@Composable () -> Unit)? = null,
   onClick: () -> Unit,
 ) {
   val titleColor = if (enabled) SextantColors.Text else SextantColors.TextSubtle
@@ -387,7 +383,7 @@ private fun SettingsEntry(
     modifier = Modifier
       .fillMaxWidth()
       .clickable(enabled = enabled, onClick = onClick)
-      .padding(horizontal = 16.dp, vertical = 14.dp),
+      .padding(horizontal = 18.dp, vertical = 18.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     SettingsIcon(icon, enabled = enabled)
@@ -396,29 +392,28 @@ private fun SettingsEntry(
       modifier = Modifier.weight(1f),
       verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-      Text(title, color = titleColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      Text(title, color = titleColor, style = MaterialTheme.typography.titleMedium)
       Text(description, color = descriptionColor, style = MaterialTheme.typography.bodySmall)
     }
     Spacer(Modifier.width(12.dp))
-    if (trailingLabel != null) {
-      Text(
+    when {
+      trailing != null -> trailing()
+      trailingLabel != null -> Text(
         trailingLabel,
         color = if (enabled) SextantColors.AccentStrong else SextantColors.TextSubtle,
         style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.SemiBold,
       )
-    } else {
-      Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = descriptionColor)
+      else -> Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = descriptionColor)
     }
   }
 }
 
 @Composable
 private fun SettingsIcon(icon: ImageVector, enabled: Boolean = true) {
-  Surface(
-    modifier = Modifier.size(40.dp),
-    color = if (enabled) SextantColors.AccentSoft else SextantColors.SurfaceAlt,
-    shape = RoundedCornerShape(12.dp),
+  SextantSurface(
+    modifier = Modifier.size(44.dp),
+    color = if (enabled) SextantColors.AccentSoft else SextantColors.SurfaceContainer,
+    shape = MaterialTheme.shapes.large,
   ) {
     Icon(
       imageVector = icon,
@@ -442,10 +437,9 @@ private fun ThemePreferenceOption(
       .padding(vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    RadioButton(
+    SextantRadioButton(
       selected = selected,
       onClick = onClick,
-      colors = RadioButtonDefaults.colors(selectedColor = SextantColors.Accent),
     )
     Spacer(Modifier.width(8.dp))
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

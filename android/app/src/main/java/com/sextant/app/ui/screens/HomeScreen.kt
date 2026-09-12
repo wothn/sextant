@@ -16,12 +16,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Restaurant
+import com.sextant.app.ui.components.CategoryIcon
+import com.sextant.app.ui.components.categoryIcon
+import com.sextant.app.ui.components.BudgetScale
+import com.sextant.app.ui.components.EmptyCard
+import com.sextant.app.ui.components.LedgerFilterSheet
+import com.sextant.app.ui.components.SextantBadge
+import com.sextant.app.ui.components.SextantFlexibleHeader
+import com.sextant.app.ui.components.SextantHeading
+import com.sextant.app.ui.components.SextantRevealItem
+import com.sextant.app.ui.components.SextantSurface
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,26 +39,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.LedgerFilter
 import com.sextant.app.data.DailyTransactionGroup
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.EntryOrigin
 import com.sextant.app.data.TransactionType
-import com.sextant.app.ui.components.EmptyCard
-import com.sextant.app.ui.components.LedgerFilterSheet
 import com.sextant.app.ui.theme.SextantColors
+import com.sextant.app.ui.theme.SextantFullShape
+import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatAmountPlain
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
 import com.sextant.app.ui.util.signedAmountPlain
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+private val ScreenPadding = PaddingValues(start = 20.dp, end = 20.dp)
 
 @Composable
 fun HomeScreen(
@@ -61,35 +68,55 @@ fun HomeScreen(
   onTransactionClick: (TransactionListItem) -> Unit,
 ) {
   var showFilters by remember { mutableStateOf(false) }
-  LazyColumn(
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 24.dp),
-  ) {
-    item {
-      LedgerHeader(filter = filter, onFilterClick = { showFilters = true })
-    }
-    item {
-      LedgerOverview(state, filter)
-    }
-    item {
-      HorizontalDivider(color = SextantColors.Border)
-    }
-    item {
-      RecentLedgerHeader(state.transactions.size)
-    }
-    if (state.groups.isEmpty()) {
-      item { EmptyLedgerCard(filter) }
-    }
-    state.groups.forEach { group ->
-      item(key = "day:${group.label}", contentType = "dayHeader") {
-        DailyLedgerHeader(group)
+  val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
+  val listState = rememberLazyListState()
+
+  Column(Modifier.fillMaxSize()) {
+    // 标题固定在列表之外：它随内容滚动收起，但不会跟着滚出屏幕，
+    // 因此滚动到深处时仍然知道自己在哪一页。Expressive 的 large flexible app bar 行为。
+    SextantFlexibleHeader(
+      title = "概览",
+      scrollState = listState,
+      subtitle = overviewSubtitle(state, filter),
+      modifier = Modifier.padding(horizontal = 20.dp),
+      actions = { FilterTrigger(filter) { showFilters = true } },
+    )
+    LazyColumn(
+      state = listState,
+      modifier = Modifier.fillMaxSize(),
+      contentPadding = PaddingValues(bottom = 28.dp),
+    ) {
+      item {
+        SextantRevealItem(index = 0) {
+          Column(Modifier.padding(ScreenPadding)) { LedgerOverview(state, filter) }
+        }
       }
-      itemsIndexed(group.items, key = { _, item -> item.transaction.id }, contentType = { _, _ -> "transaction" }) { index, item ->
-        Column {
-          if (index > 0) {
-            Box(Modifier.fillMaxWidth().padding(start = 48.dp).height(1.dp).background(SextantColors.Border))
+      item {
+        Column(Modifier.fillMaxWidth().padding(ScreenPadding)) {
+          RecentLedgerHeader(state.transactions.size)
+        }
+      }
+      if (state.groups.isEmpty()) {
+        item {
+          Column(Modifier.padding(ScreenPadding)) { EmptyLedgerCard(filter) }
+        }
+      }
+      state.groups.forEach { group ->
+        item(key = "day:${group.label}", contentType = "dayHeader") {
+          Column(Modifier.padding(ScreenPadding)) { DailyLedgerHeader(group) }
+        }
+        itemsIndexed(group.items, key = { _, item -> item.transaction.id }, contentType = { _, _ -> "transaction" }) { index, item ->
+          val category = categoriesById[item.transaction.categoryId]
+          SextantRevealItem(index = index + 1) {
+            Column(Modifier.padding(ScreenPadding)) {
+              LedgerTransactionRow(
+                item = item,
+                categoryName = category?.name ?: item.categoryName,
+                parentName = categoriesById[category?.parentCategoryId]?.name,
+                onClick = onTransactionClick,
+              )
+            }
           }
-          LedgerTransactionRow(item, onTransactionClick)
         }
       }
     }
@@ -108,6 +135,15 @@ fun HomeScreen(
   }
 }
 
+private fun overviewSubtitle(state: AppState, filter: LedgerFilter): String {
+  val scope = when {
+    filter.isAllTime -> "全部时间"
+    filter.isCurrentMonth() -> monthLabel(filter.anchorMonthStart)
+    else -> "${monthLabel(filter.anchorMonthStart)}起"
+  }
+  return "$scope · 共 ${state.transactions.size} 笔"
+}
+
 @Composable
 private fun EmptyLedgerCard(filter: LedgerFilter) {
   if (filter.hasConditions || !filter.isAllTime) {
@@ -117,52 +153,32 @@ private fun EmptyLedgerCard(filter: LedgerFilter) {
   }
 }
 
-@Composable
-private fun LedgerHeader(filter: LedgerFilter, onFilterClick: () -> Unit) {
-  Row(
-    modifier = Modifier.fillMaxWidth().height(48.dp),
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Text("概览", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = SextantColors.Text)
-    FilterTrigger(filter, onFilterClick)
-  }
-}
-
+/**
+ * 筛选入口。有生效条件时整颗按钮换成铜橙淡底并挂上数量徽标——
+ * 旧版靠一个 16dp 的小圆点，数字挤在 10sp 里，看不清也不好点。
+ */
 @Composable
 private fun FilterTrigger(filter: LedgerFilter, onClick: () -> Unit) {
   val highlighted = filter.hasConditions || !filter.isAllTime
-  Box(
-    modifier = Modifier
-      .size(40.dp)
-      .clip(CircleShape)
-      .background(if (highlighted) SextantColors.AccentSoft else SextantColors.SurfaceAlt)
-      .clickable(onClickLabel = "打开筛选", onClick = onClick),
-    contentAlignment = Alignment.Center,
-  ) {
-    Icon(
-      Icons.Outlined.Tune,
-      contentDescription = if (filter.hasConditions) "筛选，已启用 ${filter.conditionCount} 项条件" else "筛选",
-      tint = if (highlighted) SextantColors.AccentStrong else SextantColors.TextMuted,
-      modifier = Modifier.size(20.dp),
-    )
-    if (filter.conditionCount > 0) {
-      Box(
-        modifier = Modifier
-          .align(Alignment.TopEnd)
-          .padding(top = 3.dp, end = 3.dp)
-          .size(16.dp)
-          .clip(CircleShape)
-          .background(SextantColors.AccentStrong),
-        contentAlignment = Alignment.Center,
-      ) {
-        Text(
-          text = filter.conditionCount.toString(),
-          color = SextantColors.OnAccent,
-          fontSize = 10.sp,
-          fontWeight = FontWeight.Bold,
+  Box(contentAlignment = Alignment.TopEnd) {
+    SextantSurface(
+      modifier = Modifier
+        .size(48.dp)
+        .clickable(onClickLabel = "打开筛选", onClick = onClick),
+      color = if (highlighted) SextantColors.AccentSoft else SextantColors.SurfaceContainer,
+      shape = SextantFullShape,
+    ) {
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Icon(
+          Icons.Outlined.Tune,
+          contentDescription = if (filter.hasConditions) "筛选，已启用 ${filter.conditionCount} 项条件" else "筛选",
+          tint = if (highlighted) SextantColors.AccentStrong else SextantColors.TextMuted,
+          modifier = Modifier.size(20.dp),
         )
       }
+    }
+    if (filter.conditionCount > 0) {
+      Box(Modifier.padding(top = 1.dp, end = 1.dp)) { SextantBadge(filter.conditionCount) }
     }
   }
 }
@@ -171,7 +187,7 @@ private fun FilterTrigger(filter: LedgerFilter, onClick: () -> Unit) {
 private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
   val currentMonth = filter.isCurrentMonth()
   Column(
-    modifier = Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 20.dp),
+    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 20.dp),
     verticalArrangement = Arrangement.spacedBy(18.dp),
   ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -179,9 +195,7 @@ private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
       Text(
         "¥${formatAmountPlain(state.todaySummary.expenseCents)}",
         color = SextantColors.Text,
-        fontSize = 38.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = (-0.5).sp,
+        style = MaterialTheme.typography.headlineLarge,
       )
     }
     Row(Modifier.fillMaxWidth()) {
@@ -202,7 +216,11 @@ private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
 private fun OverviewMetric(label: String, value: Long, modifier: Modifier = Modifier) {
   Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
     Text(label, color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
-    Text(formatAmountPlain(value), fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = SextantColors.Text)
+    Text(
+      formatAmountPlain(value),
+      style = MaterialTheme.typography.titleLarge,
+      color = SextantColors.Text,
+    )
   }
 }
 
@@ -215,19 +233,16 @@ private fun MonthlyBudgetProgress(label: String, spent: Long, total: Long) {
     ratio >= 0.8f -> SextantColors.Warning
     else -> SextantColors.Accent
   }
-  Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
       Text(label, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
       Text(
         "${(ratio * 100).toInt()}%  ·  ${formatAmountPlain(spent)} / ${formatAmountPlain(total)}",
         color = color,
-        fontWeight = FontWeight.SemiBold,
-        style = MaterialTheme.typography.labelMedium,
+        style = MaterialTheme.typography.labelLarge,
       )
     }
-    Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(SextantColors.SurfaceStrong)) {
-      Box(Modifier.fillMaxWidth(progress).height(6.dp).clip(CircleShape).background(color))
-    }
+    BudgetScale(progress, color)
   }
 }
 
@@ -238,7 +253,7 @@ private fun RecentLedgerHeader(count: Int) {
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    Text("明细", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = SextantColors.Text)
+    SextantHeading("明细")
     Text("$count 笔", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelLarge)
   }
 }
@@ -250,30 +265,27 @@ private fun DailyLedgerHeader(group: DailyTransactionGroup) {
     .filter { it.transaction.type == TransactionType.Expense && it.includeInSpending }
     .sumOf { it.transaction.amountCents }
 
-  Column(Modifier.fillMaxWidth()) {
-    Row(
-      Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Text(
-        text = group.label,
-        modifier = Modifier.weight(1f),
-        color = SextantColors.Text,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.SemiBold,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-      )
-      Spacer(Modifier.width(12.dp))
-      Text(
-        text = dailySummary(expense, income),
-        color = SextantColors.TextSubtle,
-        fontSize = 12.sp,
-        maxLines = 1,
-        softWrap = false,
-      )
-    }
+  Row(
+    Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(
+      text = group.label,
+      modifier = Modifier.weight(1f),
+      color = SextantColors.Text,
+      style = MaterialTheme.typography.titleSmall,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    Spacer(Modifier.width(12.dp))
+    Text(
+      text = dailySummary(expense, income),
+      color = SextantColors.TextSubtle,
+      style = MaterialTheme.typography.labelMedium,
+      maxLines = 1,
+      softWrap = false,
+    )
   }
 }
 
@@ -282,14 +294,25 @@ private fun dailySummary(expense: Long, income: Long): String = buildList {
   if (income > 0) add("收 ${formatAmountPlain(income)}")
 }.joinToString("  ")
 
+/**
+ * 单笔明细。
+ *
+ * 行与行之间不再画 1dp 分隔线：明细本来就是一整块列表，靠留白和分类图标分组更安静，
+ * 而那条从 48dp 处起始的线在深色主题下几乎看不见，在浅色主题下又把列表切得很碎。
+ */
 @Composable
-private fun LedgerTransactionRow(item: TransactionListItem, onClick: (TransactionListItem) -> Unit) {
+private fun LedgerTransactionRow(
+  item: TransactionListItem,
+  categoryName: String,
+  parentName: String?,
+  onClick: (TransactionListItem) -> Unit,
+) {
   Row(
-    Modifier.fillMaxWidth().clickable { onClick(item) }.padding(vertical = 10.dp),
+    Modifier.fillMaxWidth().clickable { onClick(item) }.padding(vertical = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    LedgerCategoryIcon(item)
-    Spacer(Modifier.width(12.dp))
+    CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor))
+    Spacer(Modifier.width(14.dp))
     Column(
       modifier = Modifier.weight(1f),
       verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -299,27 +322,26 @@ private fun LedgerTransactionRow(item: TransactionListItem, onClick: (Transactio
         horizontalArrangement = Arrangement.spacedBy(10.dp),
       ) {
         Text(
-          text = item.categoryName,
+          text = categoryName,
           modifier = Modifier.weight(1f),
           color = SextantColors.Text,
-          fontSize = 15.sp,
-          fontWeight = FontWeight.SemiBold,
+          style = MaterialTheme.typography.bodyLarge,
+          fontWeight = FontWeight.Medium,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
         )
         Text(
           text = signedAmountPlain(item),
           color = SextantColors.Text,
-          fontSize = 16.sp,
-          fontWeight = FontWeight.SemiBold,
+          style = MaterialTheme.typography.titleMedium,
           maxLines = 1,
           softWrap = false,
         )
       }
       Text(
-        text = ledgerMetadata(item),
+        text = ledgerMetadata(item, parentName),
         color = SextantColors.TextSubtle,
-        fontSize = 12.sp,
+        style = MaterialTheme.typography.bodySmall,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
@@ -327,7 +349,7 @@ private fun LedgerTransactionRow(item: TransactionListItem, onClick: (Transactio
   }
 }
 
-private fun ledgerMetadata(item: TransactionListItem): String {
+private fun ledgerMetadata(item: TransactionListItem, parentName: String?): String {
   val genericParts = setOf("消费", "交易提醒", "微信支付", "支付宝")
   val description = item.transaction.description
     .split("·")
@@ -335,6 +357,7 @@ private fun ledgerMetadata(item: TransactionListItem): String {
     .filter { it.isNotBlank() && it !in genericParts && it != item.paymentMethodName }
     .joinToString(" · ")
   return buildList {
+    if (!parentName.isNullOrBlank()) add(parentName)
     add(SimpleDateFormat("HH:mm", Locale.CHINA).format(item.transaction.transactionDate))
     if (item.paymentMethodName.isNotBlank()) add(item.paymentMethodName)
     if (description.isNotBlank()) add(description)
@@ -343,23 +366,3 @@ private fun ledgerMetadata(item: TransactionListItem): String {
     }
   }.joinToString(" · ")
 }
-
-@Composable
-private fun LedgerCategoryIcon(item: TransactionListItem) {
-  Box(
-    modifier = Modifier.size(36.dp).clip(CircleShape).background(SextantColors.AccentSoft),
-    contentAlignment = Alignment.Center,
-  ) {
-    Icon(
-      imageVector = if (item.categoryName.contains("餐") || item.categoryName.contains("食")) {
-        Icons.Outlined.Restaurant
-      } else {
-        Icons.Outlined.Home
-      },
-      contentDescription = null,
-      tint = SextantColors.AccentStrong,
-      modifier = Modifier.size(19.dp),
-    )
-  }
-}
-

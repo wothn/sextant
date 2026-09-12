@@ -1,5 +1,12 @@
 package com.sextant.app.ui.screens
 
+import com.sextant.app.ui.components.SextantButton
+import com.sextant.app.ui.components.SextantCard
+import com.sextant.app.ui.components.SextantIconButton
+import com.sextant.app.ui.components.SextantOutlinedButton
+import com.sextant.app.ui.components.SextantSwitch
+import com.sextant.app.ui.components.SectionTitle
+
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -16,14 +23,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -99,12 +101,12 @@ fun AutomationSettingsScreen(
   ) {
     item {
       Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回") }
-        Text("自动记账", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        SextantIconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回") }
+        SectionTitle("自动记账")
       }
     }
     item {
-      Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+      SextantCard() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Text("通知读取授权", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
           Text(
@@ -130,7 +132,7 @@ fun AutomationSettingsScreen(
               style = MaterialTheme.typography.bodySmall,
             )
           }
-          OutlinedButton(onClick = {
+          SextantOutlinedButton(onClick = {
             val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
             runCatching { notificationAccessLauncher.launch(intent) }
               .onFailure { message = "当前系统无法打开通知使用权设置。" }
@@ -147,7 +149,7 @@ fun AutomationSettingsScreen(
       ) { draft = draft.copy(enabled = it) }
     }
     item {
-      Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+      SextantCard() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Text("支付应用", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
           InlineSwitch("微信", WECHAT_PACKAGE, draft.wechatEnabled) { draft = draft.copy(wechatEnabled = it) }
@@ -156,13 +158,13 @@ fun AutomationSettingsScreen(
       }
     }
     item {
-      Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+      SextantCard() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
           InlineSwitch("入账结果通知", "可撤销或打开编辑", draft.resultNotificationsEnabled) {
             draft = draft.copy(resultNotificationsEnabled = it)
           }
           if (draft.resultNotificationsEnabled && Build.VERSION.SDK_INT >= 33) {
-            OutlinedButton(onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
+            SextantOutlinedButton(onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
               Text("允许结果通知")
             }
           }
@@ -170,8 +172,7 @@ fun AutomationSettingsScreen(
       }
     }
     item {
-      Button(
-        onClick = {
+      SextantButton(onClick = {
           val result = runCatching { repository.updateAutomationSettings(draft) }
           message = result.fold({ "自动记账设置已保存。" }, { it.message ?: "保存失败。" })
           if (result.isSuccess) onChanged()
@@ -186,7 +187,7 @@ fun AutomationSettingsScreen(
     } else {
       items(state.automationEvents.size) { index ->
         val event = state.automationEvents[index]
-        Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+        SextantCard() {
           Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("${event.sourcePackage.sourceName()} · ${event.status.label()}", fontWeight = FontWeight.SemiBold)
             Text(SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(event.postedAt)), color = SextantColors.TextMuted)
@@ -195,7 +196,7 @@ fun AutomationSettingsScreen(
               event.failureCode?.let { Text("原因：${it.failureLabel()}", color = SextantColors.Danger) }
             }
             if (event.status == AutomationEventStatus.Failed) {
-              OutlinedButton(onClick = {
+              SextantOutlinedButton(onClick = {
                 val queued = (context.applicationContext as SextantApplication).automationCoordinator.retry(event.id)
                 message = if (queued) "已重新加入处理队列。" else "原通知已过期，无法重试。"
                 onChanged()
@@ -216,7 +217,7 @@ private fun SettingsSwitchCard(
   enabled: Boolean = true,
   onCheckedChange: (Boolean) -> Unit,
 ) {
-  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+  SextantCard() {
     InlineSwitch(title, description, checked, enabled, onCheckedChange)
   }
 }
@@ -238,18 +239,19 @@ private fun InlineSwitch(
       Text(title, fontWeight = FontWeight.SemiBold)
       Text(description, color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
     }
-    Switch(
+    SextantSwitch(
       checked = checked,
       enabled = enabled,
       onCheckedChange = onCheckedChange,
-      colors = sextantSwitchColors(),
     )
   }
 }
 
 private fun String.sourceName() = when (this) {
   WECHAT_PACKAGE -> "微信"
+
   ALIPAY_PACKAGE -> "支付宝"
+
   else -> this
 }
 

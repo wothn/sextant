@@ -2,8 +2,6 @@ package com.sextant.app.ui.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,17 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
@@ -59,12 +50,12 @@ fun PaymentMethodManagement(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onNavigateBack) {
+        SextantIconButton(onClick = onNavigateBack) {
           Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回设置")
         }
         SectionTitle("来源管理")
       }
-      TextButton(onClick = { showAdd = true }) { Text("新增来源") }
+      SextantTextButton(onClick = { showAdd = true }) { Text("新增来源") }
     }
 
     Text(
@@ -121,18 +112,18 @@ fun PaymentMethodManagement(
   }
 
   pendingDelete?.let { method ->
-    AlertDialog(
+    SextantAlertDialog(
       onDismissRequest = { pendingDelete = null },
       title = { Text("删除“${method.name}”？") },
       text = { Text("这个来源尚未被流水使用，删除后无法恢复。") },
       confirmButton = {
-        TextButton(onClick = {
+        SextantTextButton(onClick = {
           repository.deletePaymentMethod(method.id)
           pendingDelete = null
           onChanged()
         }) { Text("删除") }
       },
-      dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } },
+      dismissButton = { SextantTextButton(onClick = { pendingDelete = null }) { Text("取消") } },
     )
   }
 }
@@ -145,12 +136,12 @@ private fun PaymentMethodRow(
   onDelete: (() -> Unit)?,
 ) {
   var showActions by remember { mutableStateOf(false) }
-  Card(colors = CardDefaults.cardColors(containerColor = SextantColors.Surface)) {
+  SextantCard() {
     Row(
       modifier = Modifier.fillMaxWidth().padding(14.dp),
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      ColorDot(argbColor(method.color))
+      CategoryIcon(Icons.Outlined.AccountBalanceWallet, argbColor(method.color))
       Spacer(Modifier.width(12.dp))
       Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(method.name, fontWeight = FontWeight.SemiBold)
@@ -163,20 +154,19 @@ private fun PaymentMethodRow(
           style = MaterialTheme.typography.bodySmall,
         )
       }
-      Switch(
+      SextantSwitch(
         checked = method.isActive,
         onCheckedChange = onActiveChanged,
-        colors = sextantSwitchColors(),
         modifier = Modifier.semantics { contentDescription = if (method.isActive) "停用${method.name}" else "启用${method.name}" },
       )
       Box {
-        IconButton(onClick = { showActions = true }) {
-          Icon(Icons.Outlined.MoreVert, contentDescription = "管理${method.name}", tint = SextantColors.TextMuted)
+        SextantIconButton(onClick = { showActions = true }) {
+          Icon(Icons.Outlined.MoreVert, contentDescription = "管理${method.name}")
         }
-        DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
-          DropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
+        SextantDropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+          SextantDropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
           if (onDelete != null) {
-            DropdownMenuItem(text = { Text("删除", color = SextantColors.Danger) },
+            SextantDropdownMenuItem(text = { Text("删除", color = SextantColors.Danger) },
               onClick = { showActions = false; onDelete() })
           }
         }
@@ -202,12 +192,12 @@ private fun PaymentMethodDialog(
     else -> null
   }
 
-  AlertDialog(
+  SextantAlertDialog(
     onDismissRequest = onDismiss,
     title = { Text(if (initial == null) "添加来源" else "编辑来源") },
     text = {
       Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(
+        SextantTextField(
           value = name,
           onValueChange = { name = it },
           label = { Text("来源名称") },
@@ -228,12 +218,11 @@ private fun PaymentMethodDialog(
       }
     },
     confirmButton = {
-      Button(
-        onClick = { onSubmit(trimmedName, color) },
+      SextantButton(onClick = { onSubmit(trimmedName, color) },
         enabled = trimmedName.isNotEmpty() && nameError == null,
       ) { Text("保存") }
     },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    dismissButton = { SextantTextButton(onClick = onDismiss) { Text("取消") } },
   )
 }
 
