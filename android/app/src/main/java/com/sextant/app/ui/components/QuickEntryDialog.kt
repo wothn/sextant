@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -229,7 +228,7 @@ fun QuickEntryDialog(
             }
             EntryPanel.Category -> {
               Text("${type.label}分类", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
-              EntryCategoryGrid(parentCategories, browsingParentId) { category ->
+              CategoryGrid(parentCategories, browsingParentId) { category ->
                 browsingParentId = category.id
                 if (typeCategories.none { it.parentCategoryId == category.id }) {
                   categoryId = category.id
@@ -244,7 +243,7 @@ fun QuickEntryDialog(
                   Text(parent.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                   TextButton(onClick = { categoryId = parent.id; panel = EntryPanel.Form }) { Text("使用此分类") }
                 }
-                EntryCategoryGrid(children, categoryId) { category -> categoryId = category.id; panel = EntryPanel.Form }
+                CategoryGrid(children, categoryId) { category -> categoryId = category.id; panel = EntryPanel.Form }
               }
               if (parentCategories.isEmpty()) Text("暂无可选分类", color = SextantColors.TextMuted)
             }
@@ -261,7 +260,7 @@ fun QuickEntryDialog(
                 ) {
                   Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    EntryIcon(Icons.Outlined.AccountBalanceWallet, argbColor(method.color))
+                    CategoryIcon(Icons.Outlined.AccountBalanceWallet, argbColor(method.color))
                     Text(method.name, modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
                     if (selected) Icon(Icons.Outlined.Check, contentDescription = "已选择", tint = SextantColors.AccentStrong,
                       modifier = Modifier.size(20.dp))
@@ -349,54 +348,5 @@ private fun EntryDetailTile(label: String, value: String, icon: ImageVector, mod
       }
     }
   }
-}
-
-@Composable
-private fun EntryCategoryGrid(categories: List<Category>, selectedId: String?, onSelect: (Category) -> Unit) {
-  Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    categories.chunked(3).forEach { row ->
-      Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        row.forEach { category ->
-          val selected = category.id == selectedId
-          Surface(
-            modifier = Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
-              .selectable(selected, role = Role.RadioButton, onClick = { onSelect(category) }),
-            shape = RoundedCornerShape(16.dp),
-            color = if (selected) SextantColors.AccentSoft else SextantColors.Surface,
-            border = if (selected) BorderStroke(1.dp, SextantColors.AccentMuted) else null,
-          ) {
-            Column(Modifier.padding(horizontal = 6.dp, vertical = 12.dp),
-              horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              EntryIcon(categoryIcon(category.name), argbColor(category.color))
-              Text(category.name, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center,
-                color = if (selected) SextantColors.AccentStrong else SextantColors.Text, maxLines = 2,
-                overflow = TextOverflow.Ellipsis)
-            }
-          }
-        }
-        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-      }
-    }
-  }
-}
-
-@Composable
-private fun EntryIcon(icon: ImageVector, color: Color) {
-  Box(Modifier.size(36.dp).background(color.copy(alpha = 0.10f), CircleShape), contentAlignment = Alignment.Center) {
-    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
-  }
-}
-
-private fun categoryIcon(name: String): ImageVector = when {
-  listOf("餐", "食", "饭", "外卖").any(name::contains) -> Icons.Outlined.Restaurant
-  listOf("茶", "咖啡").any(name::contains) -> Icons.Outlined.LocalCafe
-  listOf("交通", "出行", "地铁").any(name::contains) -> Icons.Outlined.DirectionsBus
-  listOf("购物", "超市").any(name::contains) -> Icons.Outlined.ShoppingBag
-  listOf("住房", "房租", "家").any(name::contains) -> Icons.Outlined.Home
-  listOf("学习", "教育").any(name::contains) -> Icons.Outlined.School
-  listOf("娱乐", "游戏").any(name::contains) -> Icons.Outlined.SportsEsports
-  listOf("人情", "礼").any(name::contains) -> Icons.Outlined.CardGiftcard
-  listOf("工资", "基金", "储蓄", "还款").any(name::contains) -> Icons.Outlined.AccountBalanceWallet
-  else -> Icons.Outlined.Category
 }
 
