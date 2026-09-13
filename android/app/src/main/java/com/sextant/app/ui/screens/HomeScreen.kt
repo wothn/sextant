@@ -198,19 +198,29 @@ private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
         style = MaterialTheme.typography.headlineLarge,
       )
     }
+    // 汇总口径固定为「当前查看月份」，不跟随明细的筛选范围放大成区间或累计总额：
+    // 概览只回答「这个月花了多少、收了多少」，全量数据留给分析页。
+    val monthScope = monthScopeLabel(filter, currentMonth)
     Row(Modifier.fillMaxWidth()) {
-      OverviewMetric(if (filter.isAllTime) "累计支出" else "区间支出", state.rangeSummary.expenseCents, Modifier.weight(1f))
-      OverviewMetric(if (filter.isAllTime) "累计收入" else "区间收入", state.rangeSummary.incomeCents, Modifier.weight(1f))
+      OverviewMetric("${monthScope}支出", state.monthSummary.expenseCents, Modifier.weight(1f))
+      OverviewMetric("${monthScope}收入", state.monthSummary.incomeCents, Modifier.weight(1f))
     }
     state.monthlyBudgetCents?.let { total ->
       MonthlyBudgetProgress(
-        label = if (filter.isAllTime || currentMonth) "本月预算进度" else "${monthLabel(filter.anchorMonthStart)}预算进度",
+        label = "${monthScope}预算进度",
         spent = state.monthSummary.expenseCents,
         total = total,
       )
     }
   }
 }
+
+/**
+ * 概览汇总口径的名称：锚定月份就是本月时说「本月」，否则点名具体的年月，
+ * 避免浏览历史月份时把那个月的数字误读成当月。汇总与预算进度共用同一条规则。
+ */
+private fun monthScopeLabel(filter: LedgerFilter, isCurrentMonthView: Boolean): String =
+  if (filter.isAllTime || isCurrentMonthView) "本月" else monthLabel(filter.anchorMonthStart)
 
 @Composable
 private fun OverviewMetric(label: String, value: Long, modifier: Modifier = Modifier) {
