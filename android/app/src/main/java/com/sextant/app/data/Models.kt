@@ -102,7 +102,8 @@ data class TransactionListItem(
 )
 
 data class DailyTransactionGroup(
-  val label: String,
+  /** 本地时区当天零点。分组与列表 key 都用它，展示文案由 UI 层格式化。 */
+  val dayStartMillis: Long,
   val items: List<TransactionListItem>,
 )
 

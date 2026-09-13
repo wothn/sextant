@@ -6,8 +6,6 @@ import com.sextant.app.automation.AutomationSecretStore
 import com.sextant.app.automation.AUTOMATION_WORK_TAG
 import com.sextant.app.automation.NotificationListenerConnection
 import androidx.work.WorkManager
-import java.text.SimpleDateFormat
-import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -524,11 +522,11 @@ private fun Category.childInclusiveIds(categories: List<Category>): Set<String> 
   return categories.filter { it.parentCategoryId == id }.mapTo(mutableSetOf(id)) { it.id }
 }
 
-private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> {
-  val formatter = SimpleDateFormat("yyyy年M月d日 EEEE", Locale.CHINA)
-  return groupBy { formatter.format(it.transaction.transactionDate) }
-    .map { (label, items) -> DailyTransactionGroup(label, items) }
-}
+private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> =
+  // 按「本地时区当天零点」分组：跨年但同月同日的流水不会被并到一起，
+  // 分组结果也不再依赖展示文案，日期头怎么写由 UI 层决定。
+  groupBy { it.transaction.transactionDate.toLocalDate().toStartOfDayMillis() }
+    .map { (dayStartMillis, items) -> DailyTransactionGroup(dayStartMillis, items) }
 
 private const val MAX_PAYMENT_METHOD_NAME_LENGTH = 40
 

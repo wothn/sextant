@@ -189,9 +189,9 @@ private val populatedPreviewState = AppState(
   allPaymentMethods = previewPaymentMethods,
   transactions = previewTransactions,
   groups = listOf(
-    DailyTransactionGroup("今天 · 8月30日", previewTransactions.take(2)),
-    DailyTransactionGroup("昨天 · 8月29日", listOf(previewTransactions[2])),
-    DailyTransactionGroup("8月28日 · 周五", listOf(previewTransactions[3])),
+    DailyTransactionGroup(previewTime(day = 30), previewTransactions.take(2)),
+    DailyTransactionGroup(previewTime(day = 29), listOf(previewTransactions[2])),
+    DailyTransactionGroup(previewTime(day = 28), listOf(previewTransactions[3])),
   ),
   todaySummary = Summary(incomeCents = 0, expenseCents = 3_880),
   rangeSummary = Summary(incomeCents = 1_680_000, expenseCents = 638_220),

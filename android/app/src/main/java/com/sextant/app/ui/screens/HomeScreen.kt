@@ -52,6 +52,7 @@ import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantFullShape
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatAmountPlain
+import com.sextant.app.ui.util.dayGroupLabel
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
 import com.sextant.app.ui.util.signedAmountPlain
@@ -102,7 +103,7 @@ fun HomeScreen(
         }
       }
       state.groups.forEach { group ->
-        item(key = "day:${group.label}", contentType = "dayHeader") {
+        item(key = "day:${group.dayStartMillis}", contentType = "dayHeader") {
           Column(Modifier.padding(ScreenPadding)) { DailyLedgerHeader(group) }
         }
         itemsIndexed(group.items, key = { _, item -> item.transaction.id }, contentType = { _, _ -> "transaction" }) { index, item ->
@@ -281,7 +282,7 @@ private fun DailyLedgerHeader(group: DailyTransactionGroup) {
     verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     Text(
-      text = group.label,
+      text = dayGroupLabel(group.dayStartMillis),
       color = SextantColors.Text,
       style = MaterialTheme.typography.titleSmall,
       maxLines = 1,

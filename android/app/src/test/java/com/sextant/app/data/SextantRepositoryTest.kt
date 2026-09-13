@@ -45,6 +45,12 @@ class SextantRepositoryTest {
       val state = repository.loadState()
       assertEquals(2, state.transactions.size)
       assertEquals(2, state.groups.size)
+      // 分组键是本地时区当天零点，并保持「最新在前」的顺序，展示文案由 UI 层决定。
+      assertEquals(state.groups.map { it.dayStartMillis }.sortedDescending(), state.groups.map { it.dayStartMillis })
+      assertTrue(state.groups.first().dayStartMillis > state.groups.last().dayStartMillis)
+      state.groups.forEach { group ->
+        assertEquals(group.dayStartMillis, group.dayStartMillis.toLocalDate().toStartOfDayMillis())
+      }
       assertEquals(300L, state.rangeSummary.expenseCents)
       assertEquals(100L, state.monthSummary.expenseCents)
       assertEquals(1, repository.loadState(LedgerFilter.currentMonth()).transactions.size)
