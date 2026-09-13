@@ -5,6 +5,7 @@ import java.util.Calendar
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -203,6 +204,26 @@ class SextantRepositoryTest {
   }
 
   @Test
+  fun completeBackupRestoreCarriesRecurringExpensesAndDropsLaterOnes() {
+    val repository = SextantRepository(context)
+    val anchor = monthStart()
+    repository.saveRecurringExpense(null, recurringDraft(name = "房租", amountCents = 280_000, anchorDate = anchor))
+    val backup = repository.exportBackup()
+    repository.saveRecurringExpense(
+      null,
+      recurringDraft(name = "宽带", amountCents = 120_000, cycle = RecurringCycle.Yearly, anchorDate = anchor),
+    )
+
+    val summary = repository.restoreBackup(backup)
+
+    assertEquals(1, summary.recurringExpenseCount)
+    val restored = repository.loadState(filter()).recurringExpenses
+    assertEquals(listOf("房租"), restored.map { it.name })
+    assertEquals(280_000L, restored.single().amountCents)
+    assertEquals(RecurringCycle.Monthly, restored.single().cycle)
+  }
+
+  @Test
   fun failedRestoreRollsBackEveryDeletion() {
     val database = SextantDatabase(context)
     val db = database.writableDatabase
@@ -319,6 +340,148 @@ class SextantRepositoryTest {
     val spansTwoMonths = LedgerFilter(rangeStart = march.rangeStart, rangeEnd = march.rangeEnd + 86_400_000L)
     assertTrue(spansTwoMonths.anchorMonthStart > march.anchorMonthStart)
   }
+
+  @Test
+  fun recurringExpensesNeverChangeLedgerTotalsBecauseTheyAreAPlanNotATransaction() {
+    val repository = SextantRepository(context)
+    val housing = repository.loadState(filter()).categories.single { it.name == "住房" && it.parentCategoryId == null }
+    repository.addTransaction(TransactionType.Expense, 1_500, housing.id, null, "物业维修", now())
+    val before = repository.loadState(filter())
+
+    repository.saveRecurringExpense(
+      id = null,
+      draft = recurringDraft(amountCents = 280_000, anchorDate = monthStart(), categoryId = housing.id),
+    )
+    val after = repository.loadState(filter())
+
+    assertEquals(1, after.recurringExpenses.size)
+    assertEquals(280_000L, after.recurringExpenses.single().amountCents)
+    // 关键口径：周期支出不生成流水，收支、明细和支出结构都不受影响。
+    assertEquals(before.monthSummary, after.monthSummary)
+    assertEquals(before.rangeSummary, after.rangeSummary)
+    assertEquals(before.transactions.size, after.transactions.size)
+    assertEquals(before.categoryBreakdown, after.categoryBreakdown)
+  }
+
+  @Test
+  fun severalRecurringExpensesShareOneCategoryBecauseIdentityIsTheNamedEntry() {
+    val repository = SextantRepository(context)
+    val housing = repository.loadState(filter()).categories.single { it.name == "住房" && it.parentCategoryId == null }
+    val anchor = monthStart()
+
+    repository.saveRecurringExpense(null, recurringDraft(name = "房租", amountCents = 280_000, anchorDate = anchor, categoryId = housing.id))
+    repository.saveRecurringExpense(null, recurringDraft(name = "物业费", amountCents = 15_000, cycle = RecurringCycle.Quarterly, anchorDate = anchor, categoryId = housing.id))
+    repository.saveRecurringExpense(null, recurringDraft(name = "宽带", amountCents = 120_000, cycle = RecurringCycle.Yearly, anchorDate = anchor, categoryId = housing.id))
+
+    val state = repository.loadState(filter())
+    assertEquals(setOf("房租", "物业费", "宽带"), state.recurringExpenses.map { it.name }.toSet())
+    // 每月折算 2800 + 50 + 100 = 2950 元：跨周期可比是这一列数字存在的意义。
+    assertEquals(295_000L, state.recurringExpenses.sumOf { it.monthlyEquivalentCents() })
+  }
+
+  @Test
+  fun recurringExpenseRejectsInvalidInputAndStaleIds() {
+    val repository = SextantRepository(context)
+    val anchor = monthStart()
+
+    assertThrows(IllegalArgumentException::class.java) {
+      repository.saveRecurringExpense(null, recurringDraft(name = "   ", amountCents = 1_000, anchorDate = anchor))
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      repository.saveRecurringExpense(null, recurringDraft(amountCents = 0, anchorDate = anchor))
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      repository.saveRecurringExpense(
+        null,
+        recurringDraft(amountCents = 1_000, cycle = RecurringCycle.CustomDays, customDays = null, anchorDate = anchor),
+      )
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      repository.saveRecurringExpense(
+        null,
+        recurringDraft(amountCents = 1_000, cycle = RecurringCycle.CustomDays, customDays = 0, anchorDate = anchor),
+      )
+    }
+    // 过期的 id 不能悄悄降级成插入。
+    assertThrows(IllegalArgumentException::class.java) {
+      repository.saveRecurringExpense("missing", recurringDraft(amountCents = 1_000, anchorDate = anchor))
+    }
+
+    assertEquals(0, repository.loadState(filter()).recurringExpenses.size)
+  }
+
+  @Test
+  fun customDaysIsDroppedForFixedCyclesAndUpdateReplacesInPlace() {
+    val repository = SextantRepository(context)
+    val anchor = monthStart()
+    val id = repository.saveRecurringExpense(
+      null,
+      recurringDraft(amountCents = 280_000, customDays = 45, anchorDate = anchor, note = "每月 1 号"),
+    )
+
+    // 「每月」还带 45 天是自相矛盾的组合，归一化掉而不是报错。
+    val created = repository.loadState(filter()).recurringExpenses.single()
+    assertEquals(id, created.id)
+    assertNull(created.customDays)
+    assertEquals("每月 1 号", created.note)
+
+    repository.saveRecurringExpense(
+      id,
+      recurringDraft(amountCents = 300_000, cycle = RecurringCycle.CustomDays, customDays = 45, anchorDate = anchor),
+    )
+    val updated = repository.loadState(filter()).recurringExpenses.single()
+    assertEquals(1, repository.loadState(filter()).recurringExpenses.size)
+    assertEquals(id, updated.id)
+    assertEquals(300_000L, updated.amountCents)
+    assertEquals(RecurringCycle.CustomDays, updated.cycle)
+    assertEquals(45, updated.customDays)
+
+    repository.setRecurringExpenseActive(id, false)
+    assertFalse(repository.loadState(filter()).recurringExpenses.single().isActive)
+
+    repository.deleteRecurringExpense(id)
+    assertEquals(0, repository.loadState(filter()).recurringExpenses.size)
+  }
+
+  @Test
+  fun endedAtRoundTripsAndClearsSoACanceledPlanCanStillBeKept() {
+    val repository = SextantRepository(context)
+    val anchor = monthStart()
+    val stop = anchor + 90L * 86_400_000L
+
+    val id = repository.saveRecurringExpense(null, recurringDraft(anchorDate = anchor, endedAt = stop))
+    assertEquals(stop, repository.loadState(filter()).recurringExpenses.single().endedAt)
+
+    repository.saveRecurringExpense(id, recurringDraft(amountCents = 300_000, anchorDate = anchor, endedAt = null))
+    val cleared = repository.loadState(filter()).recurringExpenses.single()
+    assertEquals(id, cleared.id)
+    assertEquals(300_000L, cleared.amountCents)
+    assertNull(cleared.endedAt)
+  }
+
+  private fun recurringDraft(
+    name: String = "房租",
+    amountCents: Long = 280_000,
+    cycle: RecurringCycle = RecurringCycle.Monthly,
+    customDays: Int? = null,
+    anchorDate: Long = monthStart(),
+    categoryId: String? = null,
+    paymentMethodId: String? = null,
+    endedAt: Long? = null,
+    isActive: Boolean = true,
+    note: String = "",
+  ) = RecurringExpenseDraft(
+    name = name,
+    amountCents = amountCents,
+    cycle = cycle,
+    customDays = customDays,
+    anchorDate = anchorDate,
+    categoryId = categoryId,
+    paymentMethodId = paymentMethodId,
+    endedAt = endedAt,
+    isActive = isActive,
+    note = note,
+  )
 
   private fun filter(
     query: String = "",

@@ -68,6 +68,7 @@ class SextantRepository(context: Context) {
       analysisTransactions = analysisTransactions,
       budgets = budgetProgress(db, categories, analysisTransactions, monthStart),
       monthlyBudgetCents = monthlyBudget(db),
+      recurringExpenses = listRecurringExpenses(db),
       previousMonthSummary = LedgerCalculations.summarize(previousTransactions),
       dailySpending = LedgerCalculations.dailySpending(analysisTransactions, monthStart),
       projectedExpenseCents = LedgerCalculations.projectedExpense(analysisSummary.expenseCents, monthStart),
@@ -228,6 +229,85 @@ class SextantRepository(context: Context) {
         )
       }
     }
+  }
+
+  /**
+   * 新增（[id] 为 null）或更新一笔周期支出，返回它的 id。
+   *
+   * 和预算不同，这里没有「同一分类只能有一条」的约束：住房分类下同时有房租、物业费、宽带
+   * 是常态，条目之间靠 id 区分，不靠 `(categoryId, period, startDate)`。
+   *
+   * [customDays] 只在 [RecurringCycle.CustomDays] 下有意义：其它周期传进来的值会被归一化成
+   * null 而不是报错，保证库里不会出现「每月 + 30 天」这种自相矛盾的行。
+   */
+  fun saveRecurringExpense(id: String?, draft: RecurringExpenseDraft): String {
+    val trimmedName = draft.name.trim()
+    require(trimmedName.isNotBlank()) { "周期支出名称不能为空" }
+    require(trimmedName.length <= MAX_RECURRING_NAME_LENGTH) { "周期支出名称不能超过 $MAX_RECURRING_NAME_LENGTH 个字符" }
+    require(draft.amountCents > 0) { "周期支出金额必须大于 0" }
+    require(draft.anchorDate > 0) { "周期支出需要首次扣费日" }
+
+    val resolvedCustomDays = if (draft.cycle == RecurringCycle.CustomDays) {
+      val days = requireNotNull(draft.customDays) { "自定义周期需要填写天数" }
+      require(days > 0) { "自定义周期天数必须大于 0" }
+      days
+    } else {
+      null
+    }
+
+    val now = System.currentTimeMillis()
+    val db = database.writableDatabase
+    val resolvedId = id ?: UUID.randomUUID().toString()
+    val trimmedNote = draft.note.trim()
+
+    if (id == null) {
+      db.execSQL(
+        """
+        INSERT INTO recurring_expenses
+          (id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
+           endedAt, isActive, note, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent(),
+        arrayOf<Any?>(
+          resolvedId, trimmedName, draft.amountCents, draft.cycle.storageValue, resolvedCustomDays,
+          draft.anchorDate, draft.categoryId, draft.paymentMethodId, draft.endedAt,
+          if (draft.isActive) 1 else 0, trimmedNote, now, now,
+        ),
+      )
+    } else {
+      db.rawQuery("SELECT 1 FROM recurring_expenses WHERE id = ?", arrayOf(id)).use { cursor ->
+        require(cursor.moveToFirst()) { "周期支出不存在" }
+      }
+      db.execSQL(
+        """
+        UPDATE recurring_expenses
+        SET name = ?, amountCents = ?, cycle = ?, customDays = ?, anchorDate = ?, categoryId = ?,
+          paymentMethodId = ?, endedAt = ?, isActive = ?, note = ?, updatedAt = ?
+        WHERE id = ?
+        """.trimIndent(),
+        arrayOf<Any?>(
+          trimmedName, draft.amountCents, draft.cycle.storageValue, resolvedCustomDays, draft.anchorDate,
+          draft.categoryId, draft.paymentMethodId, draft.endedAt, if (draft.isActive) 1 else 0,
+          trimmedNote, now, resolvedId,
+        ),
+      )
+    }
+
+    notifyChanged()
+    return resolvedId
+  }
+
+  fun deleteRecurringExpense(id: String) {
+    database.writableDatabase.delete("recurring_expenses", "id = ?", arrayOf(id))
+    notifyChanged()
+  }
+
+  fun setRecurringExpenseActive(id: String, isActive: Boolean) {
+    database.writableDatabase.execSQL(
+      "UPDATE recurring_expenses SET isActive = ?, updatedAt = ? WHERE id = ?",
+      arrayOf<Any>(if (isActive) 1 else 0, System.currentTimeMillis(), id),
+    )
+    notifyChanged()
   }
 
   fun addCategory(
@@ -509,6 +589,44 @@ class SextantRepository(context: Context) {
       return if (cursor.moveToFirst()) cursor.getString(0).toLongOrNull() else null
     }
   }
+
+  /**
+   * 全部周期支出，启用的排在前面，同组内按首次扣费日。
+   *
+   * 「下一次扣费」是按当前时间推算出来的（见 `RecurringSchedule.kt`），不落库，所以这里
+   * 不排序也排不了；页面按推算结果再排一次。
+   */
+  private fun listRecurringExpenses(db: SQLiteDatabase): List<RecurringExpense> {
+    val rows = mutableListOf<RecurringExpense>()
+    db.rawQuery(
+      """
+      SELECT id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
+        endedAt, isActive, note, createdAt, updatedAt
+      FROM recurring_expenses
+      ORDER BY isActive DESC, anchorDate ASC, createdAt ASC
+      """.trimIndent(),
+      emptyArray(),
+    ).use { cursor ->
+      while (cursor.moveToNext()) {
+        rows += RecurringExpense(
+          id = cursor.getString(0),
+          name = cursor.getString(1),
+          amountCents = cursor.getLong(2),
+          cycle = cursor.getString(3).toRecurringCycle(),
+          customDays = cursor.getIntOrNull(4),
+          anchorDate = cursor.getLong(5),
+          categoryId = cursor.getStringOrNull(6),
+          paymentMethodId = cursor.getStringOrNull(7),
+          endedAt = cursor.getLongOrNull(8),
+          isActive = cursor.getInt(9) == 1,
+          note = cursor.getString(10),
+          createdAt = cursor.getLong(11),
+          updatedAt = cursor.getLong(12),
+        )
+      }
+    }
+    return rows
+  }
 }
 
 /** 计入支出结构的流水：支出，且分类计入支出。 */
@@ -531,6 +649,7 @@ private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> 
     .map { (dayStartMillis, items) -> DailyTransactionGroup(dayStartMillis, items) }
 
 private const val MAX_PAYMENT_METHOD_NAME_LENGTH = 40
+private const val MAX_RECURRING_NAME_LENGTH = 20
 
 private val TransactionType.dbValue: String
   get() = when (this) {
@@ -547,10 +666,22 @@ private fun String.toTransactionType() = when (this) {
 
 private fun String.toEntryOrigin() = if (this == "notification") EntryOrigin.Notification else EntryOrigin.Manual
 
+/** 库里出现不认识的周期时退化成「每月」而不是丢弃整行，和 [toTransactionType] 的处理一致。 */
+private fun String.toRecurringCycle(): RecurringCycle =
+  RecurringCycle.fromStorage(this) ?: RecurringCycle.Monthly
+
 private fun String.toAutomationKind() = AutomationKind.entries.firstOrNull {
   it.name.equals(this, ignoreCase = true)
 }
 
 private fun android.database.Cursor.getStringOrNull(index: Int): String? {
   return if (isNull(index)) null else getString(index)
+}
+
+private fun android.database.Cursor.getLongOrNull(index: Int): Long? {
+  return if (isNull(index)) null else getLong(index)
+}
+
+private fun android.database.Cursor.getIntOrNull(index: Int): Int? {
+  return if (isNull(index)) null else getInt(index)
 }

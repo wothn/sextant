@@ -14,6 +14,7 @@ data class BackupSummary(
   val categoryCount: Int,
   val paymentMethodCount: Int,
   val budgetCount: Int,
+  val recurringExpenseCount: Int,
 )
 
 class BackupException(message: String, cause: Throwable? = null) : IllegalArgumentException(message, cause)
@@ -28,6 +29,7 @@ internal class BackupStore(private val database: SextantDatabase) {
       paymentMethods = db.readPaymentMethods(),
       transactions = db.readTransactions(),
       budgets = db.readBudgets(),
+      recurringExpenses = db.readRecurringExpenses(),
       settings = db.readSettings(),
       classificationRules = db.readClassificationRules(),
     )
@@ -40,6 +42,7 @@ internal class BackupStore(private val database: SextantDatabase) {
     db.beginTransaction()
     try {
       db.delete("budgets", null, null)
+      db.delete("recurring_expenses", null, null)
       db.delete("classification_rules", null, null)
       db.delete("automation_events", null, null)
       db.delete("transactions", null, null)
@@ -82,6 +85,21 @@ internal class BackupStore(private val database: SextantDatabase) {
           VALUES (?, ?, ?, ?, ?, ?, ?)
           """.trimIndent(),
           arrayOf<Any>(item.id, item.categoryId, item.amountCents, item.period, item.startDate, item.alertThreshold, item.isActive.asInt()),
+        )
+      }
+      document.recurringExpenses.forEach { item ->
+        db.execSQL(
+          """
+          INSERT INTO recurring_expenses
+            (id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
+             endedAt, isActive, note, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          """.trimIndent(),
+          arrayOf<Any?>(
+            item.id, item.name, item.amountCents, item.cycle, item.customDays, item.anchorDate,
+            item.categoryId, item.paymentMethodId, item.endedAt, item.isActive.asInt(), item.note,
+            item.createdAt, item.updatedAt,
+          ),
         )
       }
       document.settings.forEach { item ->
@@ -142,6 +160,7 @@ internal object BackupCodec {
     requireUnique(document.paymentMethods.map { it.id }, "来源 ID")
     requireUnique(document.transactions.map { it.id }, "交易 ID")
     requireUnique(document.budgets.map { it.id }, "预算 ID")
+    requireUnique(document.recurringExpenses.map { it.id }, "周期支出 ID")
     requireUnique(document.settings.map { it.key }, "设置项")
     requireUnique(document.classificationRules.map { it.id }, "分类规则 ID")
 
@@ -183,6 +202,18 @@ internal object BackupCodec {
       requireBackup(item.matchMode == "contains" || item.matchMode == "exact") { "分类规则匹配方式无效" }
       requireBackup(item.categoryId in categoryIds) { "分类规则引用无效" }
     }
+    document.recurringExpenses.forEach { item ->
+      requireBackup(item.id.isNotBlank() && item.name.isNotBlank()) { "周期支出信息不完整" }
+      requireBackup(item.amountCents > 0) { "周期支出金额无效" }
+      requireBackup(item.anchorDate > 0) { "周期支出缺少首次扣费日" }
+      val cycle = RecurringCycle.fromStorage(item.cycle)
+      requireBackup(cycle != null) { "周期支出周期无效" }
+      // 「每月 + 45 天」这种自相矛盾的行不能在库和备份之间来回传播。
+      requireBackup((cycle == RecurringCycle.CustomDays) == (item.customDays != null)) { "周期支出间隔天数与周期不匹配" }
+      requireBackup(item.customDays == null || item.customDays > 0) { "周期支出间隔天数无效" }
+      requireBackup(item.categoryId == null || item.categoryId in categoryIds) { "周期支出分类引用无效" }
+      requireBackup(item.paymentMethodId == null || item.paymentMethodId in paymentMethodIds) { "周期支出来源引用无效" }
+    }
   }
 }
 
@@ -196,10 +227,11 @@ internal data class BackupDocument(
   @SerialName("paymentMethods") val paymentMethods: List<BackupPaymentMethod> = emptyList(),
   val transactions: List<BackupTransaction> = emptyList(),
   val budgets: List<BackupBudget> = emptyList(),
+  val recurringExpenses: List<BackupRecurringExpense> = emptyList(),
   val settings: List<BackupSetting> = emptyList(),
   val classificationRules: List<BackupClassificationRule> = emptyList(),
 ) {
-  fun summary() = BackupSummary(transactions.size, categories.size, paymentMethods.size, budgets.size)
+  fun summary() = BackupSummary(transactions.size, categories.size, paymentMethods.size, budgets.size, recurringExpenses.size)
 }
 
 @Serializable
@@ -269,6 +301,30 @@ internal data class BackupBudget(
 @Serializable
 internal data class BackupSetting(val key: String, val value: String)
 
+/**
+ * 备份里的周期支出。
+ *
+ * 时间戳与 `customDays` 原样搬运，由 [BackupCodec.validate] 检查「自定义周期必须有天数、
+ * 其它周期必须没有」这条不变式；这里不做归一化，否则一个有问题的备份会被悄悄修好，
+ * 而用户以为恢复的就是导出的那份。
+ */
+@Serializable
+internal data class BackupRecurringExpense(
+  val id: String,
+  val name: String,
+  val amountCents: Long,
+  val cycle: String,
+  val customDays: Int? = null,
+  val anchorDate: Long,
+  val categoryId: String? = null,
+  val paymentMethodId: String? = null,
+  val endedAt: Long? = null,
+  val isActive: Boolean,
+  val note: String = "",
+  val createdAt: Long,
+  val updatedAt: Long,
+)
+
 private fun SQLiteDatabase.readCategories(): List<BackupCategory> = readRows(
   "SELECT id, name, type, color, includeInSpending, parentCategoryId, isBuiltIn, isActive, createdAt FROM categories ORDER BY createdAt ASC",
 ) { cursor ->
@@ -291,6 +347,30 @@ private fun SQLiteDatabase.readBudgets(): List<BackupBudget> = readRows(
   "SELECT id, categoryId, amountCents, period, startDate, alertThreshold, isActive FROM budgets ORDER BY startDate ASC",
 ) { cursor ->
   BackupBudget(cursor.getString(0), cursor.getString(1), cursor.getLong(2), cursor.getString(3), cursor.getLong(4), cursor.getDouble(5), cursor.getInt(6) == 1)
+}
+
+private fun SQLiteDatabase.readRecurringExpenses(): List<BackupRecurringExpense> = readRows(
+  """
+  SELECT id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
+    endedAt, isActive, note, createdAt, updatedAt
+  FROM recurring_expenses ORDER BY createdAt ASC
+  """.trimIndent(),
+) { cursor ->
+  BackupRecurringExpense(
+    cursor.getString(0),
+    cursor.getString(1),
+    cursor.getLong(2),
+    cursor.getString(3),
+    if (cursor.isNull(4)) null else cursor.getInt(4),
+    cursor.getLong(5),
+    cursor.stringOrNull(6),
+    cursor.stringOrNull(7),
+    if (cursor.isNull(8)) null else cursor.getLong(8),
+    cursor.getInt(9) == 1,
+    cursor.getString(10),
+    cursor.getLong(11),
+    cursor.getLong(12),
+  )
 }
 
 private fun SQLiteDatabase.readSettings(): List<BackupSetting> = readRows(
@@ -333,6 +413,6 @@ private fun Cursor.stringOrNull(index: Int): String? = if (isNull(index)) null e
 private fun Boolean.asInt(): Int = if (this) 1 else 0
 
 private const val BACKUP_FORMAT = "sextant-backup"
-private const val BACKUP_VERSION = 2
+private const val BACKUP_VERSION = 3
 private val TRANSACTION_TYPES = setOf("expense", "income", "transfer")
 private val AUTOMATION_KINDS = setOf("purchase", "refund", "receipt", "transfer_in", "transfer_out", "recharge", "repayment", "red_packet", "withdrawal", "other")

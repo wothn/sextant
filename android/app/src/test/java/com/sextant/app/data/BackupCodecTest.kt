@@ -12,7 +12,56 @@ class BackupCodecTest {
     val decoded = BackupCodec.decodeAndValidate(BackupCodec.encode(document))
 
     assertEquals(document, decoded)
-    assertEquals(BackupSummary(1, 2, 1, 1), decoded.summary())
+    assertEquals(BackupSummary(1, 2, 1, 1, 1), decoded.summary())
+  }
+
+  @Test
+  fun acceptsBackupsWrittenBeforeRecurringExpensesExisted() {
+    // 旧备份里根本没有这个字段。把它改名成未知键即可模拟「字段缺失」——`ignoreUnknownKeys`
+    // 会丢掉改名后的键，于是解码结果只能来自默认值。
+    val legacy = BackupCodec.encode(sampleDocument()).replace("\"recurringExpenses\"", "\"legacyRecurringExpenses\"")
+
+    val decoded = BackupCodec.decodeAndValidate(legacy)
+
+    assertEquals(emptyList<BackupRecurringExpense>(), decoded.recurringExpenses)
+    assertEquals(0, decoded.summary().recurringExpenseCount)
+  }
+
+  @Test
+  fun rejectsRecurringExpenseWhoseIntervalContradictsItsCycle() {
+    val document = sampleDocument()
+    val broken = document.recurringExpenses.map { it.copy(cycle = "monthly", customDays = 45) }
+
+    val error = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate(BackupCodec.encode(document.copy(recurringExpenses = broken)))
+    }
+
+    assertEquals("周期支出间隔天数与周期不匹配", error.message)
+  }
+
+  @Test
+  fun rejectsRecurringExpenseWithUnknownCycleAndBrokenReferences() {
+    val document = sampleDocument()
+
+    val cycleError = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate(
+        BackupCodec.encode(document.copy(recurringExpenses = document.recurringExpenses.map { it.copy(cycle = "fortnightly") })),
+      )
+    }
+    val categoryError = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate(
+        BackupCodec.encode(document.copy(recurringExpenses = document.recurringExpenses.map { it.copy(categoryId = "missing") })),
+      )
+    }
+    val sourceError = assertThrows(BackupException::class.java) {
+      BackupCodec.decodeAndValidate(
+        BackupCodec.encode(document.copy(recurringExpenses = document.recurringExpenses.map { it.copy(paymentMethodId = "missing") })),
+      )
+    }
+
+    assertEquals("周期支出周期无效", cycleError.message)
+    assertEquals("周期支出分类引用无效", categoryError.message)
+    assertEquals("周期支出来源引用无效", sourceError.message)
   }
 
   @Test
@@ -124,6 +173,9 @@ class BackupCodecTest {
     ),
     budgets = listOf(
       BackupBudget("budget", "food", 100_000, "month", 1, 0.8, true),
+    ),
+    recurringExpenses = listOf(
+      BackupRecurringExpense("rent", "房租", 280_000, "monthly", null, 1_700_000_000_000, "food", "cash", null, true, "", 1, 1),
     ),
     settings = listOf(BackupSetting("monthly_budget_cents", "300000")),
   )

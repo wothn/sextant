@@ -7,7 +7,7 @@ import java.util.UUID
 
 class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db", null, DATABASE_VERSION) {
   companion object {
-    const val DATABASE_VERSION = 9
+    const val DATABASE_VERSION = 10
   }
   init {
     setWriteAheadLoggingEnabled(true)
@@ -85,6 +85,7 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
     db.execSQL("CREATE INDEX idx_transactions_type_date ON transactions(type, transactionDate)")
     db.execSQL("CREATE INDEX idx_transactions_category_date ON transactions(categoryId, transactionDate)")
     db.execSQL("CREATE INDEX idx_transactions_payment_date ON transactions(paymentMethodId, transactionDate)")
+    createRecurringSchema(db)
     createAutomationSchema(db)
     seedDefaults(db)
   }
@@ -128,6 +129,39 @@ class SextantDatabase(context: Context) : SQLiteOpenHelper(context, "sextant.db"
       db.execSQL("ALTER TABLE transactions ADD COLUMN isUserEdited INTEGER NOT NULL DEFAULT 0")
       createAutomationSchema(db)
     }
+    if (oldVersion < 10) {
+      createRecurringSchema(db)
+    }
+  }
+
+  /**
+   * 周期支出（房租、会员、宽带这类固定节奏的金额）。
+   *
+   * 它不参与流水统计，只是「计划」：真实扣款仍然记成普通流水。因此这里没有外键，
+   * 也不触发任何账本重算——`categoryId` / `paymentMethodId` 是弱引用，指向已被归档的
+   * 分类或来源时仍然可用，只是在展示上退化成「未分类」。
+   */
+  private fun createRecurringSchema(db: SQLiteDatabase) {
+    db.execSQL(
+      """
+      CREATE TABLE IF NOT EXISTS recurring_expenses (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        amountCents INTEGER NOT NULL,
+        cycle TEXT NOT NULL,
+        customDays INTEGER,
+        anchorDate INTEGER NOT NULL,
+        categoryId TEXT,
+        paymentMethodId TEXT,
+        endedAt INTEGER,
+        isActive INTEGER NOT NULL DEFAULT 1,
+        note TEXT NOT NULL DEFAULT '',
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      )
+      """.trimIndent(),
+    )
+    db.execSQL("CREATE INDEX IF NOT EXISTS idx_recurring_expenses_active ON recurring_expenses(isActive, anchorDate)")
   }
 
   private fun createAutomationSchema(db: SQLiteDatabase) {

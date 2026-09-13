@@ -232,6 +232,8 @@ data class AppState(
   val analysisTransactions: List<TransactionListItem> = emptyList(),
   val budgets: List<BudgetProgress> = emptyList(),
   val monthlyBudgetCents: Long? = null,
+  /** 「计划」页里的周期支出。它是计划值，不参与 [monthSummary] 等任何流水统计口径。 */
+  val recurringExpenses: List<RecurringExpense> = emptyList(),
   val previousMonthSummary: Summary = Summary(0, 0),
   val dailySpending: List<DailySpending> = emptyList(),
   val projectedExpenseCents: Long = 0,
