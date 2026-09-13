@@ -2,6 +2,7 @@ package com.sextant.app.ui.util
 
 import com.sextant.app.data.Category
 import com.sextant.app.data.LedgerFilter
+import com.sextant.app.data.RecurringCycle
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
 import com.sextant.app.data.toLocalDate
@@ -115,6 +116,31 @@ fun dayGroupLabel(dayStartMillis: Long, today: LocalDate = LocalDate.now()): Str
 }
 
 fun isCurrentMonth(millis: Long): Boolean = YearMonth.from(millis.toLocalDate()) == YearMonth.now()
+
+/** 未来某天：今天 / 明天 / 后天 / 3月5日 周四。规则与 [dayGroupLabel] 对称，只是朝向未来。 */
+fun futureDayLabel(dayStartMillis: Long, today: LocalDate = LocalDate.now()): String {
+  val date = dayStartMillis.toLocalDate()
+  return when (ChronoUnit.DAYS.between(today, date)) {
+    0L -> "今天"
+    1L -> "明天"
+    2L -> "后天"
+    else -> buildString {
+      if (date.year != today.year) append(date.year).append('年')
+      append(date.monthValue).append('月').append(date.dayOfMonth).append('日')
+      append(' ').append(weekdayLabels[date.dayOfWeek.value - 1])
+    }
+  }
+}
+
+/** 周期支出的展示文案。自定义周期把天数带出来，否则「自定义」三个字读不出节奏。 */
+fun RecurringCycle.label(customDays: Int?): String = when (this) {
+  RecurringCycle.Weekly -> "每周"
+  RecurringCycle.Monthly -> "每月"
+  RecurringCycle.Quarterly -> "每季度"
+  RecurringCycle.Semiannual -> "每半年"
+  RecurringCycle.Yearly -> "每年"
+  RecurringCycle.CustomDays -> "每 ${customDays?.takeIf { it > 0 } ?: 30} 天"
+}
 
 /** 筛选面板里显示的完整起止文案。 */
 fun LedgerFilter.rangeLabel(): String {

@@ -44,8 +44,8 @@ import com.sextant.app.ui.navigation.LedgerNavigationBar
 import com.sextant.app.ui.navigation.Tab
 import com.sextant.app.ui.navigation.rememberQuickEntryFabState
 import com.sextant.app.ui.screens.AnalyticsScreen
-import com.sextant.app.ui.screens.BudgetScreen
 import com.sextant.app.ui.screens.HomeScreen
+import com.sextant.app.ui.screens.PlansScreen
 import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
 import kotlinx.coroutines.flow.collect
@@ -123,7 +123,7 @@ fun SextantApp(
             // 分类明细里的流水和首页明细一样可以点开编辑。
             onTransactionClick = { editingTransaction = it },
           )
-          Tab.Discover -> BudgetScreen(state, repository) { reloadKey++ }
+          Tab.Discover -> PlansScreen(state, repository) { reloadKey++ }
           Tab.Settings -> SettingsScreen(
             state = state,
             repository = repository,
@@ -138,7 +138,8 @@ fun SextantApp(
       }
       SextantCollapsibleFab(
         // 记账入口只服务概览：这里才是「翻明细、看到想补记的一笔」的地方。
-        // 分析、预算、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力。
+        // 分析、计划、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力；计划页的新增
+        // 入口用区块标题右侧的按钮，和分类预算保持同一个模式。
         visible = tab == Tab.Home && quickEntryFab.visible,
         onClick = { showQuickEntry = true },
         icon = Icons.Outlined.Add,

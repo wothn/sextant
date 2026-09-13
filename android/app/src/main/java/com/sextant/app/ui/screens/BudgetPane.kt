@@ -2,7 +2,6 @@ package com.sextant.app.ui.screens
 
 import com.sextant.app.ui.components.SextantBottomSheet
 import com.sextant.app.ui.components.SextantButton
-import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantTonalButton
 import com.sextant.app.ui.components.SextantTextField
 
@@ -22,13 +21,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,7 +48,6 @@ import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.components.BudgetScale
 import com.sextant.app.ui.components.FlowChips
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.rememberLazyListState
 import com.sextant.app.ui.components.SextantHeading
 import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.theme.SextantColors
@@ -59,9 +58,20 @@ import com.sextant.app.ui.util.parseAmountCents
 import java.util.Calendar
 import kotlin.math.max
 
+/**
+ * 「计划」页的预算视图。
+ *
+ * 页面标题、副标题和一级切换都由 [PlansScreen] 承担，这里只负责列表本身。滚动状态由上层
+ * 持有并传进来，切到周期支出再切回来时，预算才会停在原来的位置。
+ */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> Unit) {
+fun BudgetPane(
+  listState: LazyListState,
+  state: AppState,
+  repository: SextantRepository,
+  onSaved: () -> Unit,
+) {
   var editingTotal by remember { mutableStateOf(false) }
   var editingCategory by remember { mutableStateOf(false) }
   var totalText by remember(state.monthlyBudgetCents) { mutableStateOf(state.monthlyBudgetCents?.let { "%.2f".format(it / 100.0) }.orEmpty()) }
@@ -69,41 +79,32 @@ fun BudgetScreen(state: AppState, repository: SextantRepository, onSaved: () -> 
   var categoryAmountText by remember { mutableStateOf("") }
   val expenseCategories = state.categories.filter { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }
 
-  Column(Modifier.fillMaxSize()) {
-    val listState = rememberLazyListState()
-    SextantFlexibleHeader(
-      title = "月度预算",
-      scrollState = listState,
-      subtitle = "控制总支出，再为重要分类分配额度。",
-      modifier = Modifier.padding(horizontal = 20.dp),
-    )
-    LazyColumn(
-      state = listState,
-      modifier = Modifier.fillMaxSize(),
-      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
-      verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-      item { BudgetOverview(state, onEdit = { editingTotal = true }) }
+  LazyColumn(
+    state = listState,
+    modifier = Modifier.fillMaxSize(),
+    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+    verticalArrangement = Arrangement.spacedBy(18.dp),
+  ) {
+    item { BudgetOverview(state, onEdit = { editingTotal = true }) }
+    item {
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Column {
+          SextantHeading("分类预算")
+          Text("${state.budgets.size} 个分类已设置", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
+        }
+        SextantTonalButton(onClick = { editingCategory = true }) {
+          Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
+          Spacer(Modifier.width(8.dp))
+          Text("添加")
+        }
+      }
+    }
+    if (state.budgets.isEmpty()) {
       item {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-          Column {
-            SextantHeading("分类预算")
-            Text("${state.budgets.size} 个分类已设置", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
-          }
-          SextantTonalButton(onClick = { editingCategory = true }) {
-            Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("添加")
-          }
-        }
+        Text("还没有分类预算。可以先为餐饮、购物等波动较大的支出设置额度。", color = SextantColors.TextMuted)
       }
-      if (state.budgets.isEmpty()) {
-        item {
-          Text("还没有分类预算。可以先为餐饮、购物等波动较大的支出设置额度。", color = SextantColors.TextMuted)
-        }
-      } else {
-        items(state.budgets) { CategoryBudgetRow(it) }
-      }
+    } else {
+      items(state.budgets) { CategoryBudgetRow(it) }
     }
   }
 

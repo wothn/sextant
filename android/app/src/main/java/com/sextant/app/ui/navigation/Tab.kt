@@ -10,6 +10,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 enum class Tab(val title: String, val icon: ImageVector) {
   Home("概览", Icons.Outlined.AccountBalanceWallet),
   Analytics("分析", Icons.Outlined.PieChart),
-  Discover("预算", Icons.AutoMirrored.Outlined.ReceiptLong),
+  Discover("计划", Icons.AutoMirrored.Outlined.ReceiptLong),
   Settings("设置", Icons.Outlined.Settings),
 }

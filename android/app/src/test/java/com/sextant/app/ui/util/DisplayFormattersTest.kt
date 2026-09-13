@@ -1,6 +1,7 @@
 package com.sextant.app.ui.util
 
 import com.sextant.app.data.LedgerFilter
+import com.sextant.app.data.RecurringCycle
 import com.sextant.app.data.Transaction
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
@@ -89,6 +90,33 @@ class DisplayFormattersTest {
 
     assertEquals("今天", dayGroupLabel(earlyToday, today))
     assertEquals("昨天", dayGroupLabel(lateYesterday, today))
+  }
+
+  @Test
+  fun namesUpcomingDaysRelativelyButNeverCallsAPastDayTomorrow() {
+    val today = LocalDate.of(2026, 2, 14) // 周六
+
+    assertEquals("今天", futureDayLabel(LocalDate.of(2026, 2, 14).toStartOfDayMillis(), today))
+    assertEquals("明天", futureDayLabel(LocalDate.of(2026, 2, 15).toStartOfDayMillis(), today))
+    assertEquals("后天", futureDayLabel(LocalDate.of(2026, 2, 16).toStartOfDayMillis(), today))
+    assertEquals("2月17日 周二", futureDayLabel(LocalDate.of(2026, 2, 17).toStartOfDayMillis(), today))
+    // 跨年补年份，和 [dayGroupLabel] 往过去看时是同一套规则。
+    assertEquals("2027年1月2日 周六", futureDayLabel(LocalDate.of(2027, 1, 2).toStartOfDayMillis(), today))
+    // 已经过去的日子按日期展示，不能被说成「明天」。
+    assertEquals("2月13日 周五", futureDayLabel(LocalDate.of(2026, 2, 13).toStartOfDayMillis(), today))
+  }
+
+  @Test
+  fun spellsOutEveryRecurringCycleIncludingTheCustomInterval() {
+    assertEquals("每周", RecurringCycle.Weekly.label(null))
+    assertEquals("每月", RecurringCycle.Monthly.label(null))
+    assertEquals("每季度", RecurringCycle.Quarterly.label(null))
+    assertEquals("每半年", RecurringCycle.Semiannual.label(null))
+    assertEquals("每年", RecurringCycle.Yearly.label(null))
+    assertEquals("每 45 天", RecurringCycle.CustomDays.label(45))
+    // 天数缺失或非法时回落到 30 天，和周期推算用的兜底保持一致。
+    assertEquals("每 30 天", RecurringCycle.CustomDays.label(null))
+    assertEquals("每 30 天", RecurringCycle.CustomDays.label(0))
   }
 
   @Test
