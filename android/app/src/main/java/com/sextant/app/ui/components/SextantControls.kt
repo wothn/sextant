@@ -705,6 +705,13 @@ fun SextantNavigationBar(
  *
  * `icon` / `label` 不需要自己指定颜色：内容色通过 `LocalContentColor` 传下来，
  * 选中切换时图标和文字会一起过渡，不会出现「图标变了文字没变」的中间态。
+ *
+ * 按下反馈只保留选中态的药丸指示条，条目本身关掉了 ripple：`selectable` 默认从
+ * `LocalIndication` 取到 Material3 的 ripple，颜色来自 `LocalContentColor`（这里由
+ * [SextantNavigationBar] 提供成正文色），点下去会在整个条目上叠一层灰黑覆盖，和橙色药丸
+ * 同时出现，看起来像两套互不相干的反馈。传 `indication = null` 后，按下不再有独立的即时
+ * 覆盖层，反馈只由选中切换时指示条的宽度与颜色承担；这也是刻意的取舍——药丸本身已经是
+ * 明确的选中信号，不值得再叠一层中性灰。
  */
 @Composable
 fun RowScope.SextantNavigationItem(
@@ -729,11 +736,20 @@ fun RowScope.SextantNavigationItem(
     animationSpec = SextantMotion.defaultEffects(),
     label = "navContentColor",
   )
+  // 关掉 selectable 自带的 ripple：见上面 KDoc，否则灰色状态层会和橙色药丸同时出现。
+  // interactionSource 仍需自建，因为 indication = null 时不会再由默认值兜底。
+  val interactionSource = remember { MutableInteractionSource() }
   Column(
     modifier = modifier
       .weight(1f)
       .heightIn(min = 64.dp)
-      .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+      .selectable(
+        selected = selected,
+        interactionSource = interactionSource,
+        indication = null,
+        role = Role.Tab,
+        onClick = onClick,
+      )
       .padding(vertical = 6.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
