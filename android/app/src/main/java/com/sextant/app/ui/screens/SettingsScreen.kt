@@ -171,7 +171,7 @@ fun SettingsScreen(
       },
       dismissButton = { SextantTextButton(onClick = { pendingRestoreUri = null }) { Text("取消") } },
       title = { Text("恢复这份备份？") },
-      text = { Text("当前账本中的分类、来源、流水、预算和设置将被完整替换。文件校验或写入失败时不会修改原数据。") },
+      text = { Text("当前账本中的分类、来源、流水、预算、周期支出和设置将被完整替换。文件校验或写入失败时不会修改原数据。") },
     )
   }
 
@@ -267,7 +267,7 @@ private fun SettingsOverview(
           }
           SettingsEntry(
             title = "导出完整备份",
-            description = "将分类、流水、预算和设置保存为 JSON 文件",
+            description = "将分类、流水、预算、周期支出和设置保存为 JSON 文件",
             icon = Icons.Outlined.ArrowDownward,
             enabled = !isBusy,
             trailing = if (isBusy) { { SextantLoadingIndicator(size = 22.dp) } } else null,
@@ -474,7 +474,7 @@ private fun ThemePreference.description(): String = when (this) {
 private data class DataOperationMessage(val title: String, val body: String)
 
 private fun BackupSummary.restoreMessage(): String =
-  "已恢复 $transactionCount 笔流水、$categoryCount 个分类、$paymentMethodCount 个来源和 $budgetCount 项预算。"
+  "已恢复 $transactionCount 笔流水、$categoryCount 个分类、$paymentMethodCount 个来源、$budgetCount 项预算和 $recurringExpenseCount 笔周期支出。"
 
 private fun Throwable.toDataErrorMessage(): String = when (this) {
   is BackupException -> message ?: "备份文件无效。"
