@@ -370,7 +370,7 @@ private fun ledgerMetadata(item: TransactionListItem, parentName: String?): Stri
     if (item.paymentMethodName.isNotBlank()) add(item.paymentMethodName)
     if (description.isNotBlank()) add(description)
     if (item.transaction.entryOrigin == EntryOrigin.Notification) {
-      add(if (item.transaction.isUserEdited) "已修正" else "自动录入")
+      add("自动录入")
     }
   }.joinToString(" · ")
 }
