@@ -42,6 +42,9 @@ fun SextantMark(modifier: Modifier = Modifier) {
  * 两端圆头、填充用空间弹簧生长（数值变化时看得出方向），刻度改成轨道上的缺口而不是压在
  * 填充上的实线——原来那条线在填充色和轨道色接近时几乎看不见。
  *
+ * 轨道与填充的端点都内缩一个圆头半径，可见范围正好落在画布的 `[0, width]` 内：与上方正文
+ * 共用同一条 20dp 边距，也保证填充和刻度都按可见长度计算，而不是按画布长度。
+ *
  * 超预算的真实数值仍然由周边文字表达，不会因为图形截满 100% 就隐藏超额信息。
  */
 @Composable
@@ -62,19 +65,27 @@ fun BudgetScale(
     progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
   }) {
     val thickness = 8.dp.toPx()
-    val centerY = thickness / 2f
+    // 圆头会从线段端点再向外画出半个线宽。轨道两端各内缩一个半径，可见范围才正好是画布的
+    // [0, width]——否则进度条会比同一列 20dp 边距的正文左右各宽出 4dp，成为页面上唯一
+    // 撑破边距的元素（实测左端比「本月预算进度」的左边还多出 4dp）。
+    val cap = thickness / 2f
+    val centerY = cap
+    val trackEnd = (size.width - cap).coerceAtLeast(cap)
     drawLine(
       color = track,
-      start = Offset(0f, centerY),
-      end = Offset(size.width, centerY),
+      start = Offset(cap, centerY),
+      end = Offset(trackEnd, centerY),
       strokeWidth = thickness,
       cap = StrokeCap.Round,
     )
     if (animated > 0f) {
+      // 填充同样内缩：可见长度按 [0, width] 映射，右端圆头不再多长出一截，
+      // 100% 时与轨道完全重合，刻度缺口也就落在真实的 25/50/75% 上。
+      val fillEnd = (size.width * animated - cap).coerceAtLeast(cap)
       drawLine(
         color = color,
-        start = Offset(thickness / 2f, centerY),
-        end = Offset((size.width * animated).coerceAtLeast(thickness / 2f), centerY),
+        start = Offset(cap, centerY),
+        end = Offset(fillEnd, centerY),
         strokeWidth = thickness,
         cap = StrokeCap.Round,
       )
