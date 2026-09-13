@@ -50,12 +50,9 @@ class SextantRepository(context: Context) {
       allPaymentMethods,
       LedgerFilter(rangeStart = previousMonthStart, rangeEnd = monthStart),
     )
-    val currentBreakdown = LedgerCalculations.breakdown(analysisTransactions.filter {
-      it.transaction.type == TransactionType.Expense && it.includeInSpending
-    })
-    val previousBreakdown = LedgerCalculations.breakdown(previousTransactions.filter {
-      it.transaction.type == TransactionType.Expense && it.includeInSpending
-    }).associateBy { it.categoryName }
+    val currentBreakdown = LedgerCalculations.breakdown(monthSpending(analysisTransactions), categories)
+    val previousBreakdown = LedgerCalculations.breakdown(monthSpending(previousTransactions), categories)
+      .associateBy { it.categoryName }
     val analysisSummary = LedgerCalculations.summarize(analysisTransactions)
 
     return AppState(
@@ -68,6 +65,7 @@ class SextantRepository(context: Context) {
       rangeSummary = LedgerCalculations.summarize(transactions),
       monthSummary = analysisSummary,
       categoryBreakdown = currentBreakdown.map { it.copy(previousAmountCents = previousBreakdown[it.categoryName]?.amountCents ?: 0) },
+      analysisTransactions = analysisTransactions,
       budgets = budgetProgress(db, categories, analysisTransactions, monthStart),
       monthlyBudgetCents = monthlyBudget(db),
       previousMonthSummary = LedgerCalculations.summarize(previousTransactions),
@@ -512,6 +510,10 @@ class SextantRepository(context: Context) {
     }
   }
 }
+
+/** 计入支出结构的流水：支出，且分类计入支出。 */
+private fun monthSpending(items: List<TransactionListItem>): List<TransactionListItem> =
+  items.filter { it.transaction.type == TransactionType.Expense && it.includeInSpending }
 
 private fun Category.displayName(categoryById: Map<String, Category>): String {
   val parentName = parentCategoryId?.let(categoryById::get)?.name

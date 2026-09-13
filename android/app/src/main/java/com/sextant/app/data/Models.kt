@@ -115,12 +115,44 @@ data class Summary(
     get() = incomeCents - expenseCents
 }
 
+/**
+ * 支出结构里的一行。
+ *
+ * 一行就是「一个顶层分类」：子分类的流水并进父分类，子分类不单独成行。
+ * [memberCategoryIds] 记住这行到底由哪些分类的流水组成（含子分类），
+ * 点开分类看明细时才能原样还原这一行的金额。
+ */
 data class CategoryBreakdown(
   val categoryName: String,
   val color: Long,
   val amountCents: Long,
   val previousAmountCents: Long = 0,
-)
+  val memberCategoryIds: Set<String> = emptySet(),
+) {
+  /** 这笔流水是否算进这一行；没有分类的支出用 [UNCATEGORIZED_CATEGORY_ID] 表示。 */
+  fun includes(categoryId: String?): Boolean =
+    (categoryId ?: UNCATEGORIZED_CATEGORY_ID) in memberCategoryIds
+}
+
+/** 未分类流水在 [CategoryBreakdown.memberCategoryIds] 里的占位 id；真实分类 id 都是 UUID。 */
+const val UNCATEGORIZED_CATEGORY_ID = ""
+
+/** 分类明细的排序方式；默认按金额从大到小。 */
+enum class TransactionSortOrder {
+  Amount,
+  Time,
+}
+
+/**
+ * 分类明细的排序。金额从大到小时用时间兜底（新的在前），保证同一批数据顺序稳定。
+ */
+fun List<TransactionListItem>.sortedForDetail(order: TransactionSortOrder): List<TransactionListItem> = when (order) {
+  TransactionSortOrder.Amount -> sortedWith(
+    compareByDescending<TransactionListItem> { it.transaction.amountCents }
+      .thenByDescending { it.transaction.transactionDate },
+  )
+  TransactionSortOrder.Time -> sortedByDescending { it.transaction.transactionDate }
+}
 
 data class DailySpending(
   val dayOfMonth: Int,
@@ -196,6 +228,8 @@ data class AppState(
   val rangeSummary: Summary = Summary(0, 0),
   val monthSummary: Summary = Summary(0, 0),
   val categoryBreakdown: List<CategoryBreakdown> = emptyList(),
+  /** 分析月份的全部流水，不受明细筛选条件影响；分类明细从这里取当月流水。 */
+  val analysisTransactions: List<TransactionListItem> = emptyList(),
   val budgets: List<BudgetProgress> = emptyList(),
   val monthlyBudgetCents: Long? = null,
   val previousMonthSummary: Summary = Summary(0, 0),

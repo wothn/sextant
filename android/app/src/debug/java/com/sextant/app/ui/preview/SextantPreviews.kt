@@ -31,6 +31,7 @@ import com.sextant.app.ui.components.SextantCollapsibleFab
 import com.sextant.app.ui.navigation.LedgerNavigationBar
 import com.sextant.app.ui.navigation.Tab
 import com.sextant.app.ui.screens.AnalyticsScreen
+import com.sextant.app.ui.screens.CategoryDetailScreen
 import com.sextant.app.ui.screens.HomeScreen
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantTheme
@@ -74,7 +75,29 @@ private fun HomeScreenPreview() {
 private fun AnalyticsScreenPreview() {
   SextantTheme(themePreference = ThemePreference.System) {
     PreviewAppShell(selectedTab = Tab.Analytics) {
-      AnalyticsScreen(state = populatedPreviewState, monthStart = previewFilter.rangeStart)
+      AnalyticsScreen(
+        state = populatedPreviewState,
+        monthStart = previewFilter.rangeStart,
+        onTransactionClick = {},
+      )
+    }
+  }
+}
+
+@SextantThemePreviews
+@Composable
+private fun CategoryDetailScreenPreview() {
+  SextantTheme(themePreference = ThemePreference.System) {
+    PreviewAppShell(selectedTab = Tab.Analytics) {
+      CategoryDetailScreen(
+        category = populatedPreviewState.categoryBreakdown.first(),
+        monthStart = previewFilter.rangeStart,
+        transactions = populatedPreviewState.analysisTransactions,
+        categories = populatedPreviewState.categories,
+        monthTotalCents = populatedPreviewState.monthSummary.expenseCents,
+        onBack = {},
+        onTransactionClick = {},
+      )
     }
   }
 }
@@ -212,12 +235,13 @@ private val populatedPreviewState = AppState(
   rangeSummary = Summary(incomeCents = 1_680_000, expenseCents = 638_220),
   monthSummary = Summary(incomeCents = 1_680_000, expenseCents = 638_220),
   categoryBreakdown = listOf(
-    CategoryBreakdown("餐饮", 0xFFFF7043L, 214_800, 187_200),
-    CategoryBreakdown("购物", 0xFFF97316L, 162_500, 194_300),
-    CategoryBreakdown("交通", 0xFF42A5F5L, 96_320, 82_600),
-    CategoryBreakdown("娱乐休闲", 0xFFAB47BCL, 89_600, 67_400),
-    CategoryBreakdown("生活服务", 0xFF26A69AL, 75_000, 71_200),
+    CategoryBreakdown("餐饮", 0xFFFF7043L, 214_800, 187_200, memberCategoryIds = setOf("dining")),
+    CategoryBreakdown("购物", 0xFFF97316L, 162_500, 194_300, memberCategoryIds = setOf("shopping")),
+    CategoryBreakdown("交通", 0xFF42A5F5L, 96_320, 82_600, memberCategoryIds = setOf("transport")),
+    CategoryBreakdown("娱乐休闲", 0xFFAB47BCL, 89_600, 67_400, memberCategoryIds = setOf("entertainment")),
+    CategoryBreakdown("生活服务", 0xFF26A69AL, 75_000, 71_200, memberCategoryIds = setOf("services")),
   ),
+  analysisTransactions = previewTransactions,
   budgets = listOf(
     BudgetProgress("餐饮", 0xFFFF7043L, 300_000, 214_800),
     BudgetProgress("购物", 0xFFF97316L, 200_000, 162_500),

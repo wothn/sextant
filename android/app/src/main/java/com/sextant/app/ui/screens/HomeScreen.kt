@@ -54,6 +54,7 @@ import com.sextant.app.ui.theme.SextantFullShape
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.dayGroupLabel
+import com.sextant.app.ui.util.displayDescription
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
 import com.sextant.app.ui.util.signedAmountPlain
@@ -371,17 +372,11 @@ private fun LedgerTransactionRow(
 }
 
 private fun ledgerMetadata(item: TransactionListItem, parentName: String?): String {
-  val genericParts = setOf("消费", "交易提醒", "微信支付", "支付宝")
-  val description = item.transaction.description
-    .split("·")
-    .map(String::trim)
-    .filter { it.isNotBlank() && it !in genericParts && it != item.paymentMethodName }
-    .joinToString(" · ")
   return buildList {
     if (!parentName.isNullOrBlank()) add(parentName)
     add(SimpleDateFormat("HH:mm", Locale.CHINA).format(item.transaction.transactionDate))
     if (item.paymentMethodName.isNotBlank()) add(item.paymentMethodName)
-    if (description.isNotBlank()) add(description)
+    displayDescription(item).takeIf { it.isNotBlank() }?.let(::add)
   }.joinToString(" · ")
 }
 

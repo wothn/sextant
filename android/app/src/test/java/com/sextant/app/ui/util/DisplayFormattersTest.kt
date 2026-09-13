@@ -1,6 +1,9 @@
 package com.sextant.app.ui.util
 
 import com.sextant.app.data.LedgerFilter
+import com.sextant.app.data.Transaction
+import com.sextant.app.data.TransactionListItem
+import com.sextant.app.data.TransactionType
 import com.sextant.app.data.toStartOfDayMillis
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -87,4 +90,33 @@ class DisplayFormattersTest {
     assertEquals("今天", dayGroupLabel(earlyToday, today))
     assertEquals("昨天", dayGroupLabel(lateYesterday, today))
   }
+
+  @Test
+  fun stampsDetailRowsWithTheirOwnDateAndTime() {
+    val today = LocalDate.of(2026, 2, 14)
+    val morning = LocalDate.of(2026, 2, 13).toStartOfDayMillis() + 8 * 60 * 60 * 1000 + 16 * 60 * 1000
+
+    assertEquals("2月13日 08:16", timestampLabel(morning, today))
+    assertEquals("2025年12月30日 09:05", timestampLabel(
+      LocalDate.of(2025, 12, 30).toStartOfDayMillis() + 9 * 60 * 60 * 1000 + 5 * 60 * 1000,
+      today,
+    ))
+  }
+
+  @Test
+  fun hidesGenericNotificationSummariesInLedgerRows() {
+    val merchant = item(description = "微信支付", paymentMethodName = "微信")
+    assertEquals("", displayDescription(merchant))
+    // 通用摘要（「消费」）被丢掉，商户名留下；真实备注之间的分隔符归一成「 · 」。
+    assertEquals("梧桐小馆", displayDescription(item(description = "梧桐小馆·消费", paymentMethodName = "微信")))
+    assertEquals("午餐 · 咖啡", displayDescription(item(description = " 午餐 · 咖啡 ", paymentMethodName = "微信")))
+  }
+
+  private fun item(description: String, paymentMethodName: String) = TransactionListItem(
+    transaction = Transaction("id", null, null, 100, TransactionType.Expense, description, 0, 0, 0),
+    categoryName = "未分类",
+    categoryColor = 0,
+    paymentMethodName = paymentMethodName,
+    includeInSpending = true,
+  )
 }

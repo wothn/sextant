@@ -60,6 +60,33 @@ class SextantRepositoryTest {
   }
 
   @Test
+  fun mergesSubCategoriesIntoTheirRootCategoryAndKeepsTheMonthRowsForDetail() {
+    val repository = SextantRepository(context)
+    val seeded = repository.loadState(filter())
+    val dining = seeded.categories.single { it.name == "餐饮" && it.parentCategoryId == null }
+    val child = seeded.categories.first { it.parentCategoryId == dining.id }
+    val transport = seeded.categories.single { it.name == "交通" && it.parentCategoryId == null }
+    repository.addTransaction(TransactionType.Expense, 1_000, dining.id, null, "正餐", now())
+    repository.addTransaction(TransactionType.Expense, 2_000, child.id, null, "奶茶", now())
+    repository.addTransaction(TransactionType.Expense, 500, transport.id, null, "地铁", now())
+
+    val state = repository.loadState(filter())
+
+    assertEquals(
+      listOf(
+        CategoryBreakdown("餐饮", dining.color, 3_000, memberCategoryIds = setOf(dining.id, child.id)),
+        CategoryBreakdown("交通", transport.color, 500, memberCategoryIds = setOf(transport.id)),
+      ),
+      state.categoryBreakdown,
+    )
+    // 分类明细要能拿到分析月份的全部流水，不受明细筛选条件影响。
+    assertEquals(
+      setOf("正餐", "奶茶", "地铁"),
+      state.analysisTransactions.map { it.transaction.description }.toSet(),
+    )
+  }
+
+  @Test
   fun addUpdateFilterAndDeleteTransaction() {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())

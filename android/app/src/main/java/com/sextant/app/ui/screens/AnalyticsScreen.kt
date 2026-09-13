@@ -1,5 +1,6 @@
 package com.sextant.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -8,10 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
-import com.sextant.app.ui.components.SextantTextButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,8 +18,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,29 +38,78 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sextant.app.data.AppState
+import com.sextant.app.data.Category
 import com.sextant.app.data.CategoryBreakdown
 import com.sextant.app.data.DailySpending
+import com.sextant.app.data.TransactionListItem
+import com.sextant.app.data.TransactionSortOrder
+import com.sextant.app.data.TransactionType
+import com.sextant.app.data.sortedForDetail
+import com.sextant.app.ui.components.CategoryIcon
 import com.sextant.app.ui.components.EmptyCard
+import com.sextant.app.ui.components.SectionTitle
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantHeading
+import com.sextant.app.ui.components.SextantIconButton
+import com.sextant.app.ui.components.SextantSegmentedButtonGroup
 import com.sextant.app.ui.components.SextantSurface
-import com.sextant.app.ui.components.SextantHeading
+import com.sextant.app.ui.components.SextantTextButton
+import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantBarShape
 import com.sextant.app.ui.theme.argbColor
+import com.sextant.app.ui.util.displayDescription
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
+import com.sextant.app.ui.util.signedAmountPlain
+import com.sextant.app.ui.util.timestampLabel
 import kotlin.math.abs
 
 @Composable
-fun AnalyticsScreen(state: AppState, monthStart: Long) {
+fun AnalyticsScreen(
+  state: AppState,
+  monthStart: Long,
+  onTransactionClick: (TransactionListItem) -> Unit = {},
+) {
   val listState = rememberLazyListState()
+  // 明细页用「计入的分类集合」当身份：流水被编辑后分类结构会重算，行对象换了但集合没变，
+  // 明细页因此能取到新的金额；分类整个消失时这里解析不到，界面自动退回分析页。
+  var detailMembers by remember { mutableStateOf<Set<String>?>(null) }
+  val detail = detailMembers?.let { members ->
+    state.categoryBreakdown.firstOrNull { it.memberCategoryIds == members }
+  }
+
+  if (detail == null) {
+    AnalyticsOverview(state, monthStart, listState) { detailMembers = it.memberCategoryIds }
+  } else {
+    CategoryDetailScreen(
+      category = detail,
+      monthStart = monthStart,
+      transactions = state.analysisTransactions,
+      categories = state.categories,
+      monthTotalCents = state.monthSummary.expenseCents,
+      onBack = { detailMembers = null },
+      onTransactionClick = onTransactionClick,
+    )
+  }
+}
+
+@Composable
+private fun AnalyticsOverview(
+  state: AppState,
+  monthStart: Long,
+  listState: LazyListState,
+  onCategoryClick: (CategoryBreakdown) -> Unit,
+) {
   Column(Modifier.fillMaxSize()) {
     SextantFlexibleHeader(
       title = if (isCurrentMonth(monthStart)) "本月分析" else "${monthLabel(monthStart)}分析",
@@ -82,11 +134,11 @@ fun AnalyticsScreen(state: AppState, monthStart: Long) {
         }
       }
       item {
-        AnalyticsSection("支出结构", "本月金额最高的消费分类") {
+        AnalyticsSection("支出结构", "子分类已并入上级，点开可以看当月明细") {
           if (state.categoryBreakdown.isEmpty()) {
             EmptyCard("暂无分析", "录入支出后会展示分类占比。")
           } else {
-            CategoryStructure(state.categoryBreakdown, state.monthSummary.expenseCents)
+            CategoryStructure(state.categoryBreakdown, state.monthSummary.expenseCents, onCategoryClick)
           }
         }
       }
@@ -94,6 +146,163 @@ fun AnalyticsScreen(state: AppState, monthStart: Long) {
     }
   }
 }
+
+/**
+ * 单个分类的当月明细。
+ *
+ * 金额是这一行在支出结构里的合计，列表按同一口径过滤（支出、计入支出、属于这个顶层分类），
+ * 所以合计与明细永远对得上。默认按金额从大到小，可以切成按时间从新到旧。
+ */
+@Composable
+internal fun CategoryDetailScreen(
+  category: CategoryBreakdown,
+  monthStart: Long,
+  transactions: List<TransactionListItem>,
+  categories: List<Category>,
+  monthTotalCents: Long,
+  onBack: () -> Unit,
+  onTransactionClick: (TransactionListItem) -> Unit,
+) {
+  BackHandler(onBack = onBack)
+  var sort by remember { mutableStateOf(TransactionSortOrder.Amount) }
+  val categoriesById = remember(categories) { categories.associateBy { it.id } }
+  val rows = remember(category.memberCategoryIds, transactions, sort) {
+    transactions
+      .filter {
+        it.transaction.type == TransactionType.Expense &&
+          it.includeInSpending &&
+          category.includes(it.transaction.categoryId)
+      }
+      .sortedForDetail(sort)
+  }
+
+  Column(Modifier.fillMaxSize()) {
+    // 返回入口固定在列表之外：明细可能很长，回到分析页不该依赖滚回顶部。
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .background(SextantColors.SurfaceContainerLowest)
+        .padding(horizontal = 20.dp, vertical = 6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      SextantIconButton(onClick = onBack) {
+        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回分析")
+      }
+      SectionTitle(category.categoryName)
+    }
+    LazyColumn(
+      modifier = Modifier.fillMaxSize(),
+      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+      verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+      item { CategoryDetailSummary(category, monthStart, rows.size, monthTotalCents) }
+      item {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          Text("排序", color = SextantColors.TextMuted, style = MaterialTheme.typography.labelLarge)
+          SextantSegmentedButtonGroup(
+            options = TransactionSortOrder.entries,
+            selected = sort,
+            onSelect = { sort = it },
+            label = { if (it == TransactionSortOrder.Amount) "金额" else "时间" },
+            modifier = Modifier.weight(1f),
+          )
+        }
+      }
+      if (rows.isEmpty()) {
+        item { EmptyCard("没有明细", "这个分类在当前月份没有计入支出的流水。") }
+      } else {
+        items(rows, key = { it.transaction.id }) { item ->
+          CategoryDetailRow(item, categoriesById) { onTransactionClick(it) }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun CategoryDetailSummary(
+  category: CategoryBreakdown,
+  monthStart: Long,
+  count: Int,
+  monthTotalCents: Long,
+) {
+  val scope = if (isCurrentMonth(monthStart)) "本月" else monthLabel(monthStart)
+  val share = if (monthTotalCents <= 0) null else category.amountCents * 100 / monthTotalCents
+  SextantSurface(modifier = Modifier.fillMaxWidth(), color = SextantColors.SurfaceContainer) {
+    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Text("${scope}支出", color = SextantColors.TextMuted, style = MaterialTheme.typography.labelLarge)
+      Text(formatCurrency(category.amountCents), style = MaterialTheme.typography.headlineLarge)
+      Text(
+        buildString {
+          append("共 ").append(count).append(" 笔")
+          share?.let { append("  ·  占").append(scope).append("支出的 ").append(it).append("%") }
+        },
+        color = SextantColors.TextSubtle,
+        style = MaterialTheme.typography.bodySmall,
+      )
+    }
+  }
+}
+
+@Composable
+private fun CategoryDetailRow(
+  item: TransactionListItem,
+  categoriesById: Map<String, Category>,
+  onClick: (TransactionListItem) -> Unit,
+) {
+  // 明细里已经知道顶层分类，所以主标题写具体的那一级分类。
+  val categoryName = categoriesById[item.transaction.categoryId]?.name ?: item.categoryName
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable(onClickLabel = "编辑这笔流水") { onClick(item) }
+      .padding(vertical = 12.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor))
+    Spacer(Modifier.width(14.dp))
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        Text(
+          text = categoryName,
+          modifier = Modifier.weight(1f),
+          color = SextantColors.Text,
+          style = MaterialTheme.typography.bodyLarge,
+          fontWeight = FontWeight.Medium,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+          text = signedAmountPlain(item),
+          color = SextantColors.Text,
+          style = MaterialTheme.typography.titleMedium,
+          softWrap = true,
+        )
+      }
+      Text(
+        text = detailMetadata(item),
+        color = SextantColors.TextSubtle,
+        style = MaterialTheme.typography.bodySmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+}
+
+private fun detailMetadata(item: TransactionListItem): String = listOf(
+  timestampLabel(item.transaction.transactionDate),
+  item.paymentMethodName,
+  displayDescription(item),
+).filter { it.isNotBlank() }.joinToString("  ·  ")
 
 @Composable
 private fun MonthComparison(state: AppState) {
@@ -198,7 +407,11 @@ private fun SpendingChart(points: List<DailySpending>) {
 }
 
 @Composable
-private fun CategoryStructure(items: List<CategoryBreakdown>, total: Long) {
+private fun CategoryStructure(
+  items: List<CategoryBreakdown>,
+  total: Long,
+  onCategoryClick: (CategoryBreakdown) -> Unit,
+) {
   val leading = items.take(4)
   val otherAmount = items.drop(4).sumOf { it.amountCents }
   val slices = buildList {
@@ -211,14 +424,23 @@ private fun CategoryStructure(items: List<CategoryBreakdown>, total: Long) {
       val ratio = if (total <= 0) 0f else item.amountCents.toFloat() / total
       val change = if (item.previousAmountCents <= 0) null else (item.amountCents - item.previousAmountCents).toDouble() / item.previousAmountCents
       val color = argbColor(item.color)
-      Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable(onClickLabel = "查看${item.categoryName}的当月明细") { onCategoryClick(item) }
+          .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+      ) {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(8.dp).height(8.dp).clip(CircleShape).background(color))
             Spacer(Modifier.width(9.dp))
             Text(item.categoryName, fontWeight = FontWeight.SemiBold)
           }
-          Text("${formatCurrency(item.amountCents)}  ·  ${(ratio * 100).toInt()}%", fontWeight = FontWeight.SemiBold)
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("${formatCurrency(item.amountCents)}  ·  ${(ratio * 100).toInt()}%", fontWeight = FontWeight.SemiBold)
+            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = SextantColors.TextMuted, modifier = Modifier.size(18.dp))
+          }
         }
         Box(Modifier.fillMaxWidth().height(7.dp).clip(CircleShape).background(SextantColors.SurfaceContainerHighest)) {
           Box(Modifier.fillMaxWidth(ratio.coerceIn(0f, 1f)).height(7.dp).clip(CircleShape).background(color))

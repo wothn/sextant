@@ -4,6 +4,8 @@ import java.util.Calendar
 import java.util.TimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -34,20 +36,58 @@ class LedgerCalculationsTest {
   }
 
   @Test
-  fun breakdownGroupsAndSortsByAmount() {
+  fun breakdownRollsSubCategoriesIntoTheirRootCategoryAndSortsByAmount() {
+    val categories = listOf(
+      Category("dining", "餐饮", TransactionType.Expense, 1, true, null),
+      Category("meal", "正餐", TransactionType.Expense, 1, true, "dining"),
+      Category("coffee", "奶茶咖啡", TransactionType.Expense, 1, true, "dining"),
+      Category("transport", "交通", TransactionType.Expense, 2, true, null),
+    )
     val items = listOf(
-      item(TransactionType.Expense, 1_200, categoryName = "餐饮", color = 1),
-      item(TransactionType.Expense, 800, categoryName = "餐饮", color = 1),
-      item(TransactionType.Expense, 3_000, categoryName = "交通", color = 2),
+      item(TransactionType.Expense, 1_200, categoryId = "meal"),
+      item(TransactionType.Expense, 800, categoryId = "coffee"),
+      item(TransactionType.Expense, 3_000, categoryId = "transport"),
     )
 
     assertEquals(
       listOf(
-        CategoryBreakdown("交通", 2, 3_000),
-        CategoryBreakdown("餐饮", 1, 2_000),
+        CategoryBreakdown("交通", 2, 3_000, 0, setOf("transport")),
+        CategoryBreakdown("餐饮", 1, 2_000, 0, setOf("meal", "coffee")),
       ),
-      LedgerCalculations.breakdown(items),
+      LedgerCalculations.breakdown(items, categories),
     )
+  }
+
+  @Test
+  fun breakdownKeepsRowsAddressableForTheirOwnDetail() {
+    val categories = listOf(
+      Category("dining", "餐饮", TransactionType.Expense, 1, true, null),
+      Category("meal", "正餐", TransactionType.Expense, 1, true, "dining"),
+    )
+    val items = listOf(
+      item(TransactionType.Expense, 1_200, categoryId = "meal"),
+      item(TransactionType.Expense, 300, categoryName = "未分类"),
+    )
+
+    val rows = LedgerCalculations.breakdown(items, categories)
+
+    val dining = rows.single { it.categoryName == "餐饮" }
+    val uncategorized = rows.single { it.categoryName == "未分类" }
+    assertTrue(dining.includes("meal"))
+    assertFalse(dining.includes(null))
+    assertTrue(uncategorized.includes(null))
+    assertFalse(uncategorized.includes("meal"))
+  }
+
+  @Test
+  fun detailSortingDefaultsToAmountAndBreaksTiesByTime() {
+    val newer = item(TransactionType.Expense, 1_200, date = 2_000)
+    val older = item(TransactionType.Expense, 1_200, date = 1_000)
+    val larger = item(TransactionType.Expense, 5_000, date = 500)
+    val items = listOf(newer, larger, older)
+
+    assertEquals(listOf(larger, newer, older), items.sortedForDetail(TransactionSortOrder.Amount))
+    assertEquals(listOf(newer, older, larger), items.sortedForDetail(TransactionSortOrder.Time))
   }
 
   @Test
@@ -84,8 +124,9 @@ class LedgerCalculationsTest {
     categoryName: String = "分类",
     color: Long = 1,
     date: Long = 0,
+    categoryId: String? = null,
   ) = TransactionListItem(
-    transaction = Transaction("id-$type-$amountCents-$date", null, null, amountCents, type, "", date, 0, 0),
+    transaction = Transaction("id-$type-$amountCents-$date", categoryId, null, amountCents, type, "", date, 0, 0),
     categoryName = categoryName,
     categoryColor = color,
     paymentMethodName = "现金",

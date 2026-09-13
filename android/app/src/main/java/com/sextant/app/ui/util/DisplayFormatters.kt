@@ -10,6 +10,7 @@ import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
+import java.util.Date
 import java.util.Locale
 
 val TransactionType.label: String
@@ -48,6 +49,28 @@ fun transactionSubtitle(item: TransactionListItem): String {
   return listOf(time, item.paymentMethodName)
     .filter { it.isNotBlank() }
     .joinToString("  |  ")
+}
+
+private val genericDescriptions = setOf("消费", "交易提醒", "微信支付", "支付宝")
+
+/**
+ * 明细里的备注。通知解析出来的通用摘要（「消费」「交易提醒」）和与来源重复的平台名
+ * 没有信息量，展示前去掉；首页明细和分类明细共用这一条规则。
+ */
+fun displayDescription(item: TransactionListItem): String = item.transaction.description
+  .split("·")
+  .map(String::trim)
+  .filter { it.isNotBlank() && it !in genericDescriptions && it != item.paymentMethodName }
+  .joinToString(" · ")
+
+/**
+ * 单行明细的时间戳。分类明细按金额或时间排序，没有按天分组，所以每行自带日期；
+ * 只有跨年才补年份，和日期头保持同一套规则。
+ */
+fun timestampLabel(millis: Long, today: LocalDate = LocalDate.now()): String {
+  val date = millis.toLocalDate()
+  val year = if (date.year == today.year) "" else "${date.year}年"
+  return "$year${date.monthValue}月${date.dayOfMonth}日 ${SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(millis))}"
 }
 
 fun formatCurrency(valueCents: Long): String {

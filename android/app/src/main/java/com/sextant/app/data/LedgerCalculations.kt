@@ -13,12 +13,44 @@ internal object LedgerCalculations {
     return Summary(income, expense)
   }
 
-  fun breakdown(items: List<TransactionListItem>): List<CategoryBreakdown> {
-    return items.groupBy { it.categoryName }
-      .map { (categoryName, rows) ->
-        CategoryBreakdown(categoryName, rows.first().categoryColor, rows.sumOf { it.transaction.amountCents })
+  /**
+   * 支出结构：按顶层分类汇总。
+   *
+   * 子分类不再单独成行，而是并进所属的顶层分类；父分类自己的流水也归入同一行。
+   * [categories] 用来解析父级，分类已归档或解析不到时退回展示名分组，不凭空造分类。
+   */
+  fun breakdown(items: List<TransactionListItem>, categories: List<Category>): List<CategoryBreakdown> {
+    val categoryById = categories.associateBy { it.id }
+    return items.groupBy { it.breakdownGroup(categoryById) }
+      .map { (group, rows) ->
+        val root = group.rootId?.let(categoryById::get)
+        CategoryBreakdown(
+          categoryName = root?.name ?: group.displayName,
+          color = root?.color ?: rows.first().categoryColor,
+          amountCents = rows.sumOf { it.transaction.amountCents },
+          memberCategoryIds = rows.mapTo(mutableSetOf()) { it.transaction.categoryId ?: UNCATEGORIZED_CATEGORY_ID },
+        )
       }
       .sortedByDescending { it.amountCents }
+  }
+
+  /** 分组键：能解析出顶层分类时用分类 id，否则退回展示名。 */
+  private data class BreakdownGroup(val rootId: String?, val displayName: String)
+
+  private fun TransactionListItem.breakdownGroup(categoryById: Map<String, Category>): BreakdownGroup {
+    val rootId = rootCategoryId(transaction.categoryId, categoryById)
+    return if (rootId == null) BreakdownGroup(null, categoryName) else BreakdownGroup(rootId, "")
+  }
+
+  /** 顺着 parentCategoryId 走到顶层分类；分类缺失或数据成环时停在上一个能解析到的分类。 */
+  private fun rootCategoryId(categoryId: String?, categoryById: Map<String, Category>): String? {
+    var current = categoryId?.let(categoryById::get) ?: return null
+    val visited = mutableSetOf(current.id)
+    while (true) {
+      val parent = current.parentCategoryId?.let(categoryById::get) ?: return current.id
+      if (!visited.add(parent.id)) return current.id
+      current = parent
+    }
   }
 
   fun dailySpending(items: List<TransactionListItem>, monthStart: Long): List<DailySpending> {

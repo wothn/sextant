@@ -117,7 +117,12 @@ fun SextantApp(
             onFilterChanged = { filter = it },
             onTransactionClick = { editingTransaction = it },
           )
-          Tab.Analytics -> AnalyticsScreen(state = state, monthStart = filter.anchorMonthStart)
+          Tab.Analytics -> AnalyticsScreen(
+            state = state,
+            monthStart = filter.anchorMonthStart,
+            // 分类明细里的流水和首页明细一样可以点开编辑。
+            onTransactionClick = { editingTransaction = it },
+          )
           Tab.Discover -> BudgetScreen(state, repository) { reloadKey++ }
           Tab.Settings -> SettingsScreen(
             state = state,
