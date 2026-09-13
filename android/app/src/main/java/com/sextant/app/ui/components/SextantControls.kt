@@ -763,6 +763,10 @@ fun RowScope.SextantNavigationItem(
  * headlineMedium 加六分仪标记，副标题可见；收起后压成 titleMedium 的单行标题，
  * 标记与副标题淡出。整条头部有背景色，不会透出下面的明细。
  *
+ * 展开高度跟着内容走（见 [expandedHeight] 的默认值）：没有副标题的页面不会为一行不存在的
+ * 文字留出 20dp 空气，而有副标题的页面也不会被压扁。两种情况下标题行都在离头部顶端 18dp 处，
+ * 所以在四个主页面之间切换时标题不会上下跳。
+ *
  * 官方的 `MediumFlexibleTopAppBar` / `LargeFlexibleTopAppBar` 需要 `TopAppBarScrollBehavior`
  * 与 `nestedScroll` 配合，并且会把标题放进 `TopAppBar` 里；Sextant 的头部就是列表外的一个
  * `Column`，用列表的滚动位置直接驱动收起，行为更可控，也少一层嵌套滚动。
@@ -774,7 +778,10 @@ fun SextantFlexibleHeader(
   modifier: Modifier = Modifier,
   subtitle: String? = null,
   collapsedHeight: Dp = 60.dp,
-  expandedHeight: Dp = 104.dp,
+  // 一行标题 48dp（动作按钮撑起来的行高）+ 上下 6dp 内边距 + 每侧 12dp 呼吸 = 84dp；
+  // 有副标题时再加一行 bodyMedium 的 20dp = 104dp。收起高度固定 60dp，正好是
+  // 「48dp 标题行 + 12dp 内边距」，也就是没有空气的一行标题。
+  expandedHeight: Dp = if (subtitle == null) 84.dp else 104.dp,
   actions: @Composable RowScope.() -> Unit = {},
 ) {
   val collapseDistance = with(LocalDensity.current) { (expandedHeight - collapsedHeight).toPx() }
