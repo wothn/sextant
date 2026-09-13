@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -45,6 +46,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.lerp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -453,6 +455,40 @@ fun SextantDivider(modifier: Modifier = Modifier, color: Color = SextantColors.B
   HorizontalDivider(modifier = modifier, thickness = thickness, color = color)
 }
 
+/**
+ * 表单里的「点开一个选择器」磁贴：左上角是字段名，下面是当前值加一个箭头。
+ *
+ * 记账面板的分类与来源用的就是它，周期支出编辑器继续复用——同一个 App 里「点开选一个」
+ * 应该是同一个外观，否则用户要学两遍。原本它私有在 `QuickEntryDialog.kt`，出现第二个
+ * 调用方后按职责提到共享控件。
+ */
+@Composable
+fun SextantDetailTile(
+  label: String,
+  value: String,
+  icon: ImageVector,
+  modifier: Modifier = Modifier,
+  onClick: () -> Unit,
+) {
+  SextantSurface(
+    modifier = modifier.clickable(onClick = onClick),
+    color = SextantColors.SurfaceContainer,
+    shape = MaterialTheme.shapes.medium,
+  ) {
+    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(icon, contentDescription = null, tint = SextantColors.TextSubtle, modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = SextantColors.TextSubtle)
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(value, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+          maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = SextantColors.TextSubtle, modifier = Modifier.size(16.dp))
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 选择控件
 // ---------------------------------------------------------------------------
@@ -854,6 +890,99 @@ fun SextantFlexibleHeader(
         overflow = TextOverflow.Ellipsis,
       )
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 一级切换
+// ---------------------------------------------------------------------------
+
+/**
+ * 页面内的一级视图切换，用在「计划」页的预算 / 周期支出之间。
+ *
+ * 为什么自绘而不是用 material3 的 `PrimaryTabRow`：本项目把 material3 提到了
+ * `1.5.0-alpha18`（见 `android/app/build.gradle.kts`），tab row 在这条 alpha 线上 API 仍在
+ * 变动；底栏的 `ShortNavigationBar` 也已经因为包装后布局失效而改成自绘（见
+ * [SextantNavigationItem]）。这里按 M3 primary tab 的规格自绘：等宽条目、`Role.Tab` 语义、
+ * 选中项下方一条 3dp 圆角指示条。
+ *
+ * 指示条用下划线而不是像底栏那样用铜橙药丸，是刻意的区分——两处都用药丸会让人以为它们是
+ * 同一层导航。按下反馈同样只由选中态的指示条承担，条目关掉 `selectable` 自带的 ripple，
+ * 理由与 [SextantNavigationItem] 相同。
+ */
+@Composable
+fun <T> SextantTabRow(
+  options: List<T>,
+  selected: T,
+  onSelect: (T) -> Unit,
+  label: (T) -> String,
+  modifier: Modifier = Modifier,
+) {
+  Row(
+    modifier = modifier.fillMaxWidth().selectableGroup(),
+    verticalAlignment = Alignment.Bottom,
+  ) {
+    options.forEach { option ->
+      SextantTabItem(
+        selected = option == selected,
+        onClick = { onSelect(option) },
+        label = label(option),
+      )
+    }
+  }
+}
+
+/**
+ * 一级切换条目。
+ *
+ * 指示条宽度从 0 长到 24dp，所以未选中时它完全消失、不留下一条空槽位；条目高度至少 48dp，
+ * 即使指示条淡出，点击区域也不缩水。
+ */
+@Composable
+private fun RowScope.SextantTabItem(
+  selected: Boolean,
+  onClick: () -> Unit,
+  label: String,
+) {
+  val interactionSource = remember { MutableInteractionSource() }
+  val indicatorWidth by animateDpAsState(
+    targetValue = if (selected) 24.dp else 0.dp,
+    animationSpec = SextantMotion.defaultSpatial(),
+    label = "tabIndicatorWidth",
+  )
+  val contentColor by animateColorAsState(
+    targetValue = if (selected) SextantColors.AccentStrong else SextantColors.TextSubtle,
+    animationSpec = SextantMotion.defaultEffects(),
+    label = "tabContentColor",
+  )
+  Column(
+    modifier = Modifier
+      .weight(1f)
+      .heightIn(min = 48.dp)
+      .selectable(
+        selected = selected,
+        interactionSource = interactionSource,
+        indication = null,
+        role = Role.Tab,
+        onClick = onClick,
+      ),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
+  ) {
+    Text(
+      text = label,
+      style = MaterialTheme.typography.titleSmall,
+      color = contentColor,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
+    )
+    Box(
+      modifier = Modifier
+        .width(indicatorWidth)
+        .height(3.dp)
+        .clip(SextantFullShape)
+        .background(SextantColors.Accent),
+    )
   }
 }
 

@@ -2,7 +2,6 @@ package com.sextant.app.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -26,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
@@ -35,7 +33,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sextant.app.data.AppState
@@ -165,12 +162,12 @@ fun QuickEntryDialog(
                   style = MaterialTheme.typography.bodySmall)
               }
               Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                EntryDetailTile("分类", selectedCategory?.displayName(state.categories) ?: "选择分类",
+                SextantDetailTile("分类", selectedCategory?.displayName(state.categories) ?: "选择分类",
                   categoryIcon(selectedCategory?.name.orEmpty()), Modifier.weight(1f)) {
                   focus.clearFocus()
                   panel = EntryPanel.Category
                 }
-                EntryDetailTile("来源", selectedMethod?.name ?: "选择来源", Icons.Outlined.AccountBalanceWallet,
+                SextantDetailTile("来源", selectedMethod?.name ?: "选择来源", Icons.Outlined.AccountBalanceWallet,
                   Modifier.weight(1f)) {
                   focus.clearFocus()
                   panel = EntryPanel.Source
@@ -296,26 +293,6 @@ fun QuickEntryDialog(
       },
       dismissButton = { SextantTextButton(onClick = { showTimePicker = false }) { Text("取消") } },
     ) { SextantTimePicker(state = timeState) }
-  }
-}
-@Composable
-private fun EntryDetailTile(label: String, value: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
-  SextantSurface(
-    modifier = modifier.clickable(onClick = onClick),
-    color = SextantColors.SurfaceContainer,
-    shape = MaterialTheme.shapes.medium,
-  ) {
-    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(icon, contentDescription = null, tint = SextantColors.TextSubtle, modifier = Modifier.size(18.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = SextantColors.TextSubtle)
-      }
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(value, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-          maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = SextantColors.TextSubtle, modifier = Modifier.size(16.dp))
-      }
-    }
   }
 }
 
