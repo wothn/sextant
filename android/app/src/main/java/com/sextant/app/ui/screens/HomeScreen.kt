@@ -327,18 +327,33 @@ private fun LedgerTransactionRow(
       modifier = Modifier.weight(1f),
       verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-      FlowRow(
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+      // 金额固定贴在行右缘：一列数字左端对齐才能逐行扫读。
+      // 分类名让出空间并在过长时省略，避免金额跟着名字长短左右浮动。
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
       ) {
-        Text(
-          text = categoryName,
-          color = SextantColors.Text,
-          style = MaterialTheme.typography.bodyLarge,
-          fontWeight = FontWeight.Medium,
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-        )
+        // 分类名和来源标签是一组：标签紧贴名字右边，剩下的空白留给金额。
+        // 名字过长时先省略名字（fill = false 让它只占实际需要的宽度），标签和金额都保持完整。
+        Row(
+          modifier = Modifier.weight(1f),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          Text(
+            text = categoryName,
+            modifier = Modifier.weight(1f, fill = false),
+            color = SextantColors.Text,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
+          if (item.transaction.entryOrigin == EntryOrigin.Notification) {
+            LedgerOriginTag()
+          }
+        }
         Text(
           text = signedAmountPlain(item),
           color = SextantColors.Text,
@@ -369,8 +384,26 @@ private fun ledgerMetadata(item: TransactionListItem, parentName: String?): Stri
     add(SimpleDateFormat("HH:mm", Locale.CHINA).format(item.transaction.transactionDate))
     if (item.paymentMethodName.isNotBlank()) add(item.paymentMethodName)
     if (description.isNotBlank()) add(description)
-    if (item.transaction.entryOrigin == EntryOrigin.Notification) {
-      add("自动录入")
-    }
   }.joinToString(" · ")
+}
+
+/**
+ * 明细行的自动记账来源标签。
+ *
+ * 它挂在分类名右边，而不是排在说明行末尾：说明行已经有上级分类、时间、来源和备注，
+ * 状态挤在里面要读完一整行才看得到。淡底胶囊紧挨分类名，一眼就能分出「这笔是自动记的」，
+ * 又不会像铜橙强调色那样跟右侧金额抢注意力。
+ */
+@Composable
+private fun LedgerOriginTag() {
+  Text(
+    text = "自动录入",
+    modifier = Modifier
+      .background(SextantColors.SurfaceContainer, SextantFullShape)
+      .padding(horizontal = 6.dp, vertical = 2.dp),
+    color = SextantColors.TextMuted,
+    style = MaterialTheme.typography.labelSmall,
+    maxLines = 1,
+    softWrap = false,
+  )
 }
