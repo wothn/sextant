@@ -71,7 +71,6 @@ jobs:
       - name: Build signed release APK
         env:
           VERSION_NAME: ${{ steps.version.outputs.version }}
-          VERSION_CODE: ${{ github.run_number }}
           ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: ${{ runner.temp }}/sextant-release.jks
           ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -94,6 +93,40 @@ jobs:
           name: sextant-${{ steps.version.outputs.version }}
           path: release/*
           if-no-files-found: error
+
+      # 守住 versionCode 单调递增。Android 只允许 versionCode 不低于已安装版本，更低会被
+      # 安装器拒绝，而用户看到的只有一句「应用未安装」——不查这里根本不知道原因。
+      - name: Assert versionCode does not go backwards
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # 必须和 android/app/build.gradle.kts 的 versionCodeFrom 保持同一套规则。
+          # 两边一旦分叉，这条断言会失败——这正是它存在的意义。
+          code_from() {
+            local major minor patch
+            IFS=. read -r major minor patch <<< "$1"
+            echo $(( major * 10000 + minor * 100 + patch ))
+          }
+
+          new_code=$(code_from "${VERSION}")
+          previous_tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
+
+          if [[ -z "${previous_tag}" ]]; then
+            echo "No previous release; ${new_code} is the first versionCode."
+            exit 0
+          fi
+
+          previous_code=$(code_from "${previous_tag#v}")
+          if (( new_code <= previous_code )); then
+            echo "versionCode would go backwards: ${previous_tag} already published ${previous_code}, this tag derives ${new_code}." >&2
+            echo "Android refuses a lower versionCode; ship a higher version instead." >&2
+            exit 1
+          fi
+          echo "versionCode ${previous_code} (${previous_tag}) -> ${new_code} (v${VERSION})."
 
       - name: Create GitHub Release
         env:

@@ -17,7 +17,7 @@
 | 版本发现渠道 | 首选静态清单 `latest.json`（见 §3.3），回退 GitHub Release 重定向（§3.2） |
 | HTTP 客户端 | `HttpURLConnection`，不新增网络依赖 |
 | 触发策略 | **待定**，推荐「启动静默检查 + 24h 节流 + 设置页手动检查」（§5） |
-| 阻塞项 | **必须先修 `versionCode` 生成方式**，否则自更新可能装不上（§3.5） |
+| 阻塞项 | ~~必须先修 `versionCode` 生成方式~~ **已修复**（§3.5），CI 已加版本倒挂断言 |
 
 ---
 
@@ -124,9 +124,18 @@ HEAD https://github.com/wothn/sextant/releases/latest
 - 好处是能拿到 `body`（release notes）和完整的 assets 列表（含 `browser_download_url`、`size`）。
 - 结论：作为可选回退，不作为默认路径；若使用必须处理 403 并给出「稍后再试/打开网页」的降级路径。
 
-### 3.5 ⚠️ 必须先修的问题：`versionCode` 生成方式
+### 3.5 `versionCode` 生成方式（已修复）
 
-现状是 `versionCode = providers.environmentVariable("VERSION_CODE") ?: 6`（`build.gradle.kts:15`），CI 传 `github.run_number`（`android-release.yml:74`）。
+> 状态：**已按本节方案修复**——`build.gradle.kts` 用 `versionCodeFrom` 从版本号派生，
+> CI 加了 `Assert versionCode does not go backwards` 断言，`github.run_number` 不再参与。
+> 下面保留原始诊断，因为「为什么不能用 `github.run_number`」这个结论对以后想改这个公式的
+> 人仍然成立。
+>
+> 实测确认（`apkanalyzer` 读 APK）：`0.4.0 → 400`、`0.4.1 → 401`、`0.3.10 → 310`、
+> `1.0.0 → 10000`、`0.4.0-rc1 → 400`；`0.4.100` 与 `0.4` 会以可读原因构建失败。
+> 迁移是安全的：400 大于已发布过的最大 `versionCode`（v0.4.0 为 12）。
+
+修复前的现状是 `versionCode = providers.environmentVariable("VERSION_CODE") ?: 6`（`build.gradle.kts:15`），CI 传 `github.run_number`（`android-release.yml:74`）。
 
 关键事实：**`github.run_number` 是「按 workflow 独立计数」的**，不是仓库全局计数。`android-release.yml` 只在打 tag 时触发，所以它的计数约等于「历史发布次数」。这意味着：
 
@@ -560,7 +569,7 @@ if (!context.packageManager.canRequestPackageInstalls()) {           // API 26+
 
 ## 15. 建议的实施顺序（可拆成独立 PR）
 
-1. **PR 1（前置修复）**：修 `versionCode` 生成方式 + CI 版本倒挂断言。**先做这个，否则后面全部白做。** 顺带在设置页显示 versionCode。
+1. ~~**PR 1（前置修复）**：修 `versionCode` 生成方式 + CI 版本倒挂断言。~~ **已完成**（提交 `fix(build): derive versionCode from the version name`）。顺带在设置页显示 versionCode 仍未做。
 2. **PR 2（纯逻辑）**：`UpdateModels` / `VersionComparator` / `UpdateManifestParser` / 资产 URL 推导 + 全部纯函数单测。无网络、无 UI，零风险。
 3. **PR 3（检查）**：`GithubReleaseSource`（渠道 A/B）、`UpdateStore`、24h 节流、设置页「关于」区块 + 「检查更新」入口（此时只检查并展示结果，不下载）。
 4. **PR 4（下载与安装）**：`ApkDownloader` / `ApkVerifier` / `ApkInstaller` / `UpdateInstallReceiver`、Manifest 权限与 receiver、更新对话框与进度 UI。
