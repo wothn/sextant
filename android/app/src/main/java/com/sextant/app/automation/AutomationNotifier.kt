@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import com.sextant.app.MainActivity
+import com.sextant.app.R
 import com.sextant.app.SextantApplication
 import com.sextant.app.data.PostedTransaction
 import com.sextant.app.data.TransactionType
@@ -43,7 +44,11 @@ internal class AutomationNotifier(private val context: Context) {
     )
     val direction = if (transaction.type == TransactionType.Expense) "支出" else "收入"
     val notification = Notification.Builder(context, CHANNEL_ID)
-      .setSmallIcon(android.R.drawable.ic_menu_save)
+      // 必须是应用自己的资源：setSmallIcon(int) 的契约是「本应用包内的 drawable」，
+      // 它会把这个 ID 连同应用包名一起交给系统（Icon.createWithResource），系统再按
+      // 应用包去解析。以前这里借的是 android.R.drawable.ic_menu_save——一个属于 android
+      // 包、且早已废弃的软盘图标，解析失败时系统只记一行日志然后画一个空白图标。
+      .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle("已自动记录$direction ${formatAmount(transaction.amountCents)}")
       .setContentText(listOf(transaction.categoryName, transaction.description).filter(String::isNotBlank).joinToString(" · "))
       .setContentIntent(editPendingIntent)

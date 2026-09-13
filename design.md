@@ -13,7 +13,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 - 铜橙、六分仪几何标记和有数据意义的刻度是品牌识别元素；标记不在每个区块或列表项重复出现。
 - 刻度表达真实比例、时间或数值，避免无含义的坐标、编号和装饰性英文。
 - 使用“明细”“预算”“自动记账”等日常文案；不加入游戏化包装、HUD 或与财务任务无关的装饰。
-- Logo 源文件为 [sextant-logo.svg](assets/branding/sextant-logo.svg)。桌面图标和应用内 `SextantMark` 沿用相同几何；桌面版保留裁切空间，小尺寸保证辨识度。
+- Logo 源文件为 [sextant-logo.svg](assets/branding/sextant-logo.svg)。桌面图标、通知栏小图标和应用内 `SextantMark` 沿用相同几何；桌面版保留裁切空间，小尺寸保证辨识度。通知栏小图标按系统要求使用应用自有的透明单色资源（`drawable-*/ic_notification.png`），由 `scripts/export-logo.ps1` 与桌面图标一起导出，留白比例与桌面图标一致；不要借用 `android.R.drawable` 下的框架图标，那不属于本应用包，解析失败时系统只会画一个空白图标。
 
 ## 2. 颜色与信息层级
 

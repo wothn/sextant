@@ -21,7 +21,10 @@ function Export-Mark([string]$relativePath, [int]$size, [bool]$transparent = $fa
     $resize = [Drawing.Graphics]::FromImage($output)
     $resize.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
     $resize.DrawImage($bitmap, 0, 0, $size, $size)
-    $output.Save((Join-Path $repoRoot $relativePath), [Drawing.Imaging.ImageFormat]::Png)
+    $target = Join-Path $repoRoot $relativePath
+    # 目标目录可能还不存在（例如新加的 drawable-*dpi），先建出来再写。
+    [System.IO.Directory]::CreateDirectory((Split-Path $target -Parent)) | Out-Null
+    $output.Save($target, [Drawing.Imaging.ImageFormat]::Png)
     $resize.Dispose(); $output.Dispose(); $brush.Dispose(); $pen.Dispose(); $graphics.Dispose(); $bitmap.Dispose()
 }
 Export-Mark 'assets/branding/sextant-logo.png' 1024
@@ -31,7 +34,12 @@ Export-Mark 'assets/favicon.png' 48
 Export-Mark 'assets/android-icon-foreground.png' 512 $true
 Export-Mark 'assets/android-icon-monochrome.png' 432 $true $true
 Export-Mark 'assets/android-icon-background.png' 512 $false $false $true
-Export-Mark 'android/app/src/main/res/drawable-nodpi/sextant_logo_source.png' 1024
+# 桌面图标与通知小图标共用同一套坐标，所以两者的留白比例完全一致。
+# 通知栏小图标是 24dp：透明底、单色剪影。Android 只取它的 alpha 通道再自行上色，
+# 所以黑色只是中性选择（与 android-icon-monochrome.png 一致），不是最终显示颜色。
 @{mdpi=48; hdpi=72; xhdpi=96; xxhdpi=144; xxxhdpi=192}.GetEnumerator() | ForEach-Object {
     Export-Mark "android/app/src/main/res/mipmap-$($_.Key)/ic_launcher.png" $_.Value
+}
+@{mdpi=24; hdpi=36; xhdpi=48; xxhdpi=72; xxxhdpi=96}.GetEnumerator() | ForEach-Object {
+    Export-Mark "android/app/src/main/res/drawable-$($_.Key)/ic_notification.png" $_.Value $true $true
 }
