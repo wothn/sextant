@@ -4,11 +4,15 @@ import android.content.res.Configuration
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.BudgetProgress
 import com.sextant.app.data.Category
@@ -23,6 +27,7 @@ import com.sextant.app.data.ThemePreference
 import com.sextant.app.data.Transaction
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
+import com.sextant.app.ui.components.SextantCollapsibleFab
 import com.sextant.app.ui.navigation.LedgerNavigationBar
 import com.sextant.app.ui.navigation.Tab
 import com.sextant.app.ui.screens.AnalyticsScreen
@@ -107,6 +112,16 @@ private fun PreviewAppShell(selectedTab: Tab, content: @Composable () -> Unit) {
   ) { padding ->
     Box(Modifier.padding(padding).fillMaxSize()) {
       content()
+      // 记账入口只出现在概览，浮在内容右下角；收起状态由滚动决定，预览里固定在展开态。
+      if (selectedTab == Tab.Home) {
+        SextantCollapsibleFab(
+          visible = true,
+          onClick = {},
+          icon = Icons.Outlined.Add,
+          contentDescription = "记一笔",
+          modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        )
+      }
     }
   }
 }

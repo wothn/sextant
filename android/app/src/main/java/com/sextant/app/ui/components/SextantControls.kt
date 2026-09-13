@@ -6,8 +6,13 @@
 
 package com.sextant.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -614,6 +619,49 @@ fun SextantFab(
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
       Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(24.dp))
     }
+  }
+}
+
+/**
+ * 铺了记账 FAB 的列表（目前只有概览）底部要预留的空白：56dp 按钮 + 16dp 下边距 + 16dp 呼吸。
+ *
+ * 页面把它交给 `LazyColumn` 的 `contentPadding.bottom`，最后一行就不会停在 FAB 底下——
+ * 明细的金额正在右边，也正是 FAB 待的位置。没有 FAB 的页面不需要预留。
+ */
+val SextantFabClearance: Dp = 88.dp
+
+/**
+ * 会随滚动收起的记账 FAB。
+ *
+ * 记账入口放在右下角就会压住明细最右列——也就是金额。让它跟着滚动方向进出，是「入口常在」
+ * 和「金额不被遮」之间唯一不用二选一的解法：翻看明细时它让开，停下或往回滚时它立刻回来。
+ *
+ * 入口只出现在概览，显隐由调用方从当前目的地和滚动状态一起推导。位移用空间弹簧、透明度用
+ * 效果弹簧，和主题里其它进出场一致；[visible] 为 false 时整块离开组合，不会留下一个看不见
+ * 却还能点的区域。
+ */
+@Composable
+fun SextantCollapsibleFab(
+  visible: Boolean,
+  onClick: () -> Unit,
+  icon: ImageVector,
+  contentDescription: String,
+  modifier: Modifier = Modifier,
+) {
+  AnimatedVisibility(
+    visible = visible,
+    modifier = modifier,
+    enter = slideInVertically(
+      animationSpec = SextantMotion.defaultSpatial(),
+      initialOffsetY = { height -> height },
+    ) + fadeIn(animationSpec = SextantMotion.defaultEffects()),
+    exit = slideOutVertically(
+      animationSpec = SextantMotion.defaultSpatial(),
+      targetOffsetY = { height -> height },
+    ) + fadeOut(animationSpec = SextantMotion.defaultEffects()),
+    label = "quickEntryFab",
+  ) {
+    SextantFab(onClick = onClick, icon = icon, contentDescription = contentDescription)
   }
 }
 

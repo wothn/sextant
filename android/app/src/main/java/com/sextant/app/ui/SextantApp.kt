@@ -3,14 +3,11 @@
 package com.sextant.app.ui
 
 import com.sextant.app.ui.components.SextantAlertDialog
-import com.sextant.app.ui.components.SextantFab
+import com.sextant.app.ui.components.SextantCollapsibleFab
 import com.sextant.app.ui.components.SextantTabContent
 import com.sextant.app.ui.components.SextantTextButton
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -29,8 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
-import com.sextant.app.ui.components.SextantFab
 import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.data.AppState
 import com.sextant.app.data.LedgerFilter
@@ -45,6 +42,7 @@ import com.sextant.app.automation.WECHAT_PACKAGE
 import com.sextant.app.ui.components.QuickEntryDialog
 import com.sextant.app.ui.navigation.LedgerNavigationBar
 import com.sextant.app.ui.navigation.Tab
+import com.sextant.app.ui.navigation.rememberQuickEntryFabState
 import com.sextant.app.ui.screens.AnalyticsScreen
 import com.sextant.app.ui.screens.BudgetScreen
 import com.sextant.app.ui.screens.HomeScreen
@@ -69,10 +67,14 @@ fun SextantApp(
   var filter by remember { mutableStateOf(LedgerFilter.allTime()) }
   var lastPaymentMethodId by remember { mutableStateOf<String?>(null) }
   var reloadKey by remember { mutableIntStateOf(0) }
+  val quickEntryFab = rememberQuickEntryFabState()
 
   LaunchedEffect(reloadKey, filter) {
     state = repository.loadState(filter)
   }
+
+  // 回到概览时复位：否则会继承上次在这个页面上滚出来的收起状态，入口凭空消失。
+  LaunchedEffect(tab) { if (tab == Tab.Home) quickEntryFab.show() }
 
   LaunchedEffect(repository) {
     repository.changes.collect {
@@ -92,15 +94,21 @@ fun SextantApp(
 
   Scaffold(
     bottomBar = {
-      QuickEntryBar(
+      LedgerBottomBar(
         selectedTab = tab,
         onTabSelected = { tab = it },
-        onQuickEntry = { showQuickEntry = true },
       )
     },
     containerColor = SextantColors.Background,
   ) { padding ->
-    Box(Modifier.padding(padding).fillMaxSize()) {
+    Box(
+      Modifier
+        .padding(padding)
+        .fillMaxSize()
+        // FAB 的滚动收起挂在内容区最外层：页面里的任何列表滚动都会经过这里，
+        // 只读方向、不消费位移，所以页面的滚动行为不受影响。
+        .nestedScroll(quickEntryFab.nestedScrollConnection),
+    ) {
       SextantTabContent(selectedIndex = tab.ordinal) { index ->
         when (Tab.entries[index]) {
           Tab.Home -> HomeScreen(
@@ -123,6 +131,15 @@ fun SextantApp(
           )
         }
       }
+      SextantCollapsibleFab(
+        // 记账入口只服务概览：这里才是「翻明细、看到想补记的一笔」的地方。
+        // 分析、预算、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力。
+        visible = tab == Tab.Home && quickEntryFab.visible,
+        onClick = { showQuickEntry = true },
+        icon = Icons.Outlined.Add,
+        contentDescription = "记一笔",
+        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+      )
     }
   }
 
@@ -215,37 +232,27 @@ fun SextantApp(
 }
 
 /**
- * 底栏：导航栏 + 记账 FAB，同一行。
+ * 底栏：只有四个目的地，占满整行。
  *
- * FAB 曾经浮在内容之上，正好压住明细最右列——也就是金额，而金额是财务界面最不该被遮住的
- * 东西。现在它和导航栏并排待在底栏里，永远不覆盖任何一行数据，也不用担心展开态把底栏顶高。
+ * 记账 FAB 曾经内嵌在这一行里：导航栏为了给它让位缩进 72dp，四个标签被挤到左边，而 FAB
+ * 仍然会压住明细最右列——也就是金额。现在两者分开：导航栏独占底栏，记账入口只出现在概览，
+ * 浮在内容区右下角并随滚动方向收起（见 [SextantCollapsibleFab]）。
  *
- * 它也曾经展开一个「记支出 / 记收入」菜单，后来去掉了：支出和收入不是两个动作，是同一个
+ * FAB 也曾经展开一个「记支出 / 记收入」菜单，后来去掉了：支出和收入不是两个动作，是同一个
  * 动作的一个参数，而记账面板顶部本来就有收支方向的三段选择（还多一个转账）。把参数提到
  * 菜单层，只会让高频的记支出每次多一次点击。现在单击直接进表单，方向在表单里选。
  */
 @Composable
-private fun QuickEntryBar(
+private fun LedgerBottomBar(
   selectedTab: Tab,
   onTabSelected: (Tab) -> Unit,
-  onQuickEntry: () -> Unit,
 ) {
   SextantSurface(color = SextantColors.SurfaceContainerLow, shape = RectangleShape) {
-    Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-      Box(Modifier.fillMaxWidth()) {
-        LedgerNavigationBar(
-          selectedTab = selectedTab,
-          onTabSelected = onTabSelected,
-          modifier = Modifier.fillMaxWidth().padding(end = 72.dp),
-        )
-        SextantFab(
-          onClick = onQuickEntry,
-          icon = Icons.Outlined.Add,
-          contentDescription = "记一笔",
-          modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp).size(56.dp),
-        )
-      }
-    }
+    LedgerNavigationBar(
+      selectedTab = selectedTab,
+      onTabSelected = onTabSelected,
+      modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+    )
   }
 }
 

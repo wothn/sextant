@@ -68,8 +68,10 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 
 ### 导航与表单
 
-- 底栏保留四个目的地和记账入口，复用 `SextantNavigationBar`、`SextantNavigationItem` 和 `SextantFab`；视觉修改不擅自改变导航层级。
-- 记账入口单击直接打开记账面板，不增加中间菜单；入口与底栏一起布局，不遮挡明细金额。
+- 底栏只保留四个目的地，复用 `SextantNavigationBar` 和 `SextantNavigationItem`；导航层级不随视觉修改改变。
+- 记账入口用 `SextantCollapsibleFab`，只出现在概览，浮在内容区右下角、底栏之上，既不与底栏条目争夺同一行宽度，也不在分析、预算、设置页抢注意力；单击直接打开记账面板，不增加中间菜单。
+- FAB 随滚动方向进出：内容向前滚动时滑出并淡出，往回滚动时立即回到原位，回到概览时复位为可见。收起后离场且不可点，滚动阈值保证按下时的抖动不会让它闪烁；页面不改动自身滚动行为。
+- 概览的明细列表底部预留 `SextantFabClearance`，最后一笔的金额不会停在 FAB 底下；没有 FAB 的页面不预留。
 - 替换导航实现前，在实际底栏组合中验证所有目的地、标签和记账入口的布局与点击范围。
 - 设置按功能分组；记账、筛选和预算编辑继承共享外观，保留输入、选中、取消、保存、禁用和错误反馈，长表单可滚动。
 
@@ -93,7 +95,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 | `ui/components/LedgerIdentity.kt` | 品牌标记与预算刻度 |
 | `ui/components/SextantTransitions.kt` | 列表入场与页面切换 |
 | `ui/components/QuickEntryDialog.kt`、`LedgerFilterSheet.kt` | 记账与筛选面板 |
-| `ui/navigation/LedgerNavigationBar.kt`、`ui/screens/` | 导航接线与页面布局 |
+| `ui/navigation/LedgerNavigationBar.kt`、`QuickEntryFabState.kt`、`ui/screens/` | 导航接线、记账入口的滚动收起状态与页面布局 |
 | `ui/util/DisplayFormatters.kt` | 金额与日期展示 |
 
 ## 6. 验证与维护

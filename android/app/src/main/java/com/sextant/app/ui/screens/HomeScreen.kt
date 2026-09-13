@@ -26,6 +26,7 @@ import com.sextant.app.ui.components.EmptyCard
 import com.sextant.app.ui.components.LedgerFilterSheet
 import com.sextant.app.ui.components.SextantBadge
 import com.sextant.app.ui.components.SextantFlexibleHeader
+import com.sextant.app.ui.components.SextantFabClearance
 import com.sextant.app.ui.components.SextantHeading
 import com.sextant.app.ui.components.SextantSurface
 import androidx.compose.material.icons.outlined.Tune
@@ -85,7 +86,8 @@ fun HomeScreen(
     LazyColumn(
       state = listState,
       modifier = Modifier.fillMaxSize(),
-      contentPadding = PaddingValues(bottom = 28.dp),
+      // 底部留出记账 FAB 的位置，最后一笔明细的金额不会停在它底下。
+      contentPadding = PaddingValues(bottom = SextantFabClearance),
     ) {
       item {
         Box {
