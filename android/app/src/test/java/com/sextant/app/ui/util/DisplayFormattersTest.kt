@@ -57,4 +57,34 @@ class DisplayFormattersTest {
     assertFalse(isCurrentMonth(date.toStartOfDayMillis()))
     assertTrue(isCurrentMonth(System.currentTimeMillis()))
   }
+
+  @Test
+  fun namesTheLastThreeDaysRelativelyAndKeepsTheWeekdayForOlderOnes() {
+    val today = LocalDate.of(2026, 2, 14) // 周六
+
+    assertEquals("今天", dayGroupLabel(LocalDate.of(2026, 2, 14).toStartOfDayMillis(), today))
+    assertEquals("昨天", dayGroupLabel(LocalDate.of(2026, 2, 13).toStartOfDayMillis(), today))
+    assertEquals("前天", dayGroupLabel(LocalDate.of(2026, 2, 12).toStartOfDayMillis(), today))
+    assertEquals("2月11日 周三", dayGroupLabel(LocalDate.of(2026, 2, 11).toStartOfDayMillis(), today))
+    assertEquals("1月4日 周日", dayGroupLabel(LocalDate.of(2026, 1, 4).toStartOfDayMillis(), today))
+    // 未来日期不编造「明天」，仍然按日期展示。
+    assertEquals("2月20日 周五", dayGroupLabel(LocalDate.of(2026, 2, 20).toStartOfDayMillis(), today))
+  }
+
+  @Test
+  fun addsTheYearOnlyWhenTheDayIsOutsideTheCurrentYear() {
+    val today = LocalDate.of(2026, 2, 14)
+    assertEquals("2025年12月30日 周二", dayGroupLabel(LocalDate.of(2025, 12, 30).toStartOfDayMillis(), today))
+    assertEquals("2027年1月2日 周六", dayGroupLabel(LocalDate.of(2027, 1, 2).toStartOfDayMillis(), today))
+  }
+
+  @Test
+  fun treatsAnyMomentWithinADayAsThatSameDay() {
+    val today = LocalDate.of(2026, 2, 14)
+    val earlyToday = LocalDate.of(2026, 2, 14).toStartOfDayMillis()
+    val lateYesterday = LocalDate.of(2026, 2, 13).toStartOfDayMillis() + 23 * 60 * 60 * 1000 + 59 * 60 * 1000
+
+    assertEquals("今天", dayGroupLabel(earlyToday, today))
+    assertEquals("昨天", dayGroupLabel(lateYesterday, today))
+  }
 }

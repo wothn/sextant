@@ -7,7 +7,9 @@ import com.sextant.app.data.TransactionType
 import com.sextant.app.data.toLocalDate
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 val TransactionType.label: String
@@ -64,6 +66,29 @@ fun parseAmountCents(value: String): Long? = value.trim().toBigDecimalOrNull()
 fun monthLabel(millis: Long): String {
   val date = millis.toLocalDate()
   return "${date.year}年${date.monthValue}月"
+}
+
+private val weekdayLabels = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+/**
+ * 明细日期头。最近三天说「今天 / 昨天 / 前天」，其余用「2月14日 周六」；
+ * 只有跨年时才补年份——每个月视图里把「2026年」重复三十遍没有信息量，
+ * 而月份和星期仍然保留，方便回想「那天是周末吗」。
+ *
+ * [today] 显式传入是为了可测；默认取当前日期。
+ */
+fun dayGroupLabel(dayStartMillis: Long, today: LocalDate = LocalDate.now()): String {
+  val date = dayStartMillis.toLocalDate()
+  return when (ChronoUnit.DAYS.between(date, today)) {
+    0L -> "今天"
+    1L -> "昨天"
+    2L -> "前天"
+    else -> buildString {
+      if (date.year != today.year) append(date.year).append('年')
+      append(date.monthValue).append('月').append(date.dayOfMonth).append('日')
+      append(' ').append(weekdayLabels[date.dayOfWeek.value - 1])
+    }
+  }
 }
 
 fun isCurrentMonth(millis: Long): Boolean = YearMonth.from(millis.toLocalDate()) == YearMonth.now()
