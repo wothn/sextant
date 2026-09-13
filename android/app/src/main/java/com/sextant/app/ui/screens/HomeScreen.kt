@@ -52,7 +52,7 @@ import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantFullShape
 import com.sextant.app.ui.theme.argbColor
-import com.sextant.app.ui.util.formatAmountPlain
+import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.dayGroupLabel
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
@@ -195,8 +195,10 @@ private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
   ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text("今日支出", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelLarge)
+      // 金额一律走 formatCurrency：以前这里是手写的 "¥" 前缀，而同一屏的月汇总和预算
+      // 又不带符号，同一个预算数字在预算页是「¥196.80 / ¥300.00」、首页却一个 ¥ 都没有。
       Text(
-        "¥${formatAmountPlain(state.todaySummary.expenseCents)}",
+        formatCurrency(state.todaySummary.expenseCents),
         color = SextantColors.Text,
         style = MaterialTheme.typography.headlineLarge,
       )
@@ -230,7 +232,7 @@ private fun OverviewMetric(label: String, value: Long, modifier: Modifier = Modi
   Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
     Text(label, color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
     Text(
-      formatAmountPlain(value),
+      formatCurrency(value),
       style = MaterialTheme.typography.titleLarge,
       color = SextantColors.Text,
     )
@@ -250,7 +252,7 @@ private fun MonthlyBudgetProgress(label: String, spent: Long, total: Long) {
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
       Text(label, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
       Text(
-        "${(ratio * 100).toInt()}%  ·  ${formatAmountPlain(spent)} / ${formatAmountPlain(total)}",
+        "${(ratio * 100).toInt()}%  ·  ${formatCurrency(spent)} / ${formatCurrency(total)}",
         color = color,
         style = MaterialTheme.typography.labelLarge,
       )
@@ -300,8 +302,8 @@ private fun DailyLedgerHeader(group: DailyTransactionGroup) {
 }
 
 private fun dailySummary(expense: Long, income: Long): String = buildList {
-  if (expense > 0) add("支 ${formatAmountPlain(expense)}")
-  if (income > 0) add("收 ${formatAmountPlain(income)}")
+  if (expense > 0) add("支 ${formatCurrency(expense)}")
+  if (income > 0) add("收 ${formatCurrency(income)}")
 }.joinToString("  ")
 
 /**
@@ -355,6 +357,8 @@ private fun LedgerTransactionRow(
           }
         }
         Text(
+          // 明细行只留正负号：汇总和日小计已经承担了货币符号，每一行再重复一个 ¥ 只会把
+          // 数字往左推、离右缘更远。方向仍由符号表达，格式仍走共享函数。
           text = signedAmountPlain(item),
           color = SextantColors.Text,
           style = MaterialTheme.typography.titleMedium,
