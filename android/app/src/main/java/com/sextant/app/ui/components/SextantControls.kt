@@ -626,7 +626,10 @@ fun SextantLoadingIndicator(
 // ---------------------------------------------------------------------------
 
 /**
- * 浮动操作按钮：56dp、medium(16dp) 圆角、铜橙填充。
+ * 浮动操作按钮：56dp 正圆、铜橙填充。
+ *
+ * 用 [SextantFullShape] 而不是 [MaterialTheme.shapes] 的一档：正方形的 FAB 取胶囊圆角就是
+ * 正圆，形状本身说明「这是主操作」，与同样全圆角的按钮、chip 一致。
  *
  * Expressive 里主操作从导航栏里搬出来变成 FAB，所以它比过去的居中图标按钮更大、更靠手。
  *
@@ -646,7 +649,7 @@ fun SextantFab(
   Surface(
     onClick = onClick,
     modifier = modifier.size(56.dp),
-    shape = MaterialTheme.shapes.medium,
+    shape = SextantFullShape,
     color = containerColor,
     contentColor = contentColor,
     tonalElevation = 0.dp,
