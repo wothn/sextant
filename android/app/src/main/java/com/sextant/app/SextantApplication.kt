@@ -30,7 +30,7 @@ class SextantApplication : Application() {
   override fun onCreate() {
     super.onCreate()
     repository = SextantRepository(this)
-    automationCoordinator = AutomationCoordinator(this, repository)
+    automationCoordinator = AutomationCoordinator(this, repository, appScope)
     notificationListenerConnection = repository.notificationListenerConnection
     // 进程每次重建都主动要求系统重新绑定监听服务。
     // 厂商清理后台会杀掉监听进程，但系统设置里的授权开关还留着，

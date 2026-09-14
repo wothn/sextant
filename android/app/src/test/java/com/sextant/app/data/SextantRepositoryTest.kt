@@ -1,7 +1,9 @@
 package com.sextant.app.data
 
 import android.content.Context
+import androidx.sqlite.db.SimpleSQLiteQuery
 import java.util.Calendar
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,6 +17,16 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
+/**
+ * 仓储层的行为。
+ *
+ * 仓储的读写都是挂起的（Room 不允许在主线程上访问数据库），所以每个用例体都包在
+ * [runBlocking] 里。刻意不把 `runBlocking` 下沉到「每个调用一次」：那样每个用例里都会
+ * 散落七八个桥接点，读起来全是噪音，而 `assertThrows` 又要跨着桥接边界工作。
+ *
+ * 测试用的库由 [SextantDatabase.createForTests] 建，允许主线程查询——被阻塞的正是
+ * Robolectric 的主线程，而 Room 的线程检查是为真机的多线程场景准备的护栏。
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class SextantRepositoryTest {
@@ -23,16 +35,18 @@ class SextantRepositoryTest {
   @Before
   fun setUp() {
     context = RuntimeEnvironment.getApplication()
+    SextantDatabase.closeForTests()
     context.deleteDatabase(DATABASE_NAME)
   }
 
   @After
   fun tearDown() {
+    SextantDatabase.closeForTests()
     context.deleteDatabase(DATABASE_NAME)
   }
 
   @Test
-  fun defaultLedgerIncludesPastYearsWithoutMergingDaysAndKeepsMonthlySummary() {
+  fun defaultLedgerIncludesPastYearsWithoutMergingDaysAndKeepsMonthlySummary() = runBlocking {
     val repository = SextantRepository(context)
     val originalZone = java.util.TimeZone.getDefault()
     try {
@@ -61,7 +75,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun mergesSubCategoriesIntoTheirRootCategoryAndKeepsTheMonthRowsForDetail() {
+  fun mergesSubCategoriesIntoTheirRootCategoryAndKeepsTheMonthRowsForDetail() = runBlocking {
     val repository = SextantRepository(context)
     val seeded = repository.loadState(filter())
     val dining = seeded.categories.single { it.name == "餐饮" && it.parentCategoryId == null }
@@ -88,7 +102,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun addUpdateFilterAndDeleteTransaction() {
+  fun addUpdateFilterAndDeleteTransaction() = runBlocking {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())
     val category = initial.categories.first { it.type == TransactionType.Expense }
@@ -111,22 +125,22 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun rejectsNonPositiveAmountsAtRepositoryBoundary() {
+  fun rejectsNonPositiveAmountsAtRepositoryBoundary() = runBlocking {
     val repository = SextantRepository(context)
 
     assertEquals("流水金额必须大于 0", assertThrows(IllegalArgumentException::class.java) {
-      repository.addTransaction(TransactionType.Expense, 0, null, null, "", now())
+      runBlocking { repository.addTransaction(TransactionType.Expense, 0, null, null, "", now()) }
     }.message)
     assertEquals("月预算金额必须大于 0", assertThrows(IllegalArgumentException::class.java) {
-      repository.setMonthlyBudget(-1)
+      runBlocking { repository.setMonthlyBudget(-1) }
     }.message)
     assertEquals("预算金额必须大于 0", assertThrows(IllegalArgumentException::class.java) {
-      repository.upsertBudget("category", 0)
+      runBlocking { repository.upsertBudget("category", 0) }
     }.message)
   }
 
   @Test
-  fun addEditDeactivateReactivateAndDeleteUnusedSource() {
+  fun addEditDeactivateReactivateAndDeleteUnusedSource() = runBlocking {
     val repository = SextantRepository(context)
 
     repository.addPaymentMethod("  信用卡  ", 10)
@@ -152,14 +166,14 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun protectsBuiltInAndReferencedSourcesWhileKeepingHistoricalNames() {
+  fun protectsBuiltInAndReferencedSourcesWhileKeepingHistoricalNames() = runBlocking {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())
     val builtIn = initial.paymentMethods.first()
     val category = initial.categories.first { it.type == TransactionType.Expense }
 
     assertEquals("内置来源不能删除", assertThrows(IllegalArgumentException::class.java) {
-      repository.deletePaymentMethod(builtIn.id)
+      runBlocking { repository.deletePaymentMethod(builtIn.id) }
     }.message)
 
     repository.addPaymentMethod("公司卡", 30)
@@ -167,7 +181,7 @@ class SextantRepositoryTest {
     repository.addTransaction(TransactionType.Expense, 500, category.id, custom.id, "工作餐", now())
 
     assertEquals("已被流水使用的来源不能删除", assertThrows(IllegalArgumentException::class.java) {
-      repository.deletePaymentMethod(custom.id)
+      runBlocking { repository.deletePaymentMethod(custom.id) }
     }.message)
 
     repository.setPaymentMethodActive(custom.id, false)
@@ -178,17 +192,17 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun rejectsDuplicateSourceNames() {
+  fun rejectsDuplicateSourceNames() = runBlocking {
     val repository = SextantRepository(context)
     repository.addPaymentMethod("信用卡", 10)
 
     assertEquals("来源名称已存在", assertThrows(IllegalArgumentException::class.java) {
-      repository.addPaymentMethod(" 信用卡 ", 20)
+      runBlocking { repository.addPaymentMethod(" 信用卡 ", 20) }
     }.message)
   }
 
   @Test
-  fun completeBackupRestoreRemovesLaterChanges() {
+  fun completeBackupRestoreRemovesLaterChanges() = runBlocking {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())
     val category = initial.categories.first { it.type == TransactionType.Expense }
@@ -204,7 +218,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun completeBackupRestoreCarriesRecurringExpensesAndDropsLaterOnes() {
+  fun completeBackupRestoreCarriesRecurringExpensesAndDropsLaterOnes() = runBlocking {
     val repository = SextantRepository(context)
     val anchor = monthStart()
     repository.saveRecurringExpense(null, recurringDraft(name = "房租", amountCents = 280_000, anchorDate = anchor))
@@ -224,9 +238,9 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun failedRestoreRollsBackEveryDeletion() {
-    val database = SextantDatabase(context)
-    val db = database.writableDatabase
+  fun failedRestoreRollsBackEveryDeletion() = runBlocking {
+    val database = SextantDatabase.createForTests(context)
+    val db = database.openHelper.writableDatabase
     db.execSQL("DELETE FROM budgets")
     db.execSQL("DELETE FROM transactions")
     db.execSQL("DELETE FROM payment_methods")
@@ -237,14 +251,15 @@ class SextantRepositoryTest {
     val store = BackupStore(database)
     val backup = store.export()
     db.execSQL("UPDATE transactions SET description = '恢复前原值'")
+    // 恢复的第一批插入就是分类，让它在触发器上失败，就能验证「整批回滚」而不是「部分成功」。
     db.execSQL(
       "CREATE TRIGGER reject_restore BEFORE INSERT ON categories BEGIN SELECT RAISE(ABORT, 'blocked'); END",
     )
 
-    val error = assertThrows(BackupException::class.java) { store.restore(backup) }
+    val error = assertThrows(BackupException::class.java) { runBlocking { store.restore(backup) } }
 
     assertEquals("恢复失败，原有数据未被修改", error.message)
-    assertEquals("恢复前原值", db.rawQuery("SELECT description FROM transactions", emptyArray()).use { cursor ->
+    assertEquals("恢复前原值", db.query(SimpleSQLiteQuery("SELECT description FROM transactions")).use { cursor ->
       check(cursor.moveToFirst())
       cursor.getString(0)
     })
@@ -252,7 +267,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun filtersByDateRangeWhileTodaySummaryStaysCurrent() {
+  fun filtersByDateRangeWhileTodaySummaryStaysCurrent() = runBlocking {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())
     val category = initial.categories.first { it.type == TransactionType.Expense }
@@ -285,7 +300,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun filtersByAmountRange() {
+  fun filtersByAmountRange() = runBlocking {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())
     val category = initial.categories.first { it.type == TransactionType.Expense }
@@ -342,7 +357,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun recurringExpensesNeverChangeLedgerTotalsBecauseTheyAreAPlanNotATransaction() {
+  fun recurringExpensesNeverChangeLedgerTotalsBecauseTheyAreAPlanNotATransaction() = runBlocking {
     val repository = SextantRepository(context)
     val housing = repository.loadState(filter()).categories.single { it.name == "住房" && it.parentCategoryId == null }
     repository.addTransaction(TransactionType.Expense, 1_500, housing.id, null, "物业维修", now())
@@ -364,7 +379,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun severalRecurringExpensesShareOneCategoryBecauseIdentityIsTheNamedEntry() {
+  fun severalRecurringExpensesShareOneCategoryBecauseIdentityIsTheNamedEntry() = runBlocking {
     val repository = SextantRepository(context)
     val housing = repository.loadState(filter()).categories.single { it.name == "住房" && it.parentCategoryId == null }
     val anchor = monthStart()
@@ -380,38 +395,42 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun recurringExpenseRejectsInvalidInputAndStaleIds() {
+  fun recurringExpenseRejectsInvalidInputAndStaleIds() = runBlocking {
     val repository = SextantRepository(context)
     val anchor = monthStart()
 
     assertThrows(IllegalArgumentException::class.java) {
-      repository.saveRecurringExpense(null, recurringDraft(name = "   ", amountCents = 1_000, anchorDate = anchor))
+      runBlocking { repository.saveRecurringExpense(null, recurringDraft(name = "   ", amountCents = 1_000, anchorDate = anchor)) }
     }
     assertThrows(IllegalArgumentException::class.java) {
-      repository.saveRecurringExpense(null, recurringDraft(amountCents = 0, anchorDate = anchor))
+      runBlocking { repository.saveRecurringExpense(null, recurringDraft(amountCents = 0, anchorDate = anchor)) }
     }
     assertThrows(IllegalArgumentException::class.java) {
-      repository.saveRecurringExpense(
-        null,
-        recurringDraft(amountCents = 1_000, cycle = RecurringCycle.CustomDays, customDays = null, anchorDate = anchor),
-      )
+      runBlocking {
+        repository.saveRecurringExpense(
+          null,
+          recurringDraft(amountCents = 1_000, cycle = RecurringCycle.CustomDays, customDays = null, anchorDate = anchor),
+        )
+      }
     }
     assertThrows(IllegalArgumentException::class.java) {
-      repository.saveRecurringExpense(
-        null,
-        recurringDraft(amountCents = 1_000, cycle = RecurringCycle.CustomDays, customDays = 0, anchorDate = anchor),
-      )
+      runBlocking {
+        repository.saveRecurringExpense(
+          null,
+          recurringDraft(amountCents = 1_000, cycle = RecurringCycle.CustomDays, customDays = 0, anchorDate = anchor),
+        )
+      }
     }
     // 过期的 id 不能悄悄降级成插入。
     assertThrows(IllegalArgumentException::class.java) {
-      repository.saveRecurringExpense("missing", recurringDraft(amountCents = 1_000, anchorDate = anchor))
+      runBlocking { repository.saveRecurringExpense("missing", recurringDraft(amountCents = 1_000, anchorDate = anchor)) }
     }
 
     assertEquals(0, repository.loadState(filter()).recurringExpenses.size)
   }
 
   @Test
-  fun customDaysIsDroppedForFixedCyclesAndUpdateReplacesInPlace() {
+  fun customDaysIsDroppedForFixedCyclesAndUpdateReplacesInPlace() = runBlocking {
     val repository = SextantRepository(context)
     val anchor = monthStart()
     val id = repository.saveRecurringExpense(
@@ -444,7 +463,7 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun endedAtRoundTripsAndClearsSoACanceledPlanCanStillBeKept() {
+  fun endedAtRoundTripsAndClearsSoACanceledPlanCanStillBeKept() = runBlocking {
     val repository = SextantRepository(context)
     val anchor = monthStart()
     val stop = anchor + 90L * 86_400_000L

@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,7 @@ import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.parseAmountCents
 import java.util.Calendar
 import kotlin.math.max
+import kotlinx.coroutines.launch
 
 /**
  * 「计划」页的预算视图。
@@ -77,6 +79,8 @@ fun BudgetPane(
   var totalText by remember(state.monthlyBudgetCents) { mutableStateOf(state.monthlyBudgetCents?.let { "%.2f".format(it / 100.0) }.orEmpty()) }
   var selectedCategoryId by remember { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }?.id) }
   var categoryAmountText by remember { mutableStateOf("") }
+  // 写预算是挂起调用（Room 不允许主线程访问数据库），而底部面板的保存回调不是协程。
+  val scope = rememberCoroutineScope()
   val expenseCategories = state.categories.filter { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }
 
   LazyColumn(
@@ -116,7 +120,7 @@ fun BudgetPane(
         onAmountChanged = { totalText = it },
         onSave = {
           parseAmountCents(totalText)?.let {
-            repository.setMonthlyBudget(it)
+            scope.launch { repository.setMonthlyBudget(it) }
             editingTotal = false
             onSaved()
           }
@@ -159,7 +163,7 @@ fun BudgetPane(
             val categoryId = selectedCategoryId
             val amount = parseAmountCents(categoryAmountText)
             if (categoryId != null && amount != null) {
-              repository.upsertBudget(categoryId, amount)
+              scope.launch { repository.upsertBudget(categoryId, amount) }
               categoryAmountText = ""
               editingCategory = false
               onSaved()

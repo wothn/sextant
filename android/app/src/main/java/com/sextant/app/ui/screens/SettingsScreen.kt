@@ -84,12 +84,15 @@ fun SettingsScreen(
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
 
-  fun runExport(uri: Uri, content: () -> String, successMessage: String, addBom: Boolean = false) {
+  // 备份内容本身是挂起调用：导出要读全库，恢复还要在一个事务里整体替换。Room 的挂起
+  // 查询自己会切到数据库线程，所以这里不需要再包一层 IO——只有读写文件那一小段要显式切。
+  fun runExport(uri: Uri, content: suspend () -> String, successMessage: String, addBom: Boolean = false) {
     isBusy = true
     scope.launch {
       val result = runCatching {
+        val text = content()
         withContext(Dispatchers.IO) {
-          context.writeText(uri, content(), addBom)
+          context.writeText(uri, text, addBom)
         }
       }
       operationMessage = result.fold(
@@ -103,7 +106,7 @@ fun SettingsScreen(
   val backupExportLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.CreateDocument("application/json"),
   ) { uri ->
-    if (uri != null) runExport(uri, repository::exportBackup, "完整账本备份已保存。")
+    if (uri != null) runExport(uri, { repository.exportBackup() }, "完整账本备份已保存。")
   }
   val backupImportLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.OpenDocument(),
@@ -156,9 +159,9 @@ fun SettingsScreen(
           isBusy = true
           scope.launch {
             val result = runCatching {
-              withContext(Dispatchers.IO) {
-                repository.restoreBackup(context.readBackupText(uri))
-              }
+              // 读文件在 IO 线程上，替换账本由 restoreBackup 自己在事务里完成。
+              val backup = withContext(Dispatchers.IO) { context.readBackupText(uri) }
+              repository.restoreBackup(backup)
             }
             operationMessage = result.fold(
               onSuccess = { summary -> DataOperationMessage("恢复完成", summary.restoreMessage()) },

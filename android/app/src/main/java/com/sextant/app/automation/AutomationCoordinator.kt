@@ -8,17 +8,36 @@ import androidx.work.WorkManager
 import com.sextant.app.data.AutomationEventStatus
 import com.sextant.app.data.PostedTransaction
 import com.sextant.app.data.SextantRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+/**
+ * 自动记账的协调者：把「收到通知」翻译成「库里多一条事件」，再把「事件」翻译成「一笔流水」。
+ *
+ * 所有入口都是 `suspend` 或「发射到 [scope] 再返回」：这一层现在做的是数据库工作，
+ * 而通知回调本身跑在主线程上——在回调里直接落库会在 Room 的线程检查上直接崩，
+ * 所以 [capture] 之类的入口只负责把工作交给协程，立刻返回。
+ */
 class AutomationCoordinator(
   private val context: Context,
   private val repository: SextantRepository,
+  private val scope: CoroutineScope,
 ) {
   private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private val notifier = AutomationNotifier(context)
 
+  /**
+   * 收到一条候选通知时调用，来自 [SextantNotificationListenerService.onNotificationPosted]，
+   * 也就是主线程。
+   */
   fun capture(notification: CapturedNotification) {
+    scope.launch { receive(notification) }
+  }
+
+  /** 真正处理一条通知：[capture] 的挂起版本，测试可以等它结束。 */
+  suspend fun receive(notification: CapturedNotification) {
     val settings = repository.loadAutomationSettings()
     if (!settings.enabled || !settings.sourceEnabled(notification.sourcePackage)) return
     if (!NotificationParserRegistry.isPlausibleFinancial(notification)) return
@@ -31,7 +50,7 @@ class AutomationCoordinator(
     repository.notifyChanged()
   }
 
-  internal fun processLocal(eventId: String): ProcessingResult {
+  internal suspend fun processLocal(eventId: String): ProcessingResult {
     val stored = repository.automationStore.getEvent(eventId) ?: return ProcessingResult.Failure
     if (stored.status != AutomationEventStatus.Captured) return ProcessingResult.Success
     val notification = decryptNotification(stored.encrypted) ?: run {
@@ -58,13 +77,13 @@ class AutomationCoordinator(
     }
   }
 
-  fun undo(transactionId: String, expectedUpdatedAt: Long?): Boolean {
+  suspend fun undo(transactionId: String, expectedUpdatedAt: Long?): Boolean {
     val undone = repository.automationStore.undoAutomatedTransaction(transactionId, expectedUpdatedAt)
     if (undone) repository.notifyChanged()
     return undone
   }
 
-  fun retry(eventId: String): Boolean {
+  suspend fun retry(eventId: String): Boolean {
     val queued = repository.automationStore.markCapturedForRetry(eventId)
     if (queued) {
       enqueueLocal(eventId)
@@ -73,9 +92,9 @@ class AutomationCoordinator(
     return queued
   }
 
-  fun cleanup() = repository.automationStore.cleanup()
+  suspend fun cleanup() = repository.automationStore.cleanup()
 
-  private fun onPosted(posted: PostedTransaction?) {
+  private suspend fun onPosted(posted: PostedTransaction?) {
     repository.notifyChanged()
     if (posted != null && repository.loadAutomationSettings().resultNotificationsEnabled) {
       notifier.showPosted(posted)

@@ -1,7 +1,6 @@
 package com.sextant.app.data
 
-import android.database.Cursor
-import android.database.sqlite.SQLiteDatabase
+import androidx.room.withTransaction
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -20,113 +19,256 @@ data class BackupSummary(
 class BackupException(message: String, cause: Throwable? = null) : IllegalArgumentException(message, cause)
 
 internal class BackupStore(private val database: SextantDatabase) {
-  fun export(): String {
-    val db = database.readableDatabase
+  suspend fun export(): String {
     val document = BackupDocument(
       exportedAt = System.currentTimeMillis(),
       databaseVersion = SextantDatabase.DATABASE_VERSION,
-      categories = db.readCategories(),
-      paymentMethods = db.readPaymentMethods(),
-      transactions = db.readTransactions(),
-      budgets = db.readBudgets(),
-      recurringExpenses = db.readRecurringExpenses(),
-      settings = db.readSettings(),
-      classificationRules = db.readClassificationRules(),
+      categories = database.categoryDao().listAllForBackup().map { it.toBackup() },
+      paymentMethods = database.paymentMethodDao().listAllForBackup().map { it.toBackup() },
+      transactions = database.transactionDao().listAllForBackup().map { it.toBackup() },
+      budgets = database.budgetDao().listAll().map { it.toBackup() },
+      recurringExpenses = database.recurringExpenseDao().listAll().map { it.toBackup() },
+      // 自动记账的设置项带着本机的解析偏好，属于敏感配置，不进备份；
+      // 校验那一侧同样会拒绝导入带 automation_ 前缀的设置项。
+      settings = database.appSettingDao().listBackupSettings().map { BackupSetting(it.key, it.value) },
+      classificationRules = database.classificationRuleDao().listAll().map { it.toBackup() },
     )
     return BackupCodec.encode(document)
   }
 
-  fun restore(content: String): BackupSummary {
+  /**
+   * 用备份覆盖当前账本。
+   *
+   * 整个「清空 + 写回」是一个事务：中途任何一条数据触发约束冲突都会整体回滚，用户看到
+   * 「恢复失败，原有数据未被修改」，而不是一个半新半旧的账本。
+   */
+  suspend fun restore(content: String): BackupSummary {
     val document = BackupCodec.decodeAndValidate(content)
-    val db = database.writableDatabase
-    db.beginTransaction()
     try {
-      db.delete("budgets", null, null)
-      db.delete("recurring_expenses", null, null)
-      db.delete("classification_rules", null, null)
-      db.delete("automation_events", null, null)
-      db.delete("transactions", null, null)
-      db.delete("app_settings", null, null)
-      db.delete("payment_methods", null, null)
-      db.delete("categories", null, null)
+      database.withTransaction {
+        val categories = database.categoryDao()
+        val paymentMethods = database.paymentMethodDao()
+        val transactions = database.transactionDao()
+        val budgets = database.budgetDao()
+        val recurringExpenses = database.recurringExpenseDao()
+        val settings = database.appSettingDao()
+        val rules = database.classificationRuleDao()
 
-      document.categories.forEach { item ->
-        db.execSQL(
-          """
-          INSERT INTO categories
-            (id, name, type, color, includeInSpending, parentCategoryId, isBuiltIn, isActive, createdAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """.trimIndent(),
-          arrayOf<Any?>(item.id, item.name, item.type, item.color, item.includeInSpending.asInt(), item.parentCategoryId, item.isBuiltIn.asInt(), item.isActive.asInt(), item.createdAt),
-        )
+        budgets.deleteAll()
+        recurringExpenses.deleteAll()
+        rules.deleteAll()
+        database.automationEventDao().deleteAll()
+        transactions.deleteAll()
+        settings.deleteAll()
+        paymentMethods.deleteAll()
+        categories.deleteAll()
+
+        document.categories.forEach { categories.insert(it.toEntity()) }
+        document.paymentMethods.forEach { paymentMethods.insert(it.toEntity()) }
+        document.transactions.forEach { transactions.insert(it.toEntity()) }
+        document.budgets.forEach { budgets.insert(it.toEntity()) }
+        document.recurringExpenses.forEach { recurringExpenses.insert(it.toEntity()) }
+        document.settings.forEach { settings.upsert(AppSettingEntity(it.key, it.value)) }
+        document.classificationRules.forEach { rules.insert(it.toEntity()) }
       }
-      document.paymentMethods.forEach { item ->
-        db.execSQL(
-          "INSERT INTO payment_methods (id, name, color, isBuiltIn, isActive, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
-          arrayOf<Any>(item.id, item.name, item.color, item.isBuiltIn.asInt(), item.isActive.asInt(), item.createdAt),
-        )
-      }
-      document.transactions.forEach { item ->
-        db.execSQL(
-          """
-          INSERT INTO transactions
-            (id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt,
-             entryOrigin, automationKind, sourceEventId, isUserEdited)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
-          """.trimIndent(),
-          arrayOf<Any?>(item.id, item.categoryId, item.paymentMethodId, item.amountCents, item.type, item.description, item.transactionDate, item.createdAt, item.updatedAt, item.entryOrigin, item.automationKind, item.isUserEdited.asInt()),
-        )
-      }
-      document.budgets.forEach { item ->
-        db.execSQL(
-          """
-          INSERT INTO budgets
-            (id, categoryId, amountCents, period, startDate, alertThreshold, isActive)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          """.trimIndent(),
-          arrayOf<Any>(item.id, item.categoryId, item.amountCents, item.period, item.startDate, item.alertThreshold, item.isActive.asInt()),
-        )
-      }
-      document.recurringExpenses.forEach { item ->
-        db.execSQL(
-          """
-          INSERT INTO recurring_expenses
-            (id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
-             endedAt, isActive, note, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """.trimIndent(),
-          arrayOf<Any?>(
-            item.id, item.name, item.amountCents, item.cycle, item.customDays, item.anchorDate,
-            item.categoryId, item.paymentMethodId, item.endedAt, item.isActive.asInt(), item.note,
-            item.createdAt, item.updatedAt,
-          ),
-        )
-      }
-      document.settings.forEach { item ->
-        db.execSQL(
-          "INSERT INTO app_settings (key, value) VALUES (?, ?)",
-          arrayOf<Any>(item.key, item.value),
-        )
-      }
-      document.classificationRules.forEach { item ->
-        db.execSQL(
-          """
-          INSERT INTO classification_rules
-            (id, sourcePackage, direction, automationKind, matchMode, pattern, categoryId, priority, createdAt, updatedAt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """.trimIndent(),
-          arrayOf<Any>(item.id, item.sourcePackage, item.direction, item.automationKind, item.matchMode, item.pattern, item.categoryId, item.priority, item.createdAt, item.updatedAt),
-        )
-      }
-      db.setTransactionSuccessful()
     } catch (error: Exception) {
       throw BackupException("恢复失败，原有数据未被修改", error)
-    } finally {
-      db.endTransaction()
     }
 
     return document.summary()
   }
+}
+
+/**
+ * 备份与实体之间的映射。
+ *
+ * 备份格式刻意独立于实体：实体跟着表结构走，备份跟着「用户导出的那份文件」走。
+ * 两者绑死的话，任何一次加列都会变成「老备份读不进来」的格式变更。
+ */
+private fun CategoryEntity.toBackup() = BackupCategory(
+  id = id,
+  name = name,
+  type = type.storageValue(),
+  color = color,
+  includeInSpending = includeInSpending,
+  parentCategoryId = parentCategoryId,
+  isBuiltIn = isBuiltIn,
+  isActive = isActive,
+  createdAt = createdAt,
+)
+
+private fun BackupCategory.toEntity() = CategoryEntity(
+  id = id,
+  name = name,
+  type = type.toTransactionType(),
+  color = color,
+  includeInSpending = includeInSpending,
+  parentCategoryId = parentCategoryId,
+  isBuiltIn = isBuiltIn,
+  isActive = isActive,
+  createdAt = createdAt,
+)
+
+private fun PaymentMethodEntity.toBackup() = BackupPaymentMethod(
+  id = id,
+  name = name,
+  color = color,
+  isBuiltIn = isBuiltIn,
+  isActive = isActive,
+  createdAt = createdAt,
+)
+
+private fun BackupPaymentMethod.toEntity() = PaymentMethodEntity(
+  id = id,
+  name = name,
+  color = color,
+  isBuiltIn = isBuiltIn,
+  isActive = isActive,
+  createdAt = createdAt,
+)
+
+private fun TransactionEntity.toBackup() = BackupTransaction(
+  id = id,
+  categoryId = categoryId,
+  paymentMethodId = paymentMethodId,
+  amountCents = amountCents,
+  type = type.storageValue(),
+  description = description,
+  transactionDate = transactionDate,
+  createdAt = createdAt,
+  updatedAt = updatedAt,
+  entryOrigin = entryOrigin.storageValue(),
+  automationKind = automationKind?.storageValue(),
+  isUserEdited = isUserEdited,
+)
+
+/**
+ * 备份里的流水不带 `sourceEventId`。
+ *
+ * 它是「这条流水由哪次通知生成」的内部关联，而事件本身不进备份；原样写回一个悬空的事件
+ * id 只会让恢复后的流水看起来像自动记账生成的，却再也撤不掉。所以恢复时一律置空，
+ * 来源信息保留在 `entryOrigin` / `automationKind` 上。
+ */
+private fun BackupTransaction.toEntity() = TransactionEntity(
+  id = id,
+  categoryId = categoryId,
+  paymentMethodId = paymentMethodId,
+  amountCents = amountCents,
+  type = type.toTransactionType(),
+  description = description,
+  transactionDate = transactionDate,
+  createdAt = createdAt,
+  updatedAt = updatedAt,
+  entryOrigin = entryOrigin.toEntryOrigin(),
+  automationKind = automationKind?.toAutomationKind(),
+  sourceEventId = null,
+  isUserEdited = isUserEdited,
+)
+
+private fun BudgetEntity.toBackup() = BackupBudget(
+  id = id,
+  categoryId = categoryId,
+  amountCents = amountCents,
+  period = period,
+  startDate = startDate,
+  alertThreshold = alertThreshold,
+  isActive = isActive,
+)
+
+private fun BackupBudget.toEntity() = BudgetEntity(
+  id = id,
+  categoryId = categoryId,
+  amountCents = amountCents,
+  period = period,
+  startDate = startDate,
+  alertThreshold = alertThreshold,
+  isActive = isActive,
+)
+
+private fun RecurringExpenseEntity.toBackup() = BackupRecurringExpense(
+  id = id,
+  name = name,
+  amountCents = amountCents,
+  cycle = cycle.storageValue,
+  customDays = customDays,
+  anchorDate = anchorDate,
+  categoryId = categoryId,
+  paymentMethodId = paymentMethodId,
+  endedAt = endedAt,
+  isActive = isActive,
+  note = note,
+  createdAt = createdAt,
+  updatedAt = updatedAt,
+)
+
+/**
+ * 备份里的周期支出。
+ *
+ * 时间戳与 `customDays` 原样搬运，由 [BackupCodec.validate] 检查「自定义周期必须有天数、
+ * 其它周期必须没有」这条不变式；这里不做归一化，否则一个有问题的备份会被悄悄修好，
+ * 而用户以为恢复的就是导出的那份。
+ */
+private fun BackupRecurringExpense.toEntity() = RecurringExpenseEntity(
+  id = id,
+  name = name,
+  amountCents = amountCents,
+  cycle = RecurringCycle.fromStorage(cycle) ?: RecurringCycle.Monthly,
+  customDays = customDays,
+  anchorDate = anchorDate,
+  categoryId = categoryId,
+  paymentMethodId = paymentMethodId,
+  endedAt = endedAt,
+  isActive = isActive,
+  note = note,
+  createdAt = createdAt,
+  updatedAt = updatedAt,
+)
+
+private fun ClassificationRuleEntity.toBackup() = BackupClassificationRule(
+  id = id,
+  sourcePackage = sourcePackage,
+  direction = direction.storageValue(),
+  automationKind = automationKind.storageValue(),
+  matchMode = matchMode,
+  pattern = pattern,
+  categoryId = categoryId,
+  priority = priority,
+  createdAt = createdAt,
+  updatedAt = updatedAt,
+)
+
+private fun BackupClassificationRule.toEntity() = ClassificationRuleEntity(
+  id = id,
+  sourcePackage = sourcePackage,
+  direction = direction.toTransactionType(),
+  // 校验已经挡掉了未知事件类型，这里再兜一次只是为了拿到非空类型。
+  automationKind = automationKind.toAutomationKind() ?: throw BackupException("自动交易类型无效"),
+  matchMode = matchMode,
+  pattern = pattern,
+  categoryId = categoryId,
+  priority = priority,
+  createdAt = createdAt,
+  updatedAt = updatedAt,
+)
+
+/** 库里存的是 `expense` / `income` / `transfer` 这样的字面量，备份格式沿用同一套。 */
+private fun TransactionType.storageValue(): String = when (this) {
+  TransactionType.Expense -> "expense"
+  TransactionType.Income -> "income"
+  TransactionType.Transfer -> "transfer"
+}
+
+private fun String.toTransactionType(): TransactionType = when (this) {
+  "income" -> TransactionType.Income
+  "transfer" -> TransactionType.Transfer
+  else -> TransactionType.Expense
+}
+
+private fun EntryOrigin.storageValue(): String = if (this == EntryOrigin.Notification) "notification" else "manual"
+private fun String.toEntryOrigin(): EntryOrigin = if (this == "notification") EntryOrigin.Notification else EntryOrigin.Manual
+private fun AutomationKind.storageValue(): String = name.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
+private fun String.toAutomationKind(): AutomationKind? = AutomationKind.entries.firstOrNull {
+  it.name.equals(this, ignoreCase = true)
 }
 
 internal object BackupCodec {
@@ -325,72 +467,6 @@ internal data class BackupRecurringExpense(
   val updatedAt: Long,
 )
 
-private fun SQLiteDatabase.readCategories(): List<BackupCategory> = readRows(
-  "SELECT id, name, type, color, includeInSpending, parentCategoryId, isBuiltIn, isActive, createdAt FROM categories ORDER BY createdAt ASC",
-) { cursor ->
-  BackupCategory(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getLong(3), cursor.getInt(4) == 1, cursor.stringOrNull(5), cursor.getInt(6) == 1, cursor.getInt(7) == 1, cursor.getLong(8))
-}
-
-private fun SQLiteDatabase.readPaymentMethods(): List<BackupPaymentMethod> = readRows(
-  "SELECT id, name, color, isBuiltIn, isActive, createdAt FROM payment_methods ORDER BY createdAt ASC",
-) { cursor ->
-  BackupPaymentMethod(cursor.getString(0), cursor.getString(1), cursor.getLong(2), cursor.getInt(3) == 1, cursor.getInt(4) == 1, cursor.getLong(5))
-}
-
-private fun SQLiteDatabase.readTransactions(): List<BackupTransaction> = readRows(
-  "SELECT id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt, entryOrigin, automationKind, isUserEdited FROM transactions ORDER BY transactionDate ASC, createdAt ASC",
-) { cursor ->
-  BackupTransaction(cursor.getString(0), cursor.stringOrNull(1), cursor.stringOrNull(2), cursor.getLong(3), cursor.getString(4), cursor.getString(5), cursor.getLong(6), cursor.getLong(7), cursor.getLong(8), cursor.getString(9), cursor.stringOrNull(10), cursor.getInt(11) == 1)
-}
-
-private fun SQLiteDatabase.readBudgets(): List<BackupBudget> = readRows(
-  "SELECT id, categoryId, amountCents, period, startDate, alertThreshold, isActive FROM budgets ORDER BY startDate ASC",
-) { cursor ->
-  BackupBudget(cursor.getString(0), cursor.getString(1), cursor.getLong(2), cursor.getString(3), cursor.getLong(4), cursor.getDouble(5), cursor.getInt(6) == 1)
-}
-
-private fun SQLiteDatabase.readRecurringExpenses(): List<BackupRecurringExpense> = readRows(
-  """
-  SELECT id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
-    endedAt, isActive, note, createdAt, updatedAt
-  FROM recurring_expenses ORDER BY createdAt ASC
-  """.trimIndent(),
-) { cursor ->
-  BackupRecurringExpense(
-    cursor.getString(0),
-    cursor.getString(1),
-    cursor.getLong(2),
-    cursor.getString(3),
-    if (cursor.isNull(4)) null else cursor.getInt(4),
-    cursor.getLong(5),
-    cursor.stringOrNull(6),
-    cursor.stringOrNull(7),
-    if (cursor.isNull(8)) null else cursor.getLong(8),
-    cursor.getInt(9) == 1,
-    cursor.getString(10),
-    cursor.getLong(11),
-    cursor.getLong(12),
-  )
-}
-
-private fun SQLiteDatabase.readSettings(): List<BackupSetting> = readRows(
-  "SELECT key, value FROM app_settings WHERE key NOT LIKE 'automation_%' ORDER BY key ASC",
-) { cursor -> BackupSetting(cursor.getString(0), cursor.getString(1)) }
-
-private fun SQLiteDatabase.readClassificationRules(): List<BackupClassificationRule> = readRows(
-  "SELECT id, sourcePackage, direction, automationKind, matchMode, pattern, categoryId, priority, createdAt, updatedAt FROM classification_rules ORDER BY priority DESC, createdAt ASC",
-) { cursor ->
-  BackupClassificationRule(cursor.getString(0), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4), cursor.getString(5), cursor.getString(6), cursor.getInt(7), cursor.getLong(8), cursor.getLong(9))
-}
-
-private inline fun <T> SQLiteDatabase.readRows(sql: String, transform: (Cursor) -> T): List<T> {
-  val rows = mutableListOf<T>()
-  rawQuery(sql, emptyArray()).use { cursor ->
-    while (cursor.moveToNext()) rows += transform(cursor)
-  }
-  return rows
-}
-
 private fun List<BackupCategory>.hasParentCycle(): Boolean {
   val parents = associate { it.id to it.parentCategoryId }
   return any { category ->
@@ -408,9 +484,6 @@ private fun requireUnique(values: List<String>, label: String) {
 private inline fun requireBackup(condition: Boolean, message: () -> String) {
   if (!condition) throw BackupException(message())
 }
-
-private fun Cursor.stringOrNull(index: Int): String? = if (isNull(index)) null else getString(index)
-private fun Boolean.asInt(): Int = if (this) 1 else 0
 
 private const val BACKUP_FORMAT = "sextant-backup"
 private const val BACKUP_VERSION = 3

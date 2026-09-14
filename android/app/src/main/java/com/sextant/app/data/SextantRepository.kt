@@ -1,19 +1,30 @@
 package com.sextant.app.data
 
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
-import com.sextant.app.automation.AutomationSecretStore
-import com.sextant.app.automation.AUTOMATION_WORK_TAG
-import com.sextant.app.automation.NotificationListenerConnection
+import androidx.room.withTransaction
 import androidx.work.WorkManager
+import com.sextant.app.automation.AUTOMATION_WORK_TAG
+import com.sextant.app.automation.AutomationSecretStore
+import com.sextant.app.automation.NotificationListenerConnection
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
+/**
+ * 账本的读写入口。
+ *
+ * 所有方法都是 `suspend`：Room 不允许在主线程上碰数据库，而账本查询本身是重活
+ * （一次 [loadState] 要跑四五条聚合）。这里因此不存在「同步版本」——调用方要么在协程里
+ * 调用，要么自己说明为什么必须阻塞。
+ *
+ * 写入成功后通过 [changes] 通知界面重载。发一条信号而不是把 [AppState] 做成 `Flow`，
+ * 是因为这份状态是「筛选条件 + 当日 + 本月 + 上月」的联合投影：做成 Flow 就要在每条
+ * DAO 查询上重复一遍同样的拼装逻辑，收益却只是省掉一次显式重载。
+ */
 class SextantRepository(context: Context) {
   private val appContext = context.applicationContext
-  internal val database = SextantDatabase(context)
+  internal val database = SextantDatabase.get(context)
   private val backupStore = BackupStore(database)
   internal val automationStore = AutomationStore(database)
   internal val automationSecretStore = AutomationSecretStore(context.applicationContext)
@@ -21,15 +32,13 @@ class SextantRepository(context: Context) {
   private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
   val changes: SharedFlow<Unit> = _changes.asSharedFlow()
 
-  fun loadState(filter: LedgerFilter = LedgerFilter.allTime()): AppState {
-    val db = database.readableDatabase
-    val categories = listCategories(db)
-    val allPaymentMethods = listPaymentMethods(db)
+  suspend fun loadState(filter: LedgerFilter = LedgerFilter.allTime()): AppState {
+    val categories = listCategories()
+    val allPaymentMethods = listPaymentMethods()
     val paymentMethods = allPaymentMethods.filter { it.isActive }
-    val transactions = listTransactions(db, categories, allPaymentMethods, filter)
+    val transactions = listTransactions(categories, allPaymentMethods, filter)
     val (todayStart, todayEnd) = todayRange()
     val todayTransactions = listTransactions(
-      db,
       categories,
       allPaymentMethods,
       LedgerFilter(rangeStart = todayStart, rangeEnd = todayEnd),
@@ -38,14 +47,12 @@ class SextantRepository(context: Context) {
     val monthEnd = monthRangeOf(monthStart).second
     val groups = transactions.groupByDay()
     val analysisTransactions = listTransactions(
-      db,
       categories,
       allPaymentMethods,
       LedgerFilter(rangeStart = monthStart, rangeEnd = monthEnd),
     )
     val previousMonthStart = monthRangeOf(monthStart - 1).first
     val previousTransactions = listTransactions(
-      db,
       categories,
       allPaymentMethods,
       LedgerFilter(rangeStart = previousMonthStart, rangeEnd = monthStart),
@@ -66,9 +73,9 @@ class SextantRepository(context: Context) {
       monthSummary = analysisSummary,
       categoryBreakdown = currentBreakdown.map { it.copy(previousAmountCents = previousBreakdown[it.categoryName]?.amountCents ?: 0) },
       analysisTransactions = analysisTransactions,
-      budgets = budgetProgress(db, categories, analysisTransactions, monthStart),
-      monthlyBudgetCents = monthlyBudget(db),
-      recurringExpenses = listRecurringExpenses(db),
+      budgets = budgetProgress(categories, analysisTransactions, monthStart),
+      monthlyBudgetCents = monthlyBudget(),
+      recurringExpenses = listRecurringExpenses(),
       previousMonthSummary = LedgerCalculations.summarize(previousTransactions),
       dailySpending = LedgerCalculations.dailySpending(analysisTransactions, monthStart),
       projectedExpenseCents = LedgerCalculations.projectedExpense(analysisSummary.expenseCents, monthStart),
@@ -77,33 +84,21 @@ class SextantRepository(context: Context) {
     )
   }
 
-  fun setMonthlyBudget(amountCents: Long) {
+  suspend fun setMonthlyBudget(amountCents: Long) {
     require(amountCents > 0) { "月预算金额必须大于 0" }
-    database.writableDatabase.execSQL(
-      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('monthly_budget_cents', ?)",
-      arrayOf(amountCents.toString()),
-    )
+    database.appSettingDao().upsert(AppSettingEntity(SextantDatabase.MONTHLY_BUDGET_KEY, amountCents.toString()))
   }
 
-  fun loadThemePreference(): ThemePreference {
-    database.readableDatabase.rawQuery(
-      "SELECT value FROM app_settings WHERE key = 'theme_preference'",
-      emptyArray(),
-    ).use { cursor ->
-      return ThemePreference.fromStorage(if (cursor.moveToFirst()) cursor.getString(0) else null)
-    }
-  }
+  suspend fun loadThemePreference(): ThemePreference =
+    ThemePreference.fromStorage(database.appSettingDao().findValue(SextantDatabase.THEME_PREFERENCE_KEY))
 
-  fun setThemePreference(preference: ThemePreference) {
+  suspend fun setThemePreference(preference: ThemePreference) {
     if (loadThemePreference() == preference) return
-    database.writableDatabase.execSQL(
-      "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('theme_preference', ?)",
-      arrayOf(preference.storageValue),
-    )
+    database.appSettingDao().upsert(AppSettingEntity(SextantDatabase.THEME_PREFERENCE_KEY, preference.storageValue))
     notifyChanged()
   }
 
-  fun addTransaction(
+  suspend fun addTransaction(
     type: TransactionType,
     amountCents: Long,
     categoryId: String?,
@@ -113,35 +108,27 @@ class SextantRepository(context: Context) {
   ) {
     require(amountCents > 0) { "流水金额必须大于 0" }
     val now = System.currentTimeMillis()
-    val db = database.writableDatabase
-    db.beginTransaction()
-    try {
-      db.execSQL(
-        """
-        INSERT INTO transactions
-          (id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """.trimIndent(),
-        arrayOf<Any?>(
-          UUID.randomUUID().toString(),
-          categoryId,
-          paymentMethodId,
-          amountCents,
-          type.dbValue,
-          description.trim(),
-          transactionDate,
-          now,
-          now,
-        ),
-      )
-      db.setTransactionSuccessful()
-    } finally {
-      db.endTransaction()
-    }
+    database.transactionDao().insert(
+      TransactionEntity(
+        id = UUID.randomUUID().toString(),
+        categoryId = categoryId,
+        paymentMethodId = paymentMethodId,
+        amountCents = amountCents,
+        type = type,
+        description = description.trim(),
+        transactionDate = transactionDate,
+        createdAt = now,
+        updatedAt = now,
+        entryOrigin = EntryOrigin.Manual,
+        automationKind = null,
+        sourceEventId = null,
+        isUserEdited = false,
+      ),
+    )
     notifyChanged()
   }
 
-  fun updateTransaction(
+  suspend fun updateTransaction(
     id: String,
     type: TransactionType,
     amountCents: Long,
@@ -151,48 +138,50 @@ class SextantRepository(context: Context) {
     transactionDate: Long,
   ) {
     require(amountCents > 0) { "流水金额必须大于 0" }
-    database.writableDatabase.execSQL(
-      """
-      UPDATE transactions SET type = ?, amountCents = ?, categoryId = ?, paymentMethodId = ?,
-        description = ?, transactionDate = ?, updatedAt = ?,
-        isUserEdited = CASE WHEN entryOrigin = 'notification' THEN 1 ELSE isUserEdited END
-      WHERE id = ?
-      """.trimIndent(),
-      arrayOf<Any?>(type.dbValue, amountCents, categoryId, paymentMethodId, description.trim(), transactionDate, System.currentTimeMillis(), id),
+    // 改过的自动入账流水会被打上 isUserEdited 标记，之后通知里的「撤销」就不能再删掉它——
+    // 用户的修改优先于通知的过期意图。
+    database.transactionDao().update(
+      id = id,
+      type = type,
+      amountCents = amountCents,
+      categoryId = categoryId,
+      paymentMethodId = paymentMethodId,
+      description = description.trim(),
+      transactionDate = transactionDate,
+      updatedAt = System.currentTimeMillis(),
     )
     notifyChanged()
   }
 
-  fun deleteTransaction(id: String) {
-    database.writableDatabase.delete("transactions", "id = ?", arrayOf(id))
+  suspend fun deleteTransaction(id: String) {
+    database.transactionDao().deleteById(id)
     notifyChanged()
   }
 
-  fun loadAutomationSettings(): AutomationSettings = automationStore.loadSettings()
+  suspend fun loadAutomationSettings(): AutomationSettings = automationStore.loadSettings()
 
-  fun updateAutomationSettings(settings: AutomationSettings) {
+  suspend fun updateAutomationSettings(settings: AutomationSettings) {
     automationStore.updateSettings(settings)
     notifyChanged()
   }
 
-  fun listAutomationEvents(): List<AutomationEventSummary> = automationStore.listRecentEvents()
+  suspend fun listAutomationEvents(): List<AutomationEventSummary> = automationStore.listRecentEvents()
 
-  fun findTransaction(id: String): TransactionListItem? {
-    val transactionDate = database.readableDatabase.rawQuery(
-      "SELECT transactionDate FROM transactions WHERE id = ?",
-      arrayOf(id),
-    ).use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null } ?: return null
-    val categories = listCategories(database.readableDatabase)
-    val paymentMethods = listPaymentMethods(database.readableDatabase)
-    return listTransactions(
-      database.readableDatabase,
-      categories,
-      paymentMethods,
-      LedgerFilter.forMonth(transactionDate),
-    ).firstOrNull { it.transaction.id == id }
+  /**
+   * 按 id 找一笔流水，连它的分类与来源展示信息一起返回。
+   *
+   * 先查这笔流水落在哪个月，再按那个月取一次明细，是为了复用手写的筛选投影：调用方要的是
+   * 和列表里一模一样的一行（分类显示名、来源名、计入支出与否），而不是一条裸记录。
+   */
+  suspend fun findTransaction(id: String): TransactionListItem? {
+    val transactionDate = database.transactionDao().findById(id)?.transactionDate ?: return null
+    val categories = listCategories()
+    val paymentMethods = listPaymentMethods()
+    return listTransactions(categories, paymentMethods, LedgerFilter.forMonth(transactionDate))
+      .firstOrNull { it.transaction.id == id }
   }
 
-  fun saveClassificationRule(
+  suspend fun saveClassificationRule(
     sourcePackage: String,
     direction: TransactionType,
     kind: AutomationKind,
@@ -207,27 +196,26 @@ class SextantRepository(context: Context) {
     _changes.tryEmit(Unit)
   }
 
-  fun upsertBudget(categoryId: String, amountCents: Long) {
+  suspend fun upsertBudget(categoryId: String, amountCents: Long) {
     require(categoryId.isNotBlank()) { "预算分类不能为空" }
     require(amountCents > 0) { "预算金额必须大于 0" }
-    val db = database.writableDatabase
+    val budgets = database.budgetDao()
     val startDate = LedgerFilter.currentMonth().rangeStart
-    val existing = db.rawQuery(
-      "SELECT id FROM budgets WHERE categoryId = ? AND period = 'month' AND startDate = ?",
-      arrayOf(categoryId, startDate.toString()),
-    )
-    existing.use { cursor ->
-      if (cursor.moveToFirst()) {
-        db.execSQL(
-          "UPDATE budgets SET amountCents = ?, isActive = 1 WHERE id = ?",
-          arrayOf(amountCents, cursor.getString(0)),
-        )
-      } else {
-        db.execSQL(
-          "INSERT INTO budgets (id, categoryId, amountCents, period, startDate, alertThreshold, isActive) VALUES (?, ?, ?, 'month', ?, 0.8, 1)",
-          arrayOf<Any>(UUID.randomUUID().toString(), categoryId, amountCents, startDate),
-        )
-      }
+    val existingId = budgets.findIdForCategoryMonth(categoryId, startDate)
+    if (existingId != null) {
+      budgets.updateAmount(existingId, amountCents)
+    } else {
+      budgets.insert(
+        BudgetEntity(
+          id = UUID.randomUUID().toString(),
+          categoryId = categoryId,
+          amountCents = amountCents,
+          period = "month",
+          startDate = startDate,
+          alertThreshold = 0.8,
+          isActive = true,
+        ),
+      )
     }
   }
 
@@ -237,10 +225,10 @@ class SextantRepository(context: Context) {
    * 和预算不同，这里没有「同一分类只能有一条」的约束：住房分类下同时有房租、物业费、宽带
    * 是常态，条目之间靠 id 区分，不靠 `(categoryId, period, startDate)`。
    *
-   * [customDays] 只在 [RecurringCycle.CustomDays] 下有意义：其它周期传进来的值会被归一化成
-   * null 而不是报错，保证库里不会出现「每月 + 30 天」这种自相矛盾的行。
+   * [RecurringExpenseDraft.customDays] 只在 [RecurringCycle.CustomDays] 下有意义：其它周期
+   * 传进来的值会被归一化成 null 而不是报错，保证库里不会出现「每月 + 30 天」这种自相矛盾的行。
    */
-  fun saveRecurringExpense(id: String?, draft: RecurringExpenseDraft): String {
+  suspend fun saveRecurringExpense(id: String?, draft: RecurringExpenseDraft): String {
     val trimmedName = draft.name.trim()
     require(trimmedName.isNotBlank()) { "周期支出名称不能为空" }
     require(trimmedName.length <= MAX_RECURRING_NAME_LENGTH) { "周期支出名称不能超过 $MAX_RECURRING_NAME_LENGTH 个字符" }
@@ -256,40 +244,43 @@ class SextantRepository(context: Context) {
     }
 
     val now = System.currentTimeMillis()
-    val db = database.writableDatabase
+    val dao = database.recurringExpenseDao()
     val resolvedId = id ?: UUID.randomUUID().toString()
     val trimmedNote = draft.note.trim()
 
     if (id == null) {
-      db.execSQL(
-        """
-        INSERT INTO recurring_expenses
-          (id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
-           endedAt, isActive, note, createdAt, updatedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """.trimIndent(),
-        arrayOf<Any?>(
-          resolvedId, trimmedName, draft.amountCents, draft.cycle.storageValue, resolvedCustomDays,
-          draft.anchorDate, draft.categoryId, draft.paymentMethodId, draft.endedAt,
-          if (draft.isActive) 1 else 0, trimmedNote, now, now,
+      dao.insert(
+        RecurringExpenseEntity(
+          id = resolvedId,
+          name = trimmedName,
+          amountCents = draft.amountCents,
+          cycle = draft.cycle,
+          customDays = resolvedCustomDays,
+          anchorDate = draft.anchorDate,
+          categoryId = draft.categoryId,
+          paymentMethodId = draft.paymentMethodId,
+          endedAt = draft.endedAt,
+          isActive = draft.isActive,
+          note = trimmedNote,
+          createdAt = now,
+          updatedAt = now,
         ),
       )
     } else {
-      db.rawQuery("SELECT 1 FROM recurring_expenses WHERE id = ?", arrayOf(id)).use { cursor ->
-        require(cursor.moveToFirst()) { "周期支出不存在" }
-      }
-      db.execSQL(
-        """
-        UPDATE recurring_expenses
-        SET name = ?, amountCents = ?, cycle = ?, customDays = ?, anchorDate = ?, categoryId = ?,
-          paymentMethodId = ?, endedAt = ?, isActive = ?, note = ?, updatedAt = ?
-        WHERE id = ?
-        """.trimIndent(),
-        arrayOf<Any?>(
-          trimmedName, draft.amountCents, draft.cycle.storageValue, resolvedCustomDays, draft.anchorDate,
-          draft.categoryId, draft.paymentMethodId, draft.endedAt, if (draft.isActive) 1 else 0,
-          trimmedNote, now, resolvedId,
-        ),
+      require(dao.exists(id)) { "周期支出不存在" }
+      dao.update(
+        id = id,
+        name = trimmedName,
+        amountCents = draft.amountCents,
+        cycle = draft.cycle,
+        customDays = resolvedCustomDays,
+        anchorDate = draft.anchorDate,
+        categoryId = draft.categoryId,
+        paymentMethodId = draft.paymentMethodId,
+        endedAt = draft.endedAt,
+        isActive = draft.isActive,
+        note = trimmedNote,
+        updatedAt = now,
       )
     }
 
@@ -297,20 +288,17 @@ class SextantRepository(context: Context) {
     return resolvedId
   }
 
-  fun deleteRecurringExpense(id: String) {
-    database.writableDatabase.delete("recurring_expenses", "id = ?", arrayOf(id))
+  suspend fun deleteRecurringExpense(id: String) {
+    database.recurringExpenseDao().deleteById(id)
     notifyChanged()
   }
 
-  fun setRecurringExpenseActive(id: String, isActive: Boolean) {
-    database.writableDatabase.execSQL(
-      "UPDATE recurring_expenses SET isActive = ?, updatedAt = ? WHERE id = ?",
-      arrayOf<Any>(if (isActive) 1 else 0, System.currentTimeMillis(), id),
-    )
+  suspend fun setRecurringExpenseActive(id: String, isActive: Boolean) {
+    database.recurringExpenseDao().setActive(id, isActive, System.currentTimeMillis())
     notifyChanged()
   }
 
-  fun addCategory(
+  suspend fun addCategory(
     name: String,
     type: TransactionType,
     color: Long,
@@ -319,26 +307,23 @@ class SextantRepository(context: Context) {
   ) {
     val trimmedName = name.trim()
     if (trimmedName.isBlank()) return
-    val now = System.currentTimeMillis()
-    database.writableDatabase.execSQL(
-      """
-      INSERT INTO categories
-        (id, name, type, color, includeInSpending, parentCategoryId, isBuiltIn, isActive, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?)
-      """.trimIndent(),
-      arrayOf<Any?>(
-        UUID.randomUUID().toString(),
-        trimmedName,
-        type.dbValue,
-        color,
-        if (includeInSpending) 1 else 0,
-        parentCategoryId,
-        now,
+    database.categoryDao().insert(
+      CategoryEntity(
+        id = UUID.randomUUID().toString(),
+        name = trimmedName,
+        type = type,
+        color = color,
+        includeInSpending = includeInSpending,
+        parentCategoryId = parentCategoryId,
+        isBuiltIn = false,
+        isActive = true,
+        createdAt = System.currentTimeMillis(),
       ),
     )
+    notifyChanged()
   }
 
-  fun updateCategory(
+  suspend fun updateCategory(
     id: String,
     name: String,
     type: TransactionType,
@@ -349,284 +334,204 @@ class SextantRepository(context: Context) {
     val trimmedName = name.trim()
     if (trimmedName.isBlank()) return
     require(parentCategoryId != id) { "分类不能设为自己的子分类" }
-    database.writableDatabase.execSQL(
-      """
-      UPDATE categories
-      SET name = ?, type = ?, color = ?, includeInSpending = ?, parentCategoryId = ?
-      WHERE id = ?
-      """.trimIndent(),
-      arrayOf<Any?>(
-        trimmedName,
-        type.dbValue,
-        color,
-        if (includeInSpending) 1 else 0,
-        parentCategoryId,
-        id,
-      ),
+    database.categoryDao().update(
+      id = id,
+      name = trimmedName,
+      type = type,
+      color = color,
+      includeInSpending = includeInSpending,
+      parentCategoryId = parentCategoryId,
     )
+    notifyChanged()
   }
 
-  fun archiveCategory(id: String) {
-    database.writableDatabase.execSQL(
-      "UPDATE categories SET isActive = 0 WHERE id = ? OR parentCategoryId = ?",
-      arrayOf(id, id),
-    )
+  suspend fun archiveCategory(id: String) {
+    database.categoryDao().archive(id)
+    notifyChanged()
   }
 
-  fun addPaymentMethod(name: String, color: Long) {
+  suspend fun addPaymentMethod(name: String, color: Long) {
     val trimmedName = name.trim()
     require(trimmedName.isNotBlank()) { "来源名称不能为空" }
     require(trimmedName.length <= MAX_PAYMENT_METHOD_NAME_LENGTH) { "来源名称不能超过 40 个字符" }
     requirePaymentMethodNameAvailable(trimmedName)
-    database.writableDatabase.execSQL(
-      "INSERT INTO payment_methods (id, name, color, isBuiltIn, isActive, createdAt) VALUES (?, ?, ?, 0, 1, ?)",
-      arrayOf<Any>(UUID.randomUUID().toString(), trimmedName, color, System.currentTimeMillis()),
+    database.paymentMethodDao().insert(
+      PaymentMethodEntity(
+        id = UUID.randomUUID().toString(),
+        name = trimmedName,
+        color = color,
+        isBuiltIn = false,
+        isActive = true,
+        createdAt = System.currentTimeMillis(),
+      ),
     )
+    notifyChanged()
   }
 
-  fun updatePaymentMethod(id: String, name: String, color: Long) {
+  suspend fun updatePaymentMethod(id: String, name: String, color: Long) {
     val trimmedName = name.trim()
     require(trimmedName.isNotBlank()) { "来源名称不能为空" }
     require(trimmedName.length <= MAX_PAYMENT_METHOD_NAME_LENGTH) { "来源名称不能超过 40 个字符" }
     requirePaymentMethodNameAvailable(trimmedName, excludingId = id)
-    database.writableDatabase.execSQL(
-      "UPDATE payment_methods SET name = ?, color = ? WHERE id = ?",
-      arrayOf<Any>(trimmedName, color, id),
-    )
+    database.paymentMethodDao().update(id, trimmedName, color)
+    notifyChanged()
   }
 
-  fun setPaymentMethodActive(id: String, isActive: Boolean) {
-    database.writableDatabase.execSQL(
-      "UPDATE payment_methods SET isActive = ? WHERE id = ?",
-      arrayOf<Any>(if (isActive) 1 else 0, id),
-    )
+  suspend fun setPaymentMethodActive(id: String, isActive: Boolean) {
+    database.paymentMethodDao().setActive(id, isActive)
+    notifyChanged()
   }
 
-  fun deletePaymentMethod(id: String) {
-    val db = database.writableDatabase
-    db.rawQuery(
-      """
-      SELECT p.isBuiltIn, COUNT(t.id)
-      FROM payment_methods p
-      LEFT JOIN transactions t ON t.paymentMethodId = p.id
-      WHERE p.id = ?
-      GROUP BY p.id
-      """.trimIndent(),
-      arrayOf(id),
-    ).use { cursor ->
-      require(cursor.moveToFirst()) { "来源不存在" }
-      require(cursor.getInt(0) == 0) { "内置来源不能删除" }
-      require(cursor.getLong(1) == 0L) { "已被流水使用的来源不能删除" }
+  /**
+   * 删除来源。内置来源和已经被流水用过的来源都不允许删除。
+   *
+   * 检查与删除放在同一个事务里：否则「查完发现计数为 0，删除前刚好又记了一笔」会留下
+   * 指向不存在来源的流水。
+   */
+  suspend fun deletePaymentMethod(id: String) {
+    database.withTransaction {
+      val methods = database.paymentMethodDao()
+      val method = requireNotNull(methods.findById(id)) { "来源不存在" }
+      require(!method.isBuiltIn) { "内置来源不能删除" }
+      val used = methods.listWithUsage().firstOrNull { it.method.id == id }?.transactionCount ?: 0L
+      require(used == 0L) { "已被流水使用的来源不能删除" }
+      methods.deleteById(id)
     }
-    db.delete("payment_methods", "id = ?", arrayOf(id))
+    notifyChanged()
   }
 
-  fun exportBackup(): String = backupStore.export()
+  suspend fun exportBackup(): String = backupStore.export()
 
-  fun restoreBackup(content: String): BackupSummary {
+  suspend fun restoreBackup(content: String): BackupSummary {
     runCatching { WorkManager.getInstance(appContext).cancelAllWorkByTag(AUTOMATION_WORK_TAG) }
     val summary = backupStore.restore(content)
     notifyChanged()
     return summary
   }
 
-  private fun listCategories(db: SQLiteDatabase): List<Category> {
-    val rows = mutableListOf<Category>()
-    db.rawQuery(
-      """
-      SELECT id, name, type, color, includeInSpending, parentCategoryId
-      FROM categories
-      WHERE isActive = 1
-      ORDER BY type ASC, parentCategoryId IS NOT NULL ASC, createdAt ASC
-      """.trimIndent(),
-      emptyArray(),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        rows += Category(
-          id = cursor.getString(0),
-          name = cursor.getString(1),
-          type = cursor.getString(2).toTransactionType(),
-          color = cursor.getLong(3),
-          includeInSpending = cursor.getInt(4) == 1,
-          parentCategoryId = cursor.getStringOrNull(5),
-        )
-      }
+  private suspend fun listCategories(): List<Category> =
+    database.categoryDao().listActive().map { entity ->
+      Category(
+        id = entity.id,
+        name = entity.name,
+        type = entity.type,
+        color = entity.color,
+        includeInSpending = entity.includeInSpending,
+        parentCategoryId = entity.parentCategoryId,
+      )
     }
-    return rows
-  }
 
-  private fun listPaymentMethods(db: SQLiteDatabase): List<PaymentMethod> {
-    val rows = mutableListOf<PaymentMethod>()
-    db.rawQuery(
-      """
-      SELECT p.id, p.name, p.color, p.isBuiltIn, p.isActive, COUNT(t.id)
-      FROM payment_methods p
-      LEFT JOIN transactions t ON t.paymentMethodId = p.id
-      GROUP BY p.id
-      ORDER BY p.isActive DESC, p.createdAt ASC
-      """.trimIndent(),
-      emptyArray(),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        rows += PaymentMethod(
-          id = cursor.getString(0),
-          name = cursor.getString(1),
-          color = cursor.getLong(2),
-          isBuiltIn = cursor.getInt(3) == 1,
-          isActive = cursor.getInt(4) == 1,
-          transactionCount = cursor.getLong(5),
-        )
-      }
+  private suspend fun listPaymentMethods(): List<PaymentMethod> =
+    database.paymentMethodDao().listWithUsage().map { row ->
+      PaymentMethod(
+        id = row.method.id,
+        name = row.method.name,
+        color = row.method.color,
+        isBuiltIn = row.method.isBuiltIn,
+        isActive = row.method.isActive,
+        transactionCount = row.transactionCount,
+      )
     }
-    return rows
-  }
 
-  private fun requirePaymentMethodNameAvailable(name: String, excludingId: String? = null) {
-    val sql = if (excludingId == null) {
-      "SELECT 1 FROM payment_methods WHERE name = ? COLLATE NOCASE LIMIT 1"
+  private suspend fun requirePaymentMethodNameAvailable(name: String, excludingId: String? = null) {
+    val methods = database.paymentMethodDao()
+    val conflict = if (excludingId == null) {
+      methods.findIdByName(name)
     } else {
-      "SELECT 1 FROM payment_methods WHERE name = ? COLLATE NOCASE AND id != ? LIMIT 1"
+      methods.findIdByNameExcluding(name, excludingId)
     }
-    val args = if (excludingId == null) arrayOf(name) else arrayOf(name, excludingId)
-    database.readableDatabase.rawQuery(
-      sql,
-      args,
-    ).use { cursor ->
-      require(!cursor.moveToFirst()) { "来源名称已存在" }
-    }
+    require(conflict == null) { "来源名称已存在" }
   }
 
-  private fun listTransactions(
-    db: SQLiteDatabase,
+  private suspend fun listTransactions(
     categories: List<Category>,
     paymentMethods: List<PaymentMethod>,
     filter: LedgerFilter,
   ): List<TransactionListItem> {
     val categoryById = categories.associateBy { it.id }
     val paymentById = paymentMethods.associateBy { it.id }
-    val rows = mutableListOf<TransactionListItem>()
-    db.rawQuery(
-      """
-      SELECT id, categoryId, paymentMethodId, amountCents, type, description, transactionDate, createdAt, updatedAt,
-        entryOrigin, automationKind, isUserEdited
-      FROM transactions
-      WHERE transactionDate >= ? AND transactionDate < ?
-        AND (? = '' OR description LIKE '%' || ? || '%')
-        AND (? = '' OR categoryId = ? OR categoryId IN (
-          SELECT id FROM categories WHERE parentCategoryId = ?
-        ))
-        AND (? = '' OR paymentMethodId = ?)
-        AND (? = '' OR type = ?)
-        AND (CAST(? AS INTEGER) < 0 OR amountCents >= CAST(? AS INTEGER))
-        AND (CAST(? AS INTEGER) < 0 OR amountCents <= CAST(? AS INTEGER))
-      ORDER BY transactionDate DESC
-      """.trimIndent(),
-      arrayOf(
-        filter.rangeStart.toString(), filter.rangeEnd.toString(), filter.query.trim(), filter.query.trim(),
-        filter.categoryId.orEmpty(), filter.categoryId.orEmpty(), filter.categoryId.orEmpty(),
-        filter.paymentMethodId.orEmpty(), filter.paymentMethodId.orEmpty(),
-        filter.type?.dbValue.orEmpty(), filter.type?.dbValue.orEmpty(),
-        (filter.minAmountCents ?: -1L).toString(), (filter.minAmountCents ?: -1L).toString(),
-        (filter.maxAmountCents ?: -1L).toString(), (filter.maxAmountCents ?: -1L).toString(),
-      ),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        val category = cursor.getStringOrNull(1)?.let(categoryById::get)
-        val paymentMethod = cursor.getStringOrNull(2)?.let(paymentById::get)
-        val transaction = Transaction(
-          id = cursor.getString(0),
-          categoryId = cursor.getStringOrNull(1),
-          paymentMethodId = cursor.getStringOrNull(2),
-          amountCents = cursor.getLong(3),
-          type = cursor.getString(4).toTransactionType(),
-          description = cursor.getString(5),
-          transactionDate = cursor.getLong(6),
-          createdAt = cursor.getLong(7),
-          updatedAt = cursor.getLong(8),
-          entryOrigin = cursor.getString(9).toEntryOrigin(),
-          automationKind = cursor.getStringOrNull(10)?.toAutomationKind(),
-          isUserEdited = cursor.getInt(11) == 1,
-        )
-        rows += TransactionListItem(
-          transaction = transaction,
-          categoryName = category?.displayName(categoryById) ?: if (transaction.type == TransactionType.Transfer) "转移记录" else "未分类",
-          categoryColor = category?.color ?: 0xFF3B82F6,
-          paymentMethodName = paymentMethod?.name ?: "未设置",
-          includeInSpending = category?.includeInSpending ?: true,
-        )
-      }
+    return database.transactionDao().listFiltered(
+      rangeStart = filter.rangeStart,
+      rangeEnd = filter.rangeEnd,
+      query = filter.query.trim(),
+      categoryId = filter.categoryId.orEmpty(),
+      paymentMethodId = filter.paymentMethodId.orEmpty(),
+      // 未按方向筛选时这个值不会被 SQL 用到（`(:type = '' OR type = :type)` 前半段已经成立），
+      // 但参数本身不能为空，给一个中性值。
+      type = filter.type ?: TransactionType.Expense,
+      minAmountCents = filter.minAmountCents ?: -1L,
+      maxAmountCents = filter.maxAmountCents ?: -1L,
+    ).map { row ->
+      val category = row.categoryId?.let(categoryById::get)
+      val paymentMethod = row.paymentMethodId?.let(paymentById::get)
+      val transaction = Transaction(
+        id = row.id,
+        categoryId = row.categoryId,
+        paymentMethodId = row.paymentMethodId,
+        amountCents = row.amountCents,
+        type = row.type,
+        description = row.description,
+        transactionDate = row.transactionDate,
+        createdAt = row.createdAt,
+        updatedAt = row.updatedAt,
+        entryOrigin = row.entryOrigin,
+        automationKind = row.automationKind,
+        isUserEdited = row.isUserEdited,
+      )
+      TransactionListItem(
+        transaction = transaction,
+        categoryName = category?.displayName(categoryById) ?: if (transaction.type == TransactionType.Transfer) "转移记录" else "未分类",
+        categoryColor = category?.color ?: 0xFF3B82F6,
+        paymentMethodName = paymentMethod?.name ?: "未设置",
+        includeInSpending = category?.includeInSpending ?: true,
+      )
     }
-    return rows
   }
 
-  private fun budgetProgress(
-    db: SQLiteDatabase,
+  private suspend fun budgetProgress(
     categories: List<Category>,
     transactions: List<TransactionListItem>,
     monthStart: Long,
   ): List<BudgetProgress> {
     val categoryById = categories.associateBy { it.id }
-    val rows = mutableListOf<BudgetProgress>()
-    db.rawQuery(
-      "SELECT categoryId, amountCents FROM budgets WHERE isActive = 1 AND period = 'month' AND startDate = ?",
-      arrayOf(monthStart.toString()),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        val categoryId = cursor.getString(0)
-        val category = categoryById[categoryId] ?: continue
-        val budgetCategoryIds = category.childInclusiveIds(categories)
-        val spent = transactions
-          .filter { it.transaction.categoryId in budgetCategoryIds && it.transaction.type == TransactionType.Expense }
-          .sumOf { it.transaction.amountCents }
-        rows += BudgetProgress(category.displayName(categoryById), category.color, cursor.getLong(1), spent)
-      }
+    return database.budgetDao().listActiveForMonth(monthStart).mapNotNull { budget ->
+      // 已归档分类的预算不再出现在页面上：分类列表里没有它，说明它已经停用。
+      val category = categoryById[budget.categoryId] ?: return@mapNotNull null
+      val budgetCategoryIds = category.childInclusiveIds(categories)
+      val spent = transactions
+        .filter { it.transaction.categoryId in budgetCategoryIds && it.transaction.type == TransactionType.Expense }
+        .sumOf { it.transaction.amountCents }
+      BudgetProgress(category.displayName(categoryById), category.color, budget.amountCents, spent)
     }
-    return rows
   }
 
-  private fun monthlyBudget(db: SQLiteDatabase): Long? {
-    db.rawQuery("SELECT value FROM app_settings WHERE key = 'monthly_budget_cents'", emptyArray()).use { cursor ->
-      return if (cursor.moveToFirst()) cursor.getString(0).toLongOrNull() else null
-    }
-  }
+  private suspend fun monthlyBudget(): Long? =
+    database.appSettingDao().findValue(SextantDatabase.MONTHLY_BUDGET_KEY)?.toLongOrNull()
 
   /**
    * 全部周期支出，启用的排在前面，同组内按首次扣费日。
    *
-   * 「下一次扣费」是按当前时间推算出来的（见 `RecurringSchedule.kt`），不落库，所以这里
-   * 不排序也排不了；页面按推算结果再排一次。
+   * 「下一次扣费」是按当前时间推算出来的（见 `RecurringSchedule.kt`），不落库，
+   * 所以这里不排序也排不了；页面按推算结果再排一次。
    */
-  private fun listRecurringExpenses(db: SQLiteDatabase): List<RecurringExpense> {
-    val rows = mutableListOf<RecurringExpense>()
-    db.rawQuery(
-      """
-      SELECT id, name, amountCents, cycle, customDays, anchorDate, categoryId, paymentMethodId,
-        endedAt, isActive, note, createdAt, updatedAt
-      FROM recurring_expenses
-      ORDER BY isActive DESC, anchorDate ASC, createdAt ASC
-      """.trimIndent(),
-      emptyArray(),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        rows += RecurringExpense(
-          id = cursor.getString(0),
-          name = cursor.getString(1),
-          amountCents = cursor.getLong(2),
-          cycle = cursor.getString(3).toRecurringCycle(),
-          customDays = cursor.getIntOrNull(4),
-          anchorDate = cursor.getLong(5),
-          categoryId = cursor.getStringOrNull(6),
-          paymentMethodId = cursor.getStringOrNull(7),
-          endedAt = cursor.getLongOrNull(8),
-          isActive = cursor.getInt(9) == 1,
-          note = cursor.getString(10),
-          createdAt = cursor.getLong(11),
-          updatedAt = cursor.getLong(12),
-        )
-      }
+  private suspend fun listRecurringExpenses(): List<RecurringExpense> =
+    database.recurringExpenseDao().listAll().map { row ->
+      RecurringExpense(
+        id = row.id,
+        name = row.name,
+        amountCents = row.amountCents,
+        cycle = row.cycle,
+        customDays = row.customDays,
+        anchorDate = row.anchorDate,
+        categoryId = row.categoryId,
+        paymentMethodId = row.paymentMethodId,
+        endedAt = row.endedAt,
+        isActive = row.isActive,
+        note = row.note,
+        createdAt = row.createdAt,
+        updatedAt = row.updatedAt,
+      )
     }
-    return rows
-  }
 }
 
 /** 计入支出结构的流水：支出，且分类计入支出。 */
@@ -650,38 +555,3 @@ private fun List<TransactionListItem>.groupByDay(): List<DailyTransactionGroup> 
 
 private const val MAX_PAYMENT_METHOD_NAME_LENGTH = 40
 private const val MAX_RECURRING_NAME_LENGTH = 20
-
-private val TransactionType.dbValue: String
-  get() = when (this) {
-    TransactionType.Expense -> "expense"
-    TransactionType.Income -> "income"
-    TransactionType.Transfer -> "transfer"
-  }
-
-private fun String.toTransactionType() = when (this) {
-  "income" -> TransactionType.Income
-  "transfer" -> TransactionType.Transfer
-  else -> TransactionType.Expense
-}
-
-private fun String.toEntryOrigin() = if (this == "notification") EntryOrigin.Notification else EntryOrigin.Manual
-
-/** 库里出现不认识的周期时退化成「每月」而不是丢弃整行，和 [toTransactionType] 的处理一致。 */
-private fun String.toRecurringCycle(): RecurringCycle =
-  RecurringCycle.fromStorage(this) ?: RecurringCycle.Monthly
-
-private fun String.toAutomationKind() = AutomationKind.entries.firstOrNull {
-  it.name.equals(this, ignoreCase = true)
-}
-
-private fun android.database.Cursor.getStringOrNull(index: Int): String? {
-  return if (isNull(index)) null else getString(index)
-}
-
-private fun android.database.Cursor.getLongOrNull(index: Int): Long? {
-  return if (isNull(index)) null else getLong(index)
-}
-
-private fun android.database.Cursor.getIntOrNull(index: Int): Int? {
-  return if (isNull(index)) null else getInt(index)
-}

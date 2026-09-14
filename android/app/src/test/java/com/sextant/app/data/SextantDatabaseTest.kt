@@ -1,7 +1,9 @@
 package com.sextant.app.data
 
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
+import android.database.Cursor
+import androidx.sqlite.db.SimpleSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteDatabase
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,21 +15,34 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
+/**
+ * 表结构、索引与种子数据。
+ *
+ * Room 会在打开库时按导出的 schema（`android/app/schemas` 下的 JSON）校验实体与磁盘上
+ * 实际结构是否一致，所以「迁移之后结构对不对」有一部分已经被运行时守住了。这里保留的
+ * 断言是另一部分：schema 校验只看「实体声明的那些表」，看不出「本该存在的索引漏建了」
+ * 或「种子数据没写进去」。
+ *
+ * 原始 SQL 通过 `openHelper.writableDatabase` 拿到底层连接：这些断言问的正是磁盘上的
+ * 真相，走 DAO 反而绕远。
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class SextantDatabaseTest {
   private lateinit var context: Context
-  private var helper: SextantDatabase? = null
+  private var database: SextantDatabase? = null
 
   @Before
   fun setUp() {
     context = RuntimeEnvironment.getApplication()
+    SextantDatabase.closeForTests()
     context.deleteDatabase(DATABASE_NAME)
   }
 
   @After
   fun tearDown() {
-    helper?.close()
+    database?.close()
+    SextantDatabase.closeForTests()
     context.deleteDatabase(DATABASE_NAME)
   }
 
@@ -35,7 +50,6 @@ class SextantDatabaseTest {
   fun freshDatabaseHasCompleteSchemaIndexesAndSeedData() {
     val db = openCurrentDatabase()
 
-    assertEquals(SextantDatabase.DATABASE_VERSION, db.version)
     assertTrue(db.hasTable("categories"))
     assertTrue(db.hasTable("payment_methods"))
     assertTrue(db.hasTable("transactions"))
@@ -53,11 +67,15 @@ class SextantDatabaseTest {
     assertTrue(db.hasColumn("recurring_expenses", "customDays"))
     assertTrue(db.hasColumn("recurring_expenses", "anchorDate"))
     assertTrue(db.hasColumn("recurring_expenses", "endedAt"))
+    assertTrue(db.hasIndex("idx_transactions_date"))
     assertTrue(db.hasIndex("idx_transactions_type_date"))
     assertTrue(db.hasIndex("idx_transactions_category_date"))
     assertTrue(db.hasIndex("idx_transactions_payment_date"))
     assertTrue(db.hasIndex("idx_transactions_source_event"))
     assertTrue(db.hasIndex("idx_recurring_expenses_active"))
+    assertTrue(db.hasIndex("idx_automation_provider_reference"))
+    assertTrue(db.hasIndex("idx_automation_status_created"))
+    assertTrue(db.hasIndex("idx_classification_rules_match"))
     assertEquals(setOf("银行卡", "微信", "支付宝", "现金"), db.stringSet("SELECT name FROM payment_methods"))
     assertEquals(4L, db.longValue("SELECT COUNT(*) FROM payment_methods WHERE isBuiltIn = 1 AND isActive = 1"))
     assertTrue(db.longValue("SELECT COUNT(*) FROM categories") > 7)
@@ -69,7 +87,6 @@ class SextantDatabaseTest {
 
     val db = openCurrentDatabase()
 
-    assertEquals(SextantDatabase.DATABASE_VERSION, db.version)
     assertFalse(db.hasTable("accounts"))
     assertTrue(db.hasColumn("categories", "parentCategoryId"))
     assertEquals("我的分类", db.stringValue("SELECT name FROM categories WHERE id = 'category-old'"))
@@ -85,9 +102,48 @@ class SextantDatabaseTest {
     assertTrue(db.hasIndex("idx_transactions_payment_date"))
   }
 
-  private fun openCurrentDatabase(): SQLiteDatabase {
-    helper = SextantDatabase(context)
-    return helper!!.writableDatabase
+  /**
+   * v10 是迁移前的最后一个版本。这条用例守的是「真机上真的升得上去」。
+   *
+   * 它曾经是过的——因为当时用的「v10 库」是手抄的，而手抄时把 `eventKey` 的
+   * 列内联 UNIQUE 抄成了独立索引，正好和 Room 的期望一致。真实设备上的库不是那样，
+   * 于是 v10 → v11 在真机抛「Migration didn't properly handle: automation_events」，
+   * 而这里一路绿灯。修好之后这条用例会真实地走过 [SextantDatabase.MIGRATION_10_11]。
+   */
+  @Test
+  fun versionTenUpgradeKeepsSchemaAndData() {
+    createVersionTenDatabase()
+
+    val db = openCurrentDatabase()
+
+    assertTrue(db.hasTable("automation_events"))
+    assertTrue(db.hasIndex("idx_automation_provider_reference"))
+    // 迁移的核心：内联 UNIQUE 的自动索引要变成 Room 期望的那个独立索引。
+    assertTrue(db.hasIndex("index_automation_events_eventKey"))
+    assertEquals("十版分类", db.stringValue("SELECT name FROM categories WHERE id = 'category-v10'"))
+    assertEquals(990L, db.longValue("SELECT amountCents FROM transactions WHERE id = 'transaction-v10'"))
+    assertEquals("key-v10", db.stringValue("SELECT eventKey FROM automation_events WHERE id = 'event-v10'"))
+  }
+
+  /** 迁移不能让唯一约束失效：同一份 eventKey 仍然只能插一行。 */
+  @Test
+  fun versionTenUpgradeKeepsEventKeyUnique() {
+    createVersionTenDatabase()
+
+    val db = openCurrentDatabase()
+
+    val error = org.junit.Assert.assertThrows(android.database.sqlite.SQLiteConstraintException::class.java) {
+      db.execSQL(
+        "INSERT INTO automation_events (id, eventKey, sourcePackage, notificationKey, postedAt, payloadHash, status, createdAt) VALUES ('event-dup', 'key-v10', 'com.tencent.mm', 'n-dup', 8, 'h', 'captured', 8)",
+      )
+    }
+    assertTrue(error.message.orEmpty().contains("UNIQUE", ignoreCase = true))
+  }
+
+  private fun openCurrentDatabase(): SupportSQLiteDatabase {
+    val opened = SextantDatabase.createForTests(context)
+    database = opened
+    return opened.openHelper.writableDatabase
   }
 
   private fun createVersionOneDatabase() {
@@ -117,41 +173,103 @@ class SextantDatabaseTest {
     }
   }
 
-  private fun SQLiteDatabase.hasTable(name: String): Boolean = rawQuery(
-    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-    arrayOf(name),
-  ).use { it.moveToFirst() }
-
-  private fun SQLiteDatabase.hasIndex(name: String): Boolean = rawQuery(
-    "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
-    arrayOf(name),
-  ).use { it.moveToFirst() }
-
-  private fun SQLiteDatabase.hasColumn(table: String, column: String): Boolean = rawQuery(
-    "PRAGMA table_info($table)",
-    emptyArray(),
-  ).use { cursor ->
-    while (cursor.moveToNext()) {
-      if (cursor.getString(1) == column) return@use true
+  /**
+   * 一个真实的 v10 库：表结构和索引照抄 `SQLiteOpenHelper` 时代 `onCreate` 建出来的样子。
+   *
+   * **必须逐字复刻，尤其是 `eventKey` 那一列的写法。** v9 建表时用的是列内联 UNIQUE
+   * （`eventKey TEXT NOT NULL UNIQUE`），SQLite 会为它生成名为
+   * `sqlite_autoindex_automation_events_1` 的自动索引，而不是 Room 期望的
+   * `index_automation_events_eventKey`。
+   *
+   * 这里曾经写成「`eventKey TEXT NOT NULL` + 一条 `CREATE UNIQUE INDEX
+   * index_automation_events_eventKey`」——那是一个**并不存在**的库：结构和 Room 一致，
+   * 于是 v10 → v11 的空迁移顺利通过测试，却在真机上抛
+   * 「Migration didn't properly handle: automation_events」。
+   *
+   * 教训记在这里：手抄 schema 时抄成了「我以为它是什么样」而不是「它实际是什么样」，
+   * 测试就只是在验证自己的假设。
+   */
+  private fun createVersionTenDatabase() {
+    context.openOrCreateDatabase(DATABASE_NAME, Context.MODE_PRIVATE, null).use { db ->
+      db.execSQL(
+        "CREATE TABLE categories (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, color INTEGER NOT NULL, includeInSpending INTEGER NOT NULL DEFAULT 1, parentCategoryId TEXT, isBuiltIn INTEGER NOT NULL DEFAULT 0, isActive INTEGER NOT NULL DEFAULT 1, createdAt INTEGER NOT NULL)",
+      )
+      db.execSQL("CREATE TABLE app_settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)")
+      db.execSQL(
+        "CREATE TABLE payment_methods (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, color INTEGER NOT NULL, isBuiltIn INTEGER NOT NULL DEFAULT 0, isActive INTEGER NOT NULL DEFAULT 1, createdAt INTEGER NOT NULL)",
+      )
+      db.execSQL(
+        "CREATE TABLE transactions (id TEXT PRIMARY KEY NOT NULL, categoryId TEXT, paymentMethodId TEXT, amountCents INTEGER NOT NULL, type TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', transactionDate INTEGER NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, entryOrigin TEXT NOT NULL DEFAULT 'manual', automationKind TEXT, sourceEventId TEXT, isUserEdited INTEGER NOT NULL DEFAULT 0)",
+      )
+      db.execSQL(
+        "CREATE TABLE budgets (id TEXT PRIMARY KEY NOT NULL, categoryId TEXT NOT NULL, amountCents INTEGER NOT NULL, period TEXT NOT NULL, startDate INTEGER NOT NULL, alertThreshold REAL NOT NULL DEFAULT 0.8, isActive INTEGER NOT NULL DEFAULT 1)",
+      )
+      db.execSQL(
+        "CREATE TABLE recurring_expenses (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, amountCents INTEGER NOT NULL, cycle TEXT NOT NULL, customDays INTEGER, anchorDate INTEGER NOT NULL, categoryId TEXT, paymentMethodId TEXT, endedAt INTEGER, isActive INTEGER NOT NULL DEFAULT 1, note TEXT NOT NULL DEFAULT '', createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)",
+      )
+      // 唯一约束写在列上，和 v9 的 `createAutomationSchema` 完全一致——这是本用例的重点。
+      db.execSQL(
+        "CREATE TABLE automation_events (id TEXT PRIMARY KEY NOT NULL, eventKey TEXT NOT NULL UNIQUE, sourcePackage TEXT NOT NULL, notificationKey TEXT NOT NULL, postedAt INTEGER NOT NULL, payloadHash TEXT NOT NULL, encryptedPayload BLOB, payloadIv BLOB, status TEXT NOT NULL, parser TEXT, providerReference TEXT, failureCode TEXT, parsedSummary TEXT, transactionId TEXT, createdAt INTEGER NOT NULL, processedAt INTEGER)",
+      )
+      db.execSQL(
+        "CREATE TABLE classification_rules (id TEXT PRIMARY KEY NOT NULL, sourcePackage TEXT NOT NULL, direction TEXT NOT NULL, automationKind TEXT NOT NULL, matchMode TEXT NOT NULL, pattern TEXT NOT NULL, categoryId TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)",
+      )
+      db.execSQL("CREATE INDEX idx_transactions_date ON transactions(transactionDate)")
+      db.execSQL("CREATE INDEX idx_transactions_type_date ON transactions(type, transactionDate)")
+      db.execSQL("CREATE INDEX idx_transactions_category_date ON transactions(categoryId, transactionDate)")
+      db.execSQL("CREATE INDEX idx_transactions_payment_date ON transactions(paymentMethodId, transactionDate)")
+      // 三个「和 Room 期望不一致」的细节都要照抄，否则这条用例又只是在验证自己的假设：
+      // 部分索引的 WHERE、分类规则的 priority DESC、以及上面 eventKey 的列内联 UNIQUE。
+      db.execSQL("CREATE UNIQUE INDEX idx_transactions_source_event ON transactions(sourceEventId) WHERE sourceEventId IS NOT NULL")
+      db.execSQL("CREATE INDEX idx_recurring_expenses_active ON recurring_expenses(isActive, anchorDate)")
+      db.execSQL("CREATE UNIQUE INDEX idx_automation_provider_reference ON automation_events(sourcePackage, providerReference) WHERE providerReference IS NOT NULL")
+      db.execSQL("CREATE INDEX idx_automation_status_created ON automation_events(status, createdAt)")
+      db.execSQL("CREATE INDEX idx_classification_rules_match ON classification_rules(sourcePackage, direction, automationKind, priority DESC)")
+      db.execSQL("INSERT INTO categories VALUES ('category-v10', '十版分类', 'expense', 1, 1, NULL, 0, 1, 1)")
+      db.execSQL("INSERT INTO transactions (id, categoryId, amountCents, type, transactionDate, createdAt, updatedAt) VALUES ('transaction-v10', 'category-v10', 990, 'expense', 5, 5, 5)")
+      db.execSQL("INSERT INTO automation_events (id, eventKey, sourcePackage, notificationKey, postedAt, payloadHash, status, createdAt) VALUES ('event-v10', 'key-v10', 'com.tencent.mm', 'n-v10', 7, 'hash-v10', 'captured', 7)")
+      db.version = 10
     }
-    false
   }
 
-  private fun SQLiteDatabase.stringSet(sql: String): Set<String> = rawQuery(sql, emptyArray()).use { cursor ->
+  private fun SupportSQLiteDatabase.hasTable(name: String): Boolean =
+    read("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", name).use { it.moveToFirst() }
+
+  private fun SupportSQLiteDatabase.hasIndex(name: String): Boolean =
+    read("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?", name).use { it.moveToFirst() }
+
+  private fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean =
+    read("PRAGMA table_info($table)").use { cursor ->
+      while (cursor.moveToNext()) {
+        if (cursor.getString(1) == column) return@use true
+      }
+      false
+    }
+
+  private fun SupportSQLiteDatabase.stringSet(sql: String): Set<String> = read(sql).use { cursor ->
     buildSet {
       while (cursor.moveToNext()) add(cursor.getString(0))
     }
   }
 
-  private fun SQLiteDatabase.stringValue(sql: String): String = rawQuery(sql, emptyArray()).use { cursor ->
+  private fun SupportSQLiteDatabase.stringValue(sql: String): String = read(sql).use { cursor ->
     check(cursor.moveToFirst())
     cursor.getString(0)
   }
 
-  private fun SQLiteDatabase.longValue(sql: String): Long = rawQuery(sql, emptyArray()).use { cursor ->
+  private fun SupportSQLiteDatabase.longValue(sql: String): Long = read(sql).use { cursor ->
     check(cursor.moveToFirst())
     cursor.getLong(0)
   }
+
+  /**
+   * 直接问底层 SQLite。
+   *
+   * 这些断言问的正是磁盘上的真相（表、索引、种子行），走 DAO 反而绕远——
+   * 而且 DAO 看不到「索引漏建了」这类问题。
+   */
+  private fun SupportSQLiteDatabase.read(sql: String, vararg args: Any?): Cursor =
+    query(SimpleSQLiteQuery(sql, args))
 
   private companion object {
     const val DATABASE_NAME = "sextant.db"

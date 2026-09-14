@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -34,6 +35,7 @@ import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.categoryColorOptions
 import com.sextant.app.ui.util.displayName
 import com.sextant.app.ui.util.label
+import kotlinx.coroutines.launch
 
 @Composable
 fun CategoryManagement(
@@ -45,6 +47,8 @@ fun CategoryManagement(
   var editingCategory by remember { mutableStateOf<Category?>(null) }
   var parentForNewChild by remember { mutableStateOf<Category?>(null) }
   var showAddRoot by remember { mutableStateOf(false) }
+  // 写分类是挂起调用（Room 不允许主线程访问数据库），而对话框的 onSave 不是协程。
+  val scope = rememberCoroutineScope()
 
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -70,7 +74,7 @@ fun CategoryManagement(
           categories = categories,
           onAddChild = { parentForNewChild = category },
           onEdit = { editingCategory = category },
-          onArchive = { repository.archiveCategory(category.id); onChanged() },
+          onArchive = { scope.launch { repository.archiveCategory(category.id) }; onChanged() },
         )
       })
     }
@@ -82,7 +86,7 @@ fun CategoryManagement(
       fixedParent = null,
       onDismiss = { showAddRoot = false },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
-        repository.addCategory(name, type, color, includeInSpending, parentCategoryId)
+        scope.launch { repository.addCategory(name, type, color, includeInSpending, parentCategoryId) }
         showAddRoot = false
         onChanged()
       },
@@ -96,7 +100,7 @@ fun CategoryManagement(
       fixedParent = parent,
       onDismiss = { parentForNewChild = null },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
-        repository.addCategory(name, type, color, includeInSpending, parentCategoryId)
+        scope.launch { repository.addCategory(name, type, color, includeInSpending, parentCategoryId) }
         parentForNewChild = null
         onChanged()
       },
@@ -110,7 +114,7 @@ fun CategoryManagement(
       fixedParent = null,
       onDismiss = { editingCategory = null },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
-        repository.updateCategory(category.id, name, type, color, includeInSpending, parentCategoryId)
+        scope.launch { repository.updateCategory(category.id, name, type, color, includeInSpending, parentCategoryId) }
         editingCategory = null
         onChanged()
       },

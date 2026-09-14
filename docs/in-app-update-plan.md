@@ -35,7 +35,7 @@
 | 已有 `kotlinx-serialization-json:1.9.0` | `build.gradle.kts:89` | 解析更新清单无需新依赖 |
 | 已有 `androidx.work:work-runtime:2.11.2` | `build.gradle.kts:91` | 定期检查可直接用 WorkManager |
 | 无 `BuildConfig` 生成（AGP 8+ 默认关闭） | `build.gradle.kts:50-52` | 读版本号走 `PackageManager`，不必打开 `buildConfig` |
-| 账本数据在 `sextant.db`，SQLite 版本 9 | `data/SextantDatabase.kt:10` | 升级不涉及数据迁移，但 `onUpgrade` 必须继续正确 |
+| 账本数据在 `sextant.db`，由 Room 管理，schema 版本 11 | `data/SextantDatabase.kt` | 升级不涉及数据迁移，但迁移路径必须继续正确（v10 → v11 是空迁移，见第 10 章教程） |
 
 ---
 

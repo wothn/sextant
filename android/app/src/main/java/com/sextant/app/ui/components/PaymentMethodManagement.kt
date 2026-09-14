@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -31,6 +32,7 @@ import com.sextant.app.data.SextantRepository
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.categoryColorOptions
+import kotlinx.coroutines.launch
 
 @Composable
 fun PaymentMethodManagement(
@@ -42,6 +44,8 @@ fun PaymentMethodManagement(
   var showAdd by remember { mutableStateOf(false) }
   var editing by remember { mutableStateOf<PaymentMethod?>(null) }
   var pendingDelete by remember { mutableStateOf<PaymentMethod?>(null) }
+  // 写来源是挂起调用（Room 不允许主线程访问数据库），而开关/对话框回调不是协程。
+  val scope = rememberCoroutineScope()
 
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(
@@ -72,7 +76,7 @@ fun PaymentMethodManagement(
           method = method,
           onEdit = { editing = method },
           onActiveChanged = { active ->
-            repository.setPaymentMethodActive(method.id, active)
+            scope.launch { repository.setPaymentMethodActive(method.id, active) }
             onChanged()
           },
           onDelete = if (!method.isBuiltIn && method.transactionCount == 0L) {
@@ -91,7 +95,7 @@ fun PaymentMethodManagement(
       initial = null,
       onDismiss = { showAdd = false },
       onSubmit = { name, color ->
-        repository.addPaymentMethod(name, color)
+        scope.launch { repository.addPaymentMethod(name, color) }
         showAdd = false
         onChanged()
       },
@@ -104,7 +108,7 @@ fun PaymentMethodManagement(
       initial = method,
       onDismiss = { editing = null },
       onSubmit = { name, color ->
-        repository.updatePaymentMethod(method.id, name, color)
+        scope.launch { repository.updatePaymentMethod(method.id, name, color) }
         editing = null
         onChanged()
       },
@@ -118,7 +122,7 @@ fun PaymentMethodManagement(
       text = { Text("这个来源尚未被流水使用，删除后无法恢复。") },
       confirmButton = {
         SextantTextButton(onClick = {
-          repository.deletePaymentMethod(method.id)
+          scope.launch { repository.deletePaymentMethod(method.id) }
           pendingDelete = null
           onChanged()
         }) { Text("删除") }

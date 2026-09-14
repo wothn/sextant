@@ -1,7 +1,6 @@
 package com.sextant.app.data
 
-import android.content.ContentValues
-import android.database.sqlite.SQLiteDatabase
+import androidx.room.withTransaction
 import com.sextant.app.automation.ALIPAY_PACKAGE
 import com.sextant.app.automation.CapturedNotification
 import com.sextant.app.automation.EncryptedValue
@@ -10,15 +9,16 @@ import com.sextant.app.automation.WECHAT_PACKAGE
 import java.security.MessageDigest
 import java.util.UUID
 
+/**
+ * 自动记账的持久化：通知事件、分类规则，以及「把一条通知落成流水」这个动作本身。
+ *
+ * 每个方法都是 `suspend`，写入路径都包在事务里：自动记账在监听服务和 Worker 两个后台
+ * 上下文里被调用，落一笔账要同时改 `transactions` 和 `automation_events`。中途失败必须
+ * 整体回滚，否则会留下「流水有了、事件还停在待处理」的一半成功状态，重试时再插一笔重复的账。
+ */
 internal class AutomationStore(private val database: SextantDatabase) {
-  fun loadSettings(): AutomationSettings {
-    val values = mutableMapOf<String, String>()
-    database.readableDatabase.rawQuery(
-      "SELECT key, value FROM app_settings WHERE key LIKE 'automation_%'",
-      emptyArray(),
-    ).use { cursor ->
-      while (cursor.moveToNext()) values[cursor.getString(0)] = cursor.getString(1)
-    }
+  suspend fun loadSettings(): AutomationSettings {
+    val values = database.appSettingDao().listAutomationSettings().associate { it.key to it.value }
     return AutomationSettings(
       enabled = values[KEY_ENABLED].toBooleanSetting(),
       wechatEnabled = values[KEY_WECHAT].toBooleanSetting(default = true),
@@ -27,171 +27,175 @@ internal class AutomationStore(private val database: SextantDatabase) {
     )
   }
 
-  fun updateSettings(settings: AutomationSettings) {
+  suspend fun updateSettings(settings: AutomationSettings) {
     val values = mapOf(
       KEY_ENABLED to settings.enabled.asSetting(),
       KEY_WECHAT to settings.wechatEnabled.asSetting(),
       KEY_ALIPAY to settings.alipayEnabled.asSetting(),
       KEY_RESULT_NOTIFICATIONS to settings.resultNotificationsEnabled.asSetting(),
     )
-    val db = database.writableDatabase
-    db.beginTransaction()
-    try {
+    database.withTransaction {
       values.forEach { (key, value) ->
-        db.execSQL("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", arrayOf(key, value))
+        database.appSettingDao().upsert(AppSettingEntity(key, value))
       }
-      db.setTransactionSuccessful()
-    } finally {
-      db.endTransaction()
     }
   }
 
-  fun capture(notification: CapturedNotification, encrypted: EncryptedValue): String? {
+  /**
+   * 记下一条通知，返回事件 id；同一条通知重复投递时返回 null。
+   *
+   * 幂等靠 `eventKey` 上的唯一索引加 `INSERT OR IGNORE`，而不是「先查再插」：
+   * 监听服务可能在短时间内被系统连着重启，先查再插会在这两步之间漏进第二行。
+   */
+  suspend fun capture(notification: CapturedNotification, encrypted: EncryptedValue): String? {
     val id = UUID.randomUUID().toString()
     val eventKey = sha256("${notification.sourcePackage}|${notification.notificationKey}|${notification.postedAt}")
     val payloadHash = sha256(notification.normalizedText())
-    val values = ContentValues().apply {
-      put("id", id)
-      put("eventKey", eventKey)
-      put("sourcePackage", notification.sourcePackage)
-      put("notificationKey", notification.notificationKey)
-      put("postedAt", notification.postedAt)
-      put("payloadHash", payloadHash)
-      put("encryptedPayload", encrypted.ciphertext)
-      put("payloadIv", encrypted.iv)
-      put("status", AutomationEventStatus.Captured.dbValue)
-      put("createdAt", System.currentTimeMillis())
-    }
-    val result = database.writableDatabase.insertWithOnConflict(
-      "automation_events",
-      null,
-      values,
-      SQLiteDatabase.CONFLICT_IGNORE,
+    val inserted = database.automationEventDao().insertIgnoringDuplicates(
+      AutomationEventEntity(
+        id = id,
+        eventKey = eventKey,
+        sourcePackage = notification.sourcePackage,
+        notificationKey = notification.notificationKey,
+        postedAt = notification.postedAt,
+        payloadHash = payloadHash,
+        encryptedPayload = encrypted.ciphertext,
+        payloadIv = encrypted.iv,
+        status = AutomationEventStatus.Captured,
+        parser = null,
+        providerReference = null,
+        failureCode = null,
+        parsedSummary = null,
+        transactionId = null,
+        createdAt = System.currentTimeMillis(),
+        processedAt = null,
+      ),
     )
-    return if (result == -1L) null else id
+    return if (inserted == -1L) null else id
   }
 
-  fun getEvent(id: String): StoredAutomationEvent? = database.readableDatabase.rawQuery(
-    """
-    SELECT id, sourcePackage, notificationKey, postedAt, encryptedPayload, payloadIv, status
-    FROM automation_events WHERE id = ?
-    """.trimIndent(),
-    arrayOf(id),
-  ).use { cursor ->
-    if (!cursor.moveToFirst()) return@use null
-    StoredAutomationEvent(
-      id = cursor.getString(0),
-      sourcePackage = cursor.getString(1),
-      notificationKey = cursor.getString(2),
-      postedAt = cursor.getLong(3),
-      encrypted = if (cursor.isNull(4) || cursor.isNull(5)) null else EncryptedValue(cursor.getBlob(4), cursor.getBlob(5)),
-      status = cursor.getString(6).toAutomationEventStatus(),
-    )
-  }
+  suspend fun getEvent(id: String): StoredAutomationEvent? =
+    database.automationEventDao().findById(id)?.toStoredEvent()
 
-  fun markFailed(id: String, failureCode: String, clearPayload: Boolean = false) {
+  suspend fun markFailed(id: String, failureCode: String, clearPayload: Boolean = false) {
     updateEvent(id, AutomationEventStatus.Failed, failureCode = failureCode, clearPayload = clearPayload)
   }
 
-  fun markCapturedForRetry(id: String): Boolean {
-    val values = ContentValues().apply {
-      put("status", AutomationEventStatus.Captured.dbValue)
-      putNull("failureCode")
-      putNull("processedAt")
-    }
-    return database.writableDatabase.update(
-      "automation_events",
-      values,
-      "id = ? AND status = ? AND encryptedPayload IS NOT NULL",
-      arrayOf(id, AutomationEventStatus.Failed.dbValue),
+  /**
+   * 把失败事件退回待处理。
+   *
+   * 原始载荷已经被保留期清掉的事件不会退回：那种重试注定失败，不如让这里返回 false，
+   * 界面上直接告诉用户「原通知已过期」。
+   */
+  suspend fun markCapturedForRetry(id: String): Boolean =
+    database.automationEventDao().markCapturedForRetry(
+      id = id,
+      capturedStatus = AutomationEventStatus.Captured,
+      failedStatus = AutomationEventStatus.Failed,
     ) == 1
-  }
 
-  fun postCandidate(eventId: String, sourcePackage: String, candidate: ParsedTransactionCandidate): PostedTransaction? {
-    val db = database.writableDatabase
+  /**
+   * 把已解析的通知落成一笔流水。
+   *
+   * 三道闸门顺序固定：先按支付平台的交易号去重，再看这个事件是否已经出过流水，最后才插入。
+   * 前两道任意一道命中都只把事件标记成对应状态，不会重复记账。
+   *
+   * 返回 null 表示「这次没有新增流水」（重复或已处理），调用方据此决定要不要发结果通知。
+   */
+  suspend fun postCandidate(
+    eventId: String,
+    sourcePackage: String,
+    candidate: ParsedTransactionCandidate,
+  ): PostedTransaction? = database.withTransaction {
+    val events = database.automationEventDao()
     val now = System.currentTimeMillis()
-    db.beginTransaction()
-    try {
-      if (candidate.providerReference != null && providerReferenceExists(db, sourcePackage, candidate.providerReference, eventId)) {
-        updateEventInTransaction(db, eventId, AutomationEventStatus.Duplicate, candidate.parser, "provider_reference_duplicate", null, null, true)
-        db.setTransactionSuccessful()
-        return null
-      }
-      if (eventAlreadyPosted(db, eventId)) {
-        db.setTransactionSuccessful()
-        return null
-      }
 
-      val paymentMethodId = findPaymentMethodId(db, sourcePackage)
-      val categoryId = findCategoryId(db, sourcePackage, candidate)
-      val transactionId = UUID.randomUUID().toString()
-      db.execSQL(
-        """
-        INSERT INTO transactions
-          (id, categoryId, paymentMethodId, amountCents, type, description, transactionDate,
-           createdAt, updatedAt, entryOrigin, automationKind, sourceEventId, isUserEdited)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'notification', ?, ?, 0)
-        """.trimIndent(),
-        arrayOf<Any?>(
-          transactionId,
-          categoryId,
-          paymentMethodId,
-          candidate.amountCents,
-          candidate.direction.dbValue,
-          candidate.description.trim().take(120),
-          candidate.occurredAt,
-          now,
-          now,
-          candidate.kind.dbValue,
-          eventId,
-        ),
+    if (candidate.providerReference != null &&
+      events.providerReferenceExists(sourcePackage, candidate.providerReference, eventId)
+    ) {
+      events.updateStatus(
+        id = eventId,
+        status = AutomationEventStatus.Duplicate,
+        processedAt = now,
+        parser = candidate.parser,
+        failureCode = "provider_reference_duplicate",
+        setFailureCode = true,
+        parsedSummary = null,
+        transactionId = null,
+        setTransactionId = false,
+        providerReference = null,
+        clearPayload = true,
       )
-      val categoryName = categoryId?.let { findCategoryName(db, it) } ?: "未分类"
-      val parsedSummary = "${candidate.direction.dbValue}|${candidate.kind.dbValue}|${candidate.amountCents}|$categoryName"
-      updateEventInTransaction(
-        db,
-        eventId,
-        AutomationEventStatus.Posted,
-        candidate.parser,
-        null,
-        parsedSummary,
-        transactionId,
-        true,
-        candidate.providerReference,
-      )
-      db.setTransactionSuccessful()
-      return PostedTransaction(transactionId, candidate.direction, candidate.amountCents, candidate.description, categoryName, now)
-    } finally {
-      db.endTransaction()
+      return@withTransaction null
     }
+
+    if (database.transactionDao().existsForSourceEvent(eventId)) {
+      return@withTransaction null
+    }
+
+    val paymentMethodId = findPaymentMethodId(sourcePackage)
+    val categoryId = findCategoryId(sourcePackage, candidate)
+    val transactionId = UUID.randomUUID().toString()
+    database.transactionDao().insert(
+      TransactionEntity(
+        id = transactionId,
+        categoryId = categoryId,
+        paymentMethodId = paymentMethodId,
+        amountCents = candidate.amountCents,
+        type = candidate.direction,
+        description = candidate.description.trim().take(120),
+        transactionDate = candidate.occurredAt,
+        createdAt = now,
+        updatedAt = now,
+        entryOrigin = EntryOrigin.Notification,
+        automationKind = candidate.kind,
+        sourceEventId = eventId,
+        isUserEdited = false,
+      ),
+    )
+    val categoryName = categoryId?.let { database.categoryDao().findNameById(it) } ?: "未分类"
+    events.updateStatus(
+      id = eventId,
+      status = AutomationEventStatus.Posted,
+      processedAt = now,
+      parser = candidate.parser,
+      failureCode = null,
+      setFailureCode = true,
+      parsedSummary = "${candidate.direction.storageValue()}|${candidate.kind.storageValue()}|${candidate.amountCents}|$categoryName",
+      transactionId = transactionId,
+      setTransactionId = true,
+      providerReference = candidate.providerReference,
+      clearPayload = true,
+    )
+    PostedTransaction(transactionId, candidate.direction, candidate.amountCents, candidate.description, categoryName, now)
   }
 
-  fun undoAutomatedTransaction(transactionId: String, expectedUpdatedAt: Long? = null): Boolean {
-    val db = database.writableDatabase
-    db.beginTransaction()
-    try {
-      val row = db.rawQuery(
-        "SELECT sourceEventId, updatedAt, isUserEdited, entryOrigin FROM transactions WHERE id = ?",
-        arrayOf(transactionId),
-      ).use { cursor ->
-        if (!cursor.moveToFirst()) null else UndoRow(
-          cursor.getString(0), cursor.getLong(1), cursor.getInt(2) == 1, cursor.getString(3),
+  /**
+   * 撤销一笔自动入账的流水。
+   *
+   * 三个前提缺一不可：它确实来自通知、用户没有手动改过、`updatedAt` 与通知里那份一致。
+   * 最后一条是给「通知里点了撤销，但用户刚在界面上编辑过这笔账」准备的——时间戳对不上
+   * 就拒绝，宁可撤销失败，也不能删掉用户刚改过的数据。
+   */
+  suspend fun undoAutomatedTransaction(transactionId: String, expectedUpdatedAt: Long? = null): Boolean =
+    database.withTransaction {
+      val row = database.transactionDao().findById(transactionId) ?: return@withTransaction false
+      if (row.entryOrigin != EntryOrigin.Notification || row.isUserEdited) return@withTransaction false
+      if (expectedUpdatedAt != null && row.updatedAt != expectedUpdatedAt) return@withTransaction false
+
+      database.transactionDao().deleteById(transactionId)
+      // sourceEventId 一定非空：能走到这里的行都带通知来源。
+      row.sourceEventId?.let { eventId ->
+        database.automationEventDao().markUndone(
+          id = eventId,
+          status = AutomationEventStatus.Undone,
+          processedAt = System.currentTimeMillis(),
         )
-      } ?: return false
-      if (row.origin != "notification" || row.isUserEdited || (expectedUpdatedAt != null && row.updatedAt != expectedUpdatedAt)) return false
-      db.delete("transactions", "id = ?", arrayOf(transactionId))
-      db.execSQL(
-        "UPDATE automation_events SET status = ?, transactionId = NULL, processedAt = ? WHERE id = ?",
-        arrayOf<Any>(AutomationEventStatus.Undone.dbValue, System.currentTimeMillis(), row.eventId),
-      )
-      db.setTransactionSuccessful()
-      return true
-    } finally {
-      db.endTransaction()
+      }
+      true
     }
-  }
 
-  fun saveRule(
+  suspend fun saveRule(
     sourcePackage: String,
     direction: TransactionType,
     kind: AutomationKind,
@@ -201,141 +205,97 @@ internal class AutomationStore(private val database: SextantDatabase) {
     val normalized = normalizePattern(pattern)
     require(normalized.isNotBlank()) { "分类规则不能为空" }
     val now = System.currentTimeMillis()
-    database.writableDatabase.execSQL(
-      """
-      INSERT INTO classification_rules
-        (id, sourcePackage, direction, automationKind, matchMode, pattern, categoryId, priority, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, 'contains', ?, ?, 100, ?, ?)
-      """.trimIndent(),
-      arrayOf<Any>(UUID.randomUUID().toString(), sourcePackage, direction.dbValue, kind.dbValue, normalized, categoryId, now, now),
+    database.classificationRuleDao().insert(
+      ClassificationRuleEntity(
+        id = UUID.randomUUID().toString(),
+        sourcePackage = sourcePackage,
+        direction = direction,
+        automationKind = kind,
+        matchMode = "contains",
+        pattern = normalized,
+        categoryId = categoryId,
+        priority = 100,
+        createdAt = now,
+        updatedAt = now,
+      ),
     )
   }
 
-  fun listRecentEvents(limit: Int = 30): List<AutomationEventSummary> {
-    val rows = mutableListOf<AutomationEventSummary>()
-    database.readableDatabase.rawQuery(
-      """
-      SELECT id, sourcePackage, postedAt, status, parser, failureCode, parsedSummary, transactionId
-      FROM automation_events ORDER BY createdAt DESC LIMIT ?
-      """.trimIndent(),
-      arrayOf(limit.toString()),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        rows += AutomationEventSummary(
-          cursor.getString(0),
-          cursor.getString(1),
-          cursor.getLong(2),
-          cursor.getString(3).toAutomationEventStatus(),
-          cursor.stringOrNull(4),
-          cursor.stringOrNull(5),
-          cursor.stringOrNull(6),
-          cursor.stringOrNull(7),
-        )
-      }
+  suspend fun listRecentEvents(limit: Int = 30): List<AutomationEventSummary> =
+    database.automationEventDao().listRecentSummaries(limit)
+
+  /**
+   * 按保留期清理历史事件。
+   *
+   * 分两步：先丢掉超过 7 天的原始载荷（通知内容里最敏感的部分），再删掉超过 90 天的
+   * 已结案事件。仍停在 `captured` 的事件不删——它还在等重试，删了就再补不回来。
+   */
+  suspend fun cleanup(now: Long = System.currentTimeMillis()) {
+    val events = database.automationEventDao()
+    database.withTransaction {
+      events.clearPayloadsOlderThan(now - RAW_RETENTION_MILLIS)
+      events.deleteOlderThan(now - AUDIT_RETENTION_MILLIS, keepStatus = AutomationEventStatus.Captured)
     }
-    return rows
   }
 
-  fun cleanup(now: Long = System.currentTimeMillis()) {
-    val db = database.writableDatabase
-    db.execSQL(
-      "UPDATE automation_events SET encryptedPayload = NULL, payloadIv = NULL WHERE createdAt < ?",
-      arrayOf(now - RAW_RETENTION_MILLIS),
-    )
-    db.delete("automation_events", "createdAt < ? AND status != ?", arrayOf((now - AUDIT_RETENTION_MILLIS).toString(), AutomationEventStatus.Captured.dbValue))
-  }
-
-  private fun updateEvent(
+  private suspend fun updateEvent(
     id: String,
     status: AutomationEventStatus,
     parser: String? = null,
     failureCode: String? = null,
     clearPayload: Boolean = false,
   ) {
-    val db = database.writableDatabase
-    updateEventInTransaction(db, id, status, parser, failureCode, null, null, clearPayload)
+    database.automationEventDao().updateStatus(
+      id = id,
+      status = status,
+      processedAt = System.currentTimeMillis(),
+      parser = parser,
+      failureCode = failureCode,
+      // 只有显式给了 failureCode 才写它；没给就保留原值。
+      setFailureCode = failureCode != null,
+      parsedSummary = null,
+      transactionId = null,
+      setTransactionId = false,
+      providerReference = null,
+      clearPayload = clearPayload,
+    )
   }
 
-  private fun updateEventInTransaction(
-    db: SQLiteDatabase,
-    id: String,
-    status: AutomationEventStatus,
-    parser: String?,
-    failureCode: String?,
-    parsedSummary: String?,
-    transactionId: String?,
-    clearPayload: Boolean,
-    providerReference: String? = null,
-  ) {
-    val values = ContentValues().apply {
-      put("status", status.dbValue)
-      put("processedAt", System.currentTimeMillis())
-      if (parser != null) put("parser", parser)
-      if (failureCode == null) putNull("failureCode") else put("failureCode", failureCode)
-      if (parsedSummary != null) put("parsedSummary", parsedSummary)
-      if (transactionId != null) put("transactionId", transactionId)
-      if (providerReference != null) put("providerReference", providerReference)
-      if (clearPayload) {
-        putNull("encryptedPayload")
-        putNull("payloadIv")
-      }
-    }
-    db.update("automation_events", values, "id = ?", arrayOf(id))
-  }
-
-  private fun eventAlreadyPosted(db: SQLiteDatabase, eventId: String): Boolean = db.rawQuery(
-    "SELECT 1 FROM transactions WHERE sourceEventId = ? LIMIT 1",
-    arrayOf(eventId),
-  ).use { it.moveToFirst() }
-
-  private fun providerReferenceExists(db: SQLiteDatabase, sourcePackage: String, reference: String, eventId: String): Boolean = db.rawQuery(
-    "SELECT 1 FROM automation_events WHERE sourcePackage = ? AND providerReference = ? AND id != ? LIMIT 1",
-    arrayOf(sourcePackage, reference, eventId),
-  ).use { it.moveToFirst() }
-
-  private fun findPaymentMethodId(db: SQLiteDatabase, sourcePackage: String): String? {
+  private suspend fun findPaymentMethodId(sourcePackage: String): String? {
     val name = when (sourcePackage) {
       WECHAT_PACKAGE -> "微信"
       ALIPAY_PACKAGE -> "支付宝"
       else -> return null
     }
-    return db.rawQuery(
-      "SELECT id FROM payment_methods WHERE name = ? ORDER BY isActive DESC, createdAt ASC LIMIT 1",
-      arrayOf(name),
-    ).use { if (it.moveToFirst()) it.getString(0) else null }
+    return database.paymentMethodDao().findIdForAutomation(name)
   }
 
-  private fun findCategoryId(db: SQLiteDatabase, sourcePackage: String, candidate: ParsedTransactionCandidate): String? {
-    val matchText = normalizePattern(listOfNotNull(candidate.merchant, candidate.counterparty, candidate.description).joinToString(" "))
-    db.rawQuery(
-      """
-      SELECT r.categoryId, r.pattern, r.matchMode
-      FROM classification_rules r
-      JOIN categories c ON c.id = r.categoryId AND c.isActive = 1
-      WHERE r.sourcePackage = ? AND r.direction = ? AND r.automationKind = ? AND c.type = ?
-      ORDER BY r.priority DESC, r.updatedAt DESC
-      """.trimIndent(),
-      arrayOf(sourcePackage, candidate.direction.dbValue, candidate.kind.dbValue, candidate.direction.dbValue),
-    ).use { cursor ->
-      while (cursor.moveToNext()) {
-        val pattern = cursor.getString(1)
-        val matches = if (cursor.getString(2) == "exact") matchText == pattern else matchText.contains(pattern)
-        if (matches) return cursor.getString(0)
-      }
-    }
+  /**
+   * 给一笔通知找分类：先按用户存的规则匹配，再退回通知里给出的分类提示。
+   *
+   * 规则匹配只能在内存里做：pattern 的语义是「标准化之后的子串包含」，SQLite 没有等价
+   * 表达式，硬塞进 SQL 只会把规则语义拆到两个地方。候选集已经由 SQL 收窄到同一个支付
+   * 应用、同一个方向、同一类事件，条数很少。
+   */
+  private suspend fun findCategoryId(
+    sourcePackage: String,
+    candidate: ParsedTransactionCandidate,
+  ): String? {
+    val matchText = normalizePattern(
+      listOfNotNull(candidate.merchant, candidate.counterparty, candidate.description).joinToString(" "),
+    )
+    val candidates = database.classificationRuleDao().listCandidates(
+      sourcePackage = sourcePackage,
+      direction = candidate.direction,
+      automationKind = candidate.kind,
+    )
+    candidates.firstOrNull { rule ->
+      if (rule.matchMode == "exact") matchText == rule.pattern else matchText.contains(rule.pattern)
+    }?.let { return it.categoryId }
+
     val hint = candidate.categoryHint?.trim()?.takeIf(String::isNotBlank) ?: return null
-    return db.rawQuery(
-      "SELECT id FROM categories WHERE name = ? AND type = ? AND isActive = 1 ORDER BY parentCategoryId IS NULL ASC LIMIT 1",
-      arrayOf(hint, candidate.direction.dbValue),
-    ).use { if (it.moveToFirst()) it.getString(0) else null }
+    return database.categoryDao().findIdByNameAndType(hint, candidate.direction)
   }
-
-  private fun findCategoryName(db: SQLiteDatabase, categoryId: String): String? = db.rawQuery(
-    "SELECT name FROM categories WHERE id = ?",
-    arrayOf(categoryId),
-  ).use { if (it.moveToFirst()) it.getString(0) else null }
-
-  private data class UndoRow(val eventId: String, val updatedAt: Long, val isUserEdited: Boolean, val origin: String)
 
   private companion object {
     const val KEY_ENABLED = "automation_enabled"
@@ -365,21 +325,29 @@ internal data class PostedTransaction(
   val updatedAt: Long,
 )
 
-private val TransactionType.dbValue: String
-  get() = when (this) {
-    TransactionType.Expense -> "expense"
-    TransactionType.Income -> "income"
-    TransactionType.Transfer -> "transfer"
-  }
+private fun AutomationEventEntity.toStoredEvent() = StoredAutomationEvent(
+  id = id,
+  sourcePackage = sourcePackage,
+  notificationKey = notificationKey,
+  postedAt = postedAt,
+  encrypted = if (encryptedPayload == null || payloadIv == null) {
+    null
+  } else {
+    EncryptedValue(encryptedPayload, payloadIv)
+  },
+  status = status,
+)
 
-private val AutomationKind.dbValue: String get() = name.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
-private val AutomationEventStatus.dbValue: String get() = name.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
-private fun String.toAutomationEventStatus(): AutomationEventStatus = AutomationEventStatus.entries.firstOrNull {
-  it.dbValue == this
-} ?: AutomationEventStatus.Failed
+private fun TransactionType.storageValue(): String = when (this) {
+  TransactionType.Expense -> "expense"
+  TransactionType.Income -> "income"
+  TransactionType.Transfer -> "transfer"
+}
+
+private fun AutomationKind.storageValue(): String = name.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
+
 private fun String?.toBooleanSetting(default: Boolean = false) = this?.toBooleanStrictOrNull() ?: default
 private fun Boolean.asSetting() = toString()
 private fun normalizePattern(value: String) = value.lowercase().replace(Regex("\\s+"), "").trim()
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
   .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-private fun android.database.Cursor.stringOrNull(index: Int): String? = if (isNull(index)) null else getString(index)

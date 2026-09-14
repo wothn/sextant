@@ -9,7 +9,7 @@ Sextant 是一个基于 **Android 原生 Kotlin + Jetpack Compose** 的个人记
 - 分类体系
 - 版本化完整备份与恢复
 
-UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android 原生 `SQLiteOpenHelper` 本地存储。
+UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 **Room**（实体 + DAO + 迁移，schema 导出在 `android/app/schemas/`）做本地持久化。
 
 ## 功能概览
 
@@ -26,7 +26,7 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 Android �
 - Kotlin 2.0
 - Jetpack Compose
 - Material 3
-- Android SQLite
+- Room（KSP 生成 DAO 实现，schema 版本与迁移都在 `data/SextantDatabase.kt`）
 
 ## 快速开始
 

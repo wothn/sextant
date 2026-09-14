@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +60,7 @@ import com.sextant.app.ui.util.futureDayLabel
 import com.sextant.app.ui.util.label
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.launch
 
 /** 时间轴覆盖的天数，也是「近期要扣多少」的口径。 */
 private const val UPCOMING_DAYS = 30L
@@ -83,6 +85,8 @@ fun RecurringPane(
   var editing by remember { mutableStateOf<RecurringExpense?>(null) }
   var creating by remember { mutableStateOf(false) }
   var pendingDelete by remember { mutableStateOf<RecurringExpense?>(null) }
+  // 写周期支出是挂起调用（Room 不允许主线程访问数据库），而编辑器的保存回调不是协程。
+  val scope = rememberCoroutineScope()
   val today = LocalDate.now()
 
   // 按「下一次扣费」排序：已停止和已暂停的没有下一次，统一沉到列表底部。
@@ -136,7 +140,7 @@ fun RecurringPane(
       onDismiss = { creating = false; editing = null },
       onDelete = editing?.let { { pendingDelete = it } },
       onSubmit = { draft: RecurringExpenseDraft ->
-        repository.saveRecurringExpense(editing?.id, draft)
+        scope.launch { repository.saveRecurringExpense(editing?.id, draft) }
         creating = false
         editing = null
         onSaved()
@@ -151,7 +155,7 @@ fun RecurringPane(
       text = { Text("只会删掉这条计划记录，已经记进账本的流水不受影响。") },
       confirmButton = {
         SextantTextButton(onClick = {
-          repository.deleteRecurringExpense(target.id)
+          scope.launch { repository.deleteRecurringExpense(target.id) }
           pendingDelete = null
           editing = null
           onSaved()

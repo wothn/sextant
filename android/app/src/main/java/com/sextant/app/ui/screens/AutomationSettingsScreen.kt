@@ -175,9 +175,11 @@ fun AutomationSettingsScreen(
     }
     item {
       SextantButton(onClick = {
-          val result = runCatching { repository.updateAutomationSettings(draft) }
-          message = result.fold({ "自动记账设置已保存。" }, { it.message ?: "保存失败。" })
-          if (result.isSuccess) onChanged()
+          scope.launch {
+            val result = runCatching { repository.updateAutomationSettings(draft) }
+            message = result.fold({ "自动记账设置已保存。" }, { it.message ?: "保存失败。" })
+            if (result.isSuccess) onChanged()
+          }
         },
         modifier = Modifier.fillMaxWidth(),
       ) { Text("保存设置") }
@@ -199,9 +201,11 @@ fun AutomationSettingsScreen(
             }
             if (event.status == AutomationEventStatus.Failed) {
               SextantOutlinedButton(onClick = {
-                val queued = (context.applicationContext as SextantApplication).automationCoordinator.retry(event.id)
-                message = if (queued) "已重新加入处理队列。" else "原通知已过期，无法重试。"
-                onChanged()
+                scope.launch {
+                  val queued = (context.applicationContext as SextantApplication).automationCoordinator.retry(event.id)
+                  message = if (queued) "已重新加入处理队列。" else "原通知已过期，无法重试。"
+                  onChanged()
+                }
               }) { Text("重试") }
             }
           }

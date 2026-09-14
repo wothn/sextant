@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +50,7 @@ import com.sextant.app.ui.screens.PlansScreen
 import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 @Composable
 fun SextantApp(
@@ -68,6 +70,10 @@ fun SextantApp(
   var lastPaymentMethodId by remember { mutableStateOf<String?>(null) }
   var reloadKey by remember { mutableIntStateOf(0) }
   val quickEntryFab = rememberQuickEntryFabState()
+  // 写下账本的方法都是挂起的（Room 不允许在主线程碰库），而按钮回调不是协程，所以这里
+  // 统一取一个组合作用域：写入在后台跑，界面状态在提交之后照旧立刻更新。写完之后
+  // repository 会通过 changes 触发重载，不需要在这一个个回调里手动刷新。
+  val scope = rememberCoroutineScope()
 
   LaunchedEffect(reloadKey, filter) {
     state = repository.loadState(filter)
@@ -129,7 +135,7 @@ fun SextantApp(
             repository = repository,
             themePreference = themePreference,
             onThemePreferenceChanged = { preference ->
-              repository.setThemePreference(preference)
+              scope.launch { repository.setThemePreference(preference) }
               onThemePreferenceChanged(preference)
             },
             onChanged = { reloadKey++ },
@@ -155,7 +161,9 @@ fun SextantApp(
       initialPaymentMethodId = lastPaymentMethodId,
       onDismiss = { showQuickEntry = false },
       onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate ->
-        repository.addTransaction(type, amountCents, categoryId, paymentMethodId, description, transactionDate)
+        scope.launch {
+          repository.addTransaction(type, amountCents, categoryId, paymentMethodId, description, transactionDate)
+        }
         lastPaymentMethodId = paymentMethodId
         showQuickEntry = false
         reloadKey++
@@ -172,7 +180,9 @@ fun SextantApp(
         pendingDelete = item
       },
       onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate ->
-        repository.updateTransaction(item.transaction.id, type, amountCents, categoryId, paymentMethodId, description, transactionDate)
+        scope.launch {
+          repository.updateTransaction(item.transaction.id, type, amountCents, categoryId, paymentMethodId, description, transactionDate)
+        }
         if (
           item.transaction.entryOrigin == EntryOrigin.Notification &&
           categoryId != null && categoryId != item.transaction.categoryId &&
@@ -209,7 +219,7 @@ fun SextantApp(
       text = { Text("删除后将从流水和统计中移除。") },
       confirmButton = {
         SextantTextButton(onClick = {
-          repository.deleteTransaction(item.transaction.id)
+          scope.launch { repository.deleteTransaction(item.transaction.id) }
           pendingDelete = null
           editingTransaction = null
           reloadKey++
@@ -226,8 +236,10 @@ fun SextantApp(
       text = { Text("以后遇到相似商户或摘要时，自动使用这个分类。规则只作用于相同支付应用和资金方向。") },
       confirmButton = {
         SextantTextButton(onClick = {
-          runCatching {
-            repository.saveClassificationRule(rule.sourcePackage, rule.direction, rule.kind, rule.pattern, rule.categoryId)
+          scope.launch {
+            runCatching {
+              repository.saveClassificationRule(rule.sourcePackage, rule.direction, rule.kind, rule.pattern, rule.categoryId)
+            }
           }
           pendingRule = null
         }) { Text("记住") }

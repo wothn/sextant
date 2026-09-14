@@ -16,6 +16,7 @@ import com.sextant.app.SextantApplication
 import com.sextant.app.data.PostedTransaction
 import com.sextant.app.data.TransactionType
 import java.math.BigDecimal
+import kotlinx.coroutines.launch
 
 internal class AutomationNotifier(private val context: Context) {
   fun showPosted(transaction: PostedTransaction) {
@@ -80,11 +81,20 @@ internal class AutomationNotifier(private val context: Context) {
 }
 
 class AutomationUndoReceiver : BroadcastReceiver() {
+  /**
+   * 通知上的「撤销」。
+   *
+   * 撤销要读一笔流水、删掉它、再把事件状态改回去，全是数据库工作，而 `onReceive` 跑在
+   * 主线程上——所以真正的动作交给应用级作用域，通知上的这条记录则立刻收掉：用户已经
+   * 明确表达了意图，留着一个可能已经失效的「撤销」按钮只会让人再点一次。
+   */
   override fun onReceive(context: Context, intent: Intent) {
     val transactionId = intent.getStringExtra(UNDO_TRANSACTION_ID) ?: return
     val expectedUpdatedAt = intent.getLongExtra(UNDO_EXPECTED_UPDATED_AT, -1L).takeIf { it >= 0 }
     val application = context.applicationContext as SextantApplication
-    application.automationCoordinator.undo(transactionId, expectedUpdatedAt)
+    application.applicationScope.launch {
+      application.automationCoordinator.undo(transactionId, expectedUpdatedAt)
+    }
     context.getSystemService(NotificationManager::class.java).cancel(transactionId.hashCode())
   }
 }

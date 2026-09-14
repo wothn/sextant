@@ -2,6 +2,7 @@ plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.plugin.compose")
   id("org.jetbrains.kotlin.plugin.serialization")
+  id("com.google.devtools.ksp")
 }
 
 /**
@@ -88,6 +89,18 @@ android {
     compose = true
   }
 
+  /**
+   * Room 的 schema 导出。
+   *
+   * 导出的 JSON 是「当前版本的建表语句」的唯一权威记录：迁移测试和以后排查
+   * 「用户库里的表结构和实体对不对得上」都要靠它。关掉导出会让 Room 在编译期报错，
+   * 所以这里显式打开，并把文件提交进版本库。
+   */
+  ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.generateKotlin", "true")
+  }
+
   testOptions {
     unitTests {
       isIncludeAndroidResources = true
@@ -139,6 +152,12 @@ dependencies {
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
   implementation("androidx.work:work-runtime:2.11.2")
+
+  // Room 取代了原来的 SQLiteOpenHelper：实体/DAO/迁移都由编译期校验，
+  // 表结构写错会在构建时就报出来，而不是等到用户打开某个页面才崩。
+  implementation("androidx.room:room-runtime:2.7.0")
+  implementation("androidx.room:room-ktx:2.7.0")
+  ksp("androidx.room:room-compiler:2.7.0")
 
   debugImplementation("androidx.compose.ui:ui-tooling")
 
