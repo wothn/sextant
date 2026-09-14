@@ -16,10 +16,10 @@ import java.util.UUID
  * 下导出的 JSON 是表结构的权威记录。改实体字段时，除了抬版本号，还要补一条
  * [MIGRATION_10_11] 那样的迁移，并在 `SextantDatabaseTest` 里覆盖。
  *
- * 版本号沿用 `SQLiteOpenHelper` 时代的历史：v10 是迁移前的最后一个版本，表结构和 v11
- * 完全一致——Room 只是接管了同一份 schema，没有重建任何表。v10 的老库走
- * [MIGRATION_10_11]（空迁移，只为对齐版本号），更老的库走 [MIGRATION_LEGACY]，它重放
- * 原来 `onUpgrade` 里的分支，把 v1 一路补到当前结构。
+ * 版本号沿用 `SQLiteOpenHelper` 时代的历史：v10 是迁移前的最后一个版本，表和列都和 v11
+ * 一致，差的只有索引——Room 接管的是同一份 schema，没有重建任何表。v10 的老库走
+ * [MIGRATION_10_11]（按 Room 的期望重建三条索引，见下），更老的库走 [MIGRATION_LEGACY]，
+ * 它重放原来 `onUpgrade` 里的分支，把 v1 一路补到当前结构。
  */
 @Database(
   entities = [
