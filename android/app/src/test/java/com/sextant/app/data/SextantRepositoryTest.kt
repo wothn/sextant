@@ -74,6 +74,66 @@ class SextantRepositoryTest {
     }
   }
 
+  /**
+   * 不筛方向就是「全部」。
+   *
+   * 这里守的是一个已经发生过的回归：DAO 的 `(:type = '' OR type = :type)` 一旦被绑成枚举，
+   * 「不筛选」会静默变成「只看支出」——收入流水既不在明细里，也进不了收入侧汇总，
+   * 而首页的按天小计本来就按方向拆开显示收入。
+   */
+  @Test
+  fun unfilteredLedgerKeepsEveryDirectionAndCountsIncomeInTheSummary() = runBlocking {
+    val repository = SextantRepository(context)
+    val seeded = repository.loadState(filter())
+    val expenseCategory = seeded.categories.first { it.type == TransactionType.Expense }
+    val incomeCategory = seeded.categories.first { it.type == TransactionType.Income }
+    repository.addTransaction(TransactionType.Expense, 1_000, expenseCategory.id, null, "午饭", now())
+    repository.addTransaction(TransactionType.Income, 5_000, incomeCategory.id, null, "退款到账", now())
+    repository.addTransaction(TransactionType.Transfer, 300, null, null, "转出到银行卡", now())
+
+    val state = repository.loadState()
+
+    assertEquals(
+      setOf("午饭", "退款到账", "转出到银行卡"),
+      state.transactions.map { it.transaction.description }.toSet(),
+    )
+    assertEquals(
+      setOf(TransactionType.Expense, TransactionType.Income, TransactionType.Transfer),
+      state.transactions.map { it.transaction.type }.toSet(),
+    )
+    // 没有分类的流水按方向给文案，转账不会退化成「未分类」。
+    assertEquals(
+      "转移记录",
+      state.transactions.single { it.transaction.type == TransactionType.Transfer }.categoryName,
+    )
+
+    // 汇总口径：收入必须真的进收入侧，转账两个方向都不算进收支。
+    assertEquals(Summary(incomeCents = 5_000, expenseCents = 1_000), state.monthSummary)
+    assertEquals(Summary(incomeCents = 5_000, expenseCents = 1_000), state.rangeSummary)
+    assertEquals(5_000L, state.todaySummary.incomeCents)
+    assertEquals(3, state.groups.single().items.size)
+  }
+
+  /** 选了具体方向才收窄，三个方向各自可用。 */
+  @Test
+  fun directionFilterNarrowsTheLedgerToThatDirection() = runBlocking {
+    val repository = SextantRepository(context)
+    val seeded = repository.loadState(filter())
+    val expenseCategory = seeded.categories.first { it.type == TransactionType.Expense }
+    val incomeCategory = seeded.categories.first { it.type == TransactionType.Income }
+    repository.addTransaction(TransactionType.Expense, 1_000, expenseCategory.id, null, "午饭", now())
+    repository.addTransaction(TransactionType.Income, 5_000, incomeCategory.id, null, "退款到账", now())
+    repository.addTransaction(TransactionType.Transfer, 300, null, null, "转出到银行卡", now())
+
+    suspend fun descriptions(type: TransactionType?): Set<String> =
+      repository.loadState(filter(type = type)).transactions.map { it.transaction.description }.toSet()
+
+    assertEquals(setOf("午饭", "退款到账", "转出到银行卡"), descriptions(null))
+    assertEquals(setOf("午饭"), descriptions(TransactionType.Expense))
+    assertEquals(setOf("退款到账"), descriptions(TransactionType.Income))
+    assertEquals(setOf("转出到银行卡"), descriptions(TransactionType.Transfer))
+  }
+
   @Test
   fun mergesSubCategoriesIntoTheirRootCategoryAndKeepsTheMonthRowsForDetail() = runBlocking {
     val repository = SextantRepository(context)

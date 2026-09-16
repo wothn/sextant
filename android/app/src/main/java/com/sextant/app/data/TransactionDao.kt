@@ -14,6 +14,11 @@ internal interface TransactionDao {
    *
    * 金额上下限用 `< 0` 当「未设置」：真正的金额永远不小于 0，而这样写可以避免
    * `(:min IS NULL OR …)` 那种写法在 SQLite 里退化成全表扫描。
+   *
+   * 收支方向同样用空串当「全部」，而参数类型必须是存进库里的字面量字符串，不能是
+   * [TransactionType]：传枚举时 Room 会走 TypeConverter 绑成 `"expense"`，
+   * `:type = ''` 便永远不成立，`OR` 的后半段于是把「不筛选方向」静默变成「只看支出」——
+   * 收入流水既进不了明细，也进不了按方向拆分的汇总。
    */
   @Query(
     """
@@ -36,7 +41,7 @@ internal interface TransactionDao {
     query: String,
     categoryId: String,
     paymentMethodId: String,
-    type: TransactionType,
+    type: String,
     minAmountCents: Long,
     maxAmountCents: Long,
   ): List<TransactionEntity>

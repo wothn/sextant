@@ -456,9 +456,11 @@ class SextantRepository(context: Context) {
       query = filter.query.trim(),
       categoryId = filter.categoryId.orEmpty(),
       paymentMethodId = filter.paymentMethodId.orEmpty(),
-      // 未按方向筛选时这个值不会被 SQL 用到（`(:type = '' OR type = :type)` 前半段已经成立），
-      // 但参数本身不能为空，给一个中性值。
-      type = filter.type ?: TransactionType.Expense,
+      // 方向是「传空即不过滤」的筛选项，所以要绑库里的字面量而不是枚举：枚举会被
+      // TypeConverter 绑成 "expense"，`:type = ''` 永远不成立，「全部」就退化成「只看支出」，
+      // 连按方向拆分的月汇总也跟着只算支出。字面量直接复用实体那一份映射，
+      // `BackupStore` / `AutomationStore` 里已经各有一份私有副本，不再抄第三份。
+      type = filter.type?.let { transactionTypeStorageValue(it) }.orEmpty(),
       minAmountCents = filter.minAmountCents ?: -1L,
       maxAmountCents = filter.maxAmountCents ?: -1L,
     ).map { row ->

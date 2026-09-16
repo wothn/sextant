@@ -14,11 +14,7 @@ import androidx.room.TypeConverter
  */
 internal class SextantTypeConverters {
   @TypeConverter
-  fun transactionTypeToStorage(value: TransactionType): String = when (value) {
-    TransactionType.Expense -> "expense"
-    TransactionType.Income -> "income"
-    TransactionType.Transfer -> "transfer"
-  }
+  fun transactionTypeToStorage(value: TransactionType): String = transactionTypeStorageValue(value)
 
   @TypeConverter
   fun transactionTypeFromStorage(value: String?): TransactionType = when (value) {
@@ -60,6 +56,19 @@ internal class SextantTypeConverters {
   @TypeConverter
   fun recurringCycleFromStorage(value: String?): RecurringCycle =
     RecurringCycle.fromStorage(value) ?: RecurringCycle.Monthly
+}
+
+/**
+ * `transactions.type` 存进库里的字面量。
+ *
+ * 单独提出来是因为它不只服务于 Room 的读写：账本里「传空即不过滤」的方向筛选参数也必须
+ * 绑同一个字面量。传枚举时 Room 会走 [SextantTypeConverters.transactionTypeToStorage] 绑成
+ * `"expense"`，SQL 里的 `:type = ''` 于是永远不成立，「全部」就静默退化成「只看支出」。
+ */
+internal fun transactionTypeStorageValue(type: TransactionType): String = when (type) {
+  TransactionType.Expense -> "expense"
+  TransactionType.Income -> "income"
+  TransactionType.Transfer -> "transfer"
 }
 
 /** `RedPacket` → `red_packet`，和迁移前的 `dbValue` 保持逐字一致。 */
