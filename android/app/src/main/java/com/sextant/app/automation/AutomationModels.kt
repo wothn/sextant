@@ -57,7 +57,6 @@ data class ParsedTransactionCandidate(
   val merchant: String? = null,
   val counterparty: String? = null,
   val description: String,
-  val categoryHint: String? = null,
   val providerReference: String? = null,
   val amountEvidence: String,
   val directionEvidence: String,

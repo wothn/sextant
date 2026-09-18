@@ -10,7 +10,7 @@ import java.security.MessageDigest
 import java.util.UUID
 
 /**
- * 自动记账的持久化：通知事件、分类规则，以及「把一条通知落成流水」这个动作本身。
+ * 自动记账的持久化：通知事件，以及「把一条通知落成流水」这个动作本身。
  *
  * 每个方法都是 `suspend`，写入路径都包在事务里：自动记账在监听服务和 Worker 两个后台
  * 上下文里被调用，落一笔账要同时改 `transactions` 和 `automation_events`。中途失败必须
@@ -134,12 +134,13 @@ internal class AutomationStore(private val database: SextantDatabase) {
     }
 
     val paymentMethodId = findPaymentMethodId(sourcePackage)
-    val categoryId = findCategoryId(sourcePackage, candidate)
     val transactionId = UUID.randomUUID().toString()
     database.transactionDao().insert(
       TransactionEntity(
         id = transactionId,
-        categoryId = categoryId,
+        // 自动入账不猜分类：通知正文里没有可靠的商户信息，猜错的分类比「未分类」
+        // 更难被发现和纠正。分类留给用户自己填。
+        categoryId = null,
         paymentMethodId = paymentMethodId,
         amountCents = candidate.amountCents,
         type = candidate.direction,
@@ -153,7 +154,6 @@ internal class AutomationStore(private val database: SextantDatabase) {
         isUserEdited = false,
       ),
     )
-    val categoryName = categoryId?.let { database.categoryDao().findNameById(it) } ?: "未分类"
     events.updateStatus(
       id = eventId,
       status = AutomationEventStatus.Posted,
@@ -161,13 +161,13 @@ internal class AutomationStore(private val database: SextantDatabase) {
       parser = candidate.parser,
       failureCode = null,
       setFailureCode = true,
-      parsedSummary = "${candidate.direction.storageValue()}|${candidate.kind.storageValue()}|${candidate.amountCents}|$categoryName",
+      parsedSummary = "${candidate.direction.storageValue()}|${candidate.kind.storageValue()}|${candidate.amountCents}",
       transactionId = transactionId,
       setTransactionId = true,
       providerReference = candidate.providerReference,
       clearPayload = true,
     )
-    PostedTransaction(transactionId, candidate.direction, candidate.amountCents, candidate.description, categoryName, now)
+    PostedTransaction(transactionId, candidate.direction, candidate.amountCents, candidate.description, now)
   }
 
   /**
@@ -194,32 +194,6 @@ internal class AutomationStore(private val database: SextantDatabase) {
       }
       true
     }
-
-  suspend fun saveRule(
-    sourcePackage: String,
-    direction: TransactionType,
-    kind: AutomationKind,
-    pattern: String,
-    categoryId: String,
-  ) {
-    val normalized = normalizePattern(pattern)
-    require(normalized.isNotBlank()) { "分类规则不能为空" }
-    val now = System.currentTimeMillis()
-    database.classificationRuleDao().insert(
-      ClassificationRuleEntity(
-        id = UUID.randomUUID().toString(),
-        sourcePackage = sourcePackage,
-        direction = direction,
-        automationKind = kind,
-        matchMode = "contains",
-        pattern = normalized,
-        categoryId = categoryId,
-        priority = 100,
-        createdAt = now,
-        updatedAt = now,
-      ),
-    )
-  }
 
   suspend fun listRecentEvents(limit: Int = 30): List<AutomationEventSummary> =
     database.automationEventDao().listRecentSummaries(limit)
@@ -270,33 +244,6 @@ internal class AutomationStore(private val database: SextantDatabase) {
     return database.paymentMethodDao().findIdForAutomation(name)
   }
 
-  /**
-   * 给一笔通知找分类：先按用户存的规则匹配，再退回通知里给出的分类提示。
-   *
-   * 规则匹配只能在内存里做：pattern 的语义是「标准化之后的子串包含」，SQLite 没有等价
-   * 表达式，硬塞进 SQL 只会把规则语义拆到两个地方。候选集已经由 SQL 收窄到同一个支付
-   * 应用、同一个方向、同一类事件，条数很少。
-   */
-  private suspend fun findCategoryId(
-    sourcePackage: String,
-    candidate: ParsedTransactionCandidate,
-  ): String? {
-    val matchText = normalizePattern(
-      listOfNotNull(candidate.merchant, candidate.counterparty, candidate.description).joinToString(" "),
-    )
-    val candidates = database.classificationRuleDao().listCandidates(
-      sourcePackage = sourcePackage,
-      direction = candidate.direction,
-      automationKind = candidate.kind,
-    )
-    candidates.firstOrNull { rule ->
-      if (rule.matchMode == "exact") matchText == rule.pattern else matchText.contains(rule.pattern)
-    }?.let { return it.categoryId }
-
-    val hint = candidate.categoryHint?.trim()?.takeIf(String::isNotBlank) ?: return null
-    return database.categoryDao().findIdByNameAndType(hint, candidate.direction)
-  }
-
   private companion object {
     const val KEY_ENABLED = "automation_enabled"
     const val KEY_WECHAT = "automation_wechat_enabled"
@@ -321,7 +268,6 @@ internal data class PostedTransaction(
   val type: TransactionType,
   val amountCents: Long,
   val description: String,
-  val categoryName: String,
   val updatedAt: Long,
 )
 
@@ -338,16 +284,9 @@ private fun AutomationEventEntity.toStoredEvent() = StoredAutomationEvent(
   status = status,
 )
 
-private fun TransactionType.storageValue(): String = when (this) {
-  TransactionType.Expense -> "expense"
-  TransactionType.Income -> "income"
-  TransactionType.Transfer -> "transfer"
-}
-
 private fun AutomationKind.storageValue(): String = name.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
 
 private fun String?.toBooleanSetting(default: Boolean = false) = this?.toBooleanStrictOrNull() ?: default
 private fun Boolean.asSetting() = toString()
-private fun normalizePattern(value: String) = value.lowercase().replace(Regex("\\s+"), "").trim()
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
   .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }

@@ -51,7 +51,8 @@ internal class AutomationNotifier(private val context: Context) {
       // 包、且早已废弃的软盘图标，解析失败时系统只记一行日志然后画一个空白图标。
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle("已自动记录$direction ${formatAmount(transaction.amountCents)}")
-      .setContentText(listOf(transaction.categoryName, transaction.description).filter(String::isNotBlank).joinToString(" · "))
+      // 正文只有摘要：自动入账不再猜分类，也就没有分类名可展示。
+      .setContentText(transaction.description.takeIf { it.isNotBlank() })
       .setContentIntent(editPendingIntent)
       .setAutoCancel(true)
       .setGroup(GROUP_KEY)

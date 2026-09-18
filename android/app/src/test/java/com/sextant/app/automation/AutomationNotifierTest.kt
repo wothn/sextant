@@ -89,7 +89,6 @@ class AutomationNotifierTest {
     type = TransactionType.Expense,
     amountCents = 3_680,
     description = "梧桐小馆",
-    categoryName = "餐饮",
     updatedAt = 1_700_000_000_000,
   )
 }

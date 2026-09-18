@@ -33,13 +33,8 @@ import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.data.AppState
 import com.sextant.app.data.LedgerFilter
 import com.sextant.app.data.TransactionListItem
-import com.sextant.app.data.AutomationKind
-import com.sextant.app.data.EntryOrigin
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.data.ThemePreference
-import com.sextant.app.data.TransactionType
-import com.sextant.app.automation.ALIPAY_PACKAGE
-import com.sextant.app.automation.WECHAT_PACKAGE
 import com.sextant.app.ui.components.QuickEntryDialog
 import com.sextant.app.ui.navigation.LedgerNavigationBar
 import com.sextant.app.ui.navigation.Tab
@@ -65,7 +60,6 @@ fun SextantApp(
   var showQuickEntry by remember { mutableStateOf(false) }
   var editingTransaction by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingDelete by remember { mutableStateOf<TransactionListItem?>(null) }
-  var pendingRule by remember { mutableStateOf<ClassificationRulePrompt?>(null) }
   var filter by remember { mutableStateOf(LedgerFilter.allTime()) }
   var lastPaymentMethodId by remember { mutableStateOf<String?>(null) }
   var reloadKey by remember { mutableIntStateOf(0) }
@@ -183,29 +177,6 @@ fun SextantApp(
         scope.launch {
           repository.updateTransaction(item.transaction.id, type, amountCents, categoryId, paymentMethodId, description, transactionDate)
         }
-        if (
-          item.transaction.entryOrigin == EntryOrigin.Notification &&
-          categoryId != null && categoryId != item.transaction.categoryId &&
-          item.transaction.automationKind != null
-        ) {
-          val sourcePackage = when (item.paymentMethodName) {
-
-            "微信" -> WECHAT_PACKAGE
-            "支付宝" -> ALIPAY_PACKAGE
-            else -> null
-          }
-          if (sourcePackage != null) {
-
-            pendingRule = ClassificationRulePrompt(
-              sourcePackage = sourcePackage,
-
-              direction = type,
-              kind = item.transaction.automationKind,
-              pattern = description.ifBlank { item.transaction.description },
-              categoryId = categoryId,
-            )
-          }
-        }
         editingTransaction = null
         reloadKey++
       },
@@ -226,25 +197,6 @@ fun SextantApp(
         }) { Text("删除") }
       },
       dismissButton = { SextantTextButton(onClick = { pendingDelete = null }) { Text("取消") } },
-    )
-  }
-
-  pendingRule?.let { rule ->
-    SextantAlertDialog(
-      onDismissRequest = { pendingRule = null },
-      title = { Text("记住这次分类？") },
-      text = { Text("以后遇到相似商户或摘要时，自动使用这个分类。规则只作用于相同支付应用和资金方向。") },
-      confirmButton = {
-        SextantTextButton(onClick = {
-          scope.launch {
-            runCatching {
-              repository.saveClassificationRule(rule.sourcePackage, rule.direction, rule.kind, rule.pattern, rule.categoryId)
-            }
-          }
-          pendingRule = null
-        }) { Text("记住") }
-      },
-      dismissButton = { SextantTextButton(onClick = { pendingRule = null }) { Text("仅本次") } },
     )
   }
 }
@@ -273,11 +225,3 @@ private fun LedgerBottomBar(
     )
   }
 }
-
-private data class ClassificationRulePrompt(
-  val sourcePackage: String,
-  val direction: TransactionType,
-  val kind: AutomationKind,
-  val pattern: String,
-  val categoryId: String,
-)

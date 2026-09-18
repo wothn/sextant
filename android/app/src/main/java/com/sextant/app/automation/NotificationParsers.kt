@@ -28,7 +28,6 @@ object NotificationParserRegistry {
       ?: extractMerchant(content, directionMatch.first)
     val counterparty = ruleMatch?.counterparty.cleanParty()
       ?: extractCounterparty(content, directionMatch.first)
-    val categoryHint = inferCategory(content, directionMatch.first)
     val description = (merchant ?: counterparty).orEmpty()
 
     return LocalParseOutcome.Parsed(
@@ -40,7 +39,6 @@ object NotificationParserRegistry {
         merchant = merchant,
         counterparty = counterparty,
         description = description,
-        categoryHint = categoryHint,
         providerReference = reference,
         amountEvidence = amount.second,
         directionEvidence = directionMatch.second,
@@ -115,14 +113,6 @@ object NotificationParserRegistry {
     content.contains("收款") || content.contains("到账") -> AutomationKind.Receipt
     direction == TransactionType.Expense && content.contains("提现") -> AutomationKind.Withdrawal
     else -> AutomationKind.Purchase
-  }
-
-  private fun inferCategory(content: String, direction: TransactionType): String? {
-    if (direction == TransactionType.Income) {
-      if (content.contains("退款") || content.contains("返现")) return "退款返现"
-      return null
-    }
-    return CATEGORY_KEYWORDS.entries.firstOrNull { (_, words) -> words.any(content::contains) }?.key
   }
 
   private fun extractMerchant(content: String, direction: TransactionType): String? {
@@ -285,15 +275,4 @@ private fun hasConfirmedPaymentSignal(content: String): Boolean =
   CONFIRMED_PAYMENT_PHRASES.any(content::contains) ||
     Regex("一笔\\s*[0-9.,]+\\s*元的(?:支出|收入)").containsMatchIn(content) ||
     Regex("向\\s*[^，,。；;]{1,40}\\s*付款\\s*[¥￥]?\\s*[0-9.,]+").containsMatchIn(content)
-private val CATEGORY_KEYWORDS = linkedMapOf(
-  "正餐" to listOf("餐厅", "饭店", "餐饮", "外卖", "美团", "饿了么"),
-  "奶茶咖啡" to listOf("咖啡", "奶茶", "瑞幸", "星巴克"),
-  "公交地铁" to listOf("地铁", "公交", "乘车码"),
-  "打车" to listOf("滴滴", "打车", "网约车"),
-  "日用品" to listOf("超市", "便利店", "百货"),
-  "通讯网络" to listOf("话费", "宽带", "流量"),
-  "医疗药品" to listOf("医院", "药房", "药店"),
-  "游戏会员" to listOf("会员", "游戏", "视频"),
-  "信用卡还款" to listOf("信用卡还款"),
-)
 private const val MAX_DESCRIPTION_LENGTH = 120

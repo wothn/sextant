@@ -31,7 +31,6 @@ internal class BackupStore(private val database: SextantDatabase) {
       // 自动记账的设置项带着本机的解析偏好，属于敏感配置，不进备份；
       // 校验那一侧同样会拒绝导入带 automation_ 前缀的设置项。
       settings = database.appSettingDao().listBackupSettings().map { BackupSetting(it.key, it.value) },
-      classificationRules = database.classificationRuleDao().listAll().map { it.toBackup() },
     )
     return BackupCodec.encode(document)
   }
@@ -52,11 +51,9 @@ internal class BackupStore(private val database: SextantDatabase) {
         val budgets = database.budgetDao()
         val recurringExpenses = database.recurringExpenseDao()
         val settings = database.appSettingDao()
-        val rules = database.classificationRuleDao()
 
         budgets.deleteAll()
         recurringExpenses.deleteAll()
-        rules.deleteAll()
         database.automationEventDao().deleteAll()
         transactions.deleteAll()
         settings.deleteAll()
@@ -69,7 +66,6 @@ internal class BackupStore(private val database: SextantDatabase) {
         document.budgets.forEach { budgets.insert(it.toEntity()) }
         document.recurringExpenses.forEach { recurringExpenses.insert(it.toEntity()) }
         document.settings.forEach { settings.upsert(AppSettingEntity(it.key, it.value)) }
-        document.classificationRules.forEach { rules.insert(it.toEntity()) }
       }
     } catch (error: Exception) {
       throw BackupException("恢复失败，原有数据未被修改", error)
@@ -224,40 +220,6 @@ private fun BackupRecurringExpense.toEntity() = RecurringExpenseEntity(
   updatedAt = updatedAt,
 )
 
-private fun ClassificationRuleEntity.toBackup() = BackupClassificationRule(
-  id = id,
-  sourcePackage = sourcePackage,
-  direction = direction.storageValue(),
-  automationKind = automationKind.storageValue(),
-  matchMode = matchMode,
-  pattern = pattern,
-  categoryId = categoryId,
-  priority = priority,
-  createdAt = createdAt,
-  updatedAt = updatedAt,
-)
-
-private fun BackupClassificationRule.toEntity() = ClassificationRuleEntity(
-  id = id,
-  sourcePackage = sourcePackage,
-  direction = direction.toTransactionType(),
-  // 校验已经挡掉了未知事件类型，这里再兜一次只是为了拿到非空类型。
-  automationKind = automationKind.toAutomationKind() ?: throw BackupException("自动交易类型无效"),
-  matchMode = matchMode,
-  pattern = pattern,
-  categoryId = categoryId,
-  priority = priority,
-  createdAt = createdAt,
-  updatedAt = updatedAt,
-)
-
-/** 库里存的是 `expense` / `income` / `transfer` 这样的字面量，备份格式沿用同一套。 */
-private fun TransactionType.storageValue(): String = when (this) {
-  TransactionType.Expense -> "expense"
-  TransactionType.Income -> "income"
-  TransactionType.Transfer -> "transfer"
-}
-
 private fun String.toTransactionType(): TransactionType = when (this) {
   "income" -> TransactionType.Income
   "transfer" -> TransactionType.Transfer
@@ -304,7 +266,6 @@ internal object BackupCodec {
     requireUnique(document.budgets.map { it.id }, "预算 ID")
     requireUnique(document.recurringExpenses.map { it.id }, "周期支出 ID")
     requireUnique(document.settings.map { it.key }, "设置项")
-    requireUnique(document.classificationRules.map { it.id }, "分类规则 ID")
 
     val categoryIds = document.categories.mapTo(mutableSetOf()) { it.id }
     val paymentMethodIds = document.paymentMethods.mapTo(mutableSetOf()) { it.id }
@@ -337,13 +298,6 @@ internal object BackupCodec {
       requireBackup(item.key.isNotBlank()) { "设置项名称不能为空" }
       requireBackup(!item.key.startsWith("automation_")) { "备份不能包含自动记账敏感设置" }
     }
-    document.classificationRules.forEach { item ->
-      requireBackup(item.id.isNotBlank() && item.sourcePackage.isNotBlank() && item.pattern.isNotBlank()) { "分类规则信息不完整" }
-      requireBackup(item.direction == "expense" || item.direction == "income") { "分类规则方向无效" }
-      requireBackup(item.automationKind in AUTOMATION_KINDS) { "分类规则事件类型无效" }
-      requireBackup(item.matchMode == "contains" || item.matchMode == "exact") { "分类规则匹配方式无效" }
-      requireBackup(item.categoryId in categoryIds) { "分类规则引用无效" }
-    }
     document.recurringExpenses.forEach { item ->
       requireBackup(item.id.isNotBlank() && item.name.isNotBlank()) { "周期支出信息不完整" }
       requireBackup(item.amountCents > 0) { "周期支出金额无效" }
@@ -371,7 +325,6 @@ internal data class BackupDocument(
   val budgets: List<BackupBudget> = emptyList(),
   val recurringExpenses: List<BackupRecurringExpense> = emptyList(),
   val settings: List<BackupSetting> = emptyList(),
-  val classificationRules: List<BackupClassificationRule> = emptyList(),
 ) {
   fun summary() = BackupSummary(transactions.size, categories.size, paymentMethods.size, budgets.size, recurringExpenses.size)
 }
@@ -413,20 +366,6 @@ internal data class BackupTransaction(
   val entryOrigin: String = "manual",
   val automationKind: String? = null,
   val isUserEdited: Boolean = false,
-)
-
-@Serializable
-internal data class BackupClassificationRule(
-  val id: String,
-  val sourcePackage: String,
-  val direction: String,
-  val automationKind: String,
-  val matchMode: String,
-  val pattern: String,
-  val categoryId: String,
-  val priority: Int,
-  val createdAt: Long,
-  val updatedAt: Long,
 )
 
 @Serializable

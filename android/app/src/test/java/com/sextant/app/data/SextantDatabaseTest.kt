@@ -56,7 +56,7 @@ class SextantDatabaseTest {
     assertTrue(db.hasTable("budgets"))
     assertTrue(db.hasTable("app_settings"))
     assertTrue(db.hasTable("automation_events"))
-    assertTrue(db.hasTable("classification_rules"))
+    assertFalse(db.hasTable("classification_rules"))
     assertTrue(db.hasTable("recurring_expenses"))
     assertTrue(db.hasColumn("transactions", "amountCents"))
     assertTrue(db.hasColumn("transactions", "entryOrigin"))
@@ -75,7 +75,7 @@ class SextantDatabaseTest {
     assertTrue(db.hasIndex("idx_recurring_expenses_active"))
     assertTrue(db.hasIndex("idx_automation_provider_reference"))
     assertTrue(db.hasIndex("idx_automation_status_created"))
-    assertTrue(db.hasIndex("idx_classification_rules_match"))
+    assertFalse(db.hasIndex("idx_classification_rules_match"))
     assertEquals(setOf("银行卡", "微信", "支付宝", "现金"), db.stringSet("SELECT name FROM payment_methods"))
     assertEquals(4L, db.longValue("SELECT COUNT(*) FROM payment_methods WHERE isBuiltIn = 1 AND isActive = 1"))
     assertTrue(db.longValue("SELECT COUNT(*) FROM categories") > 7)
@@ -96,7 +96,7 @@ class SextantDatabaseTest {
     assertEquals(56_789L, db.longValue("SELECT amountCents FROM budgets WHERE id = 'budget-old'"))
     assertTrue(db.hasTable("app_settings"))
     assertTrue(db.hasTable("automation_events"))
-    assertTrue(db.hasTable("classification_rules"))
+    assertFalse(db.hasTable("classification_rules"))
     assertTrue(db.hasTable("recurring_expenses"))
     assertEquals("manual", db.stringValue("SELECT entryOrigin FROM transactions WHERE id = 'transaction-old'"))
     assertTrue(db.hasIndex("idx_transactions_payment_date"))
@@ -123,6 +123,8 @@ class SextantDatabaseTest {
     assertEquals("十版分类", db.stringValue("SELECT name FROM categories WHERE id = 'category-v10'"))
     assertEquals(990L, db.longValue("SELECT amountCents FROM transactions WHERE id = 'transaction-v10'"))
     assertEquals("key-v10", db.stringValue("SELECT eventKey FROM automation_events WHERE id = 'event-v10'"))
+    // 10 → 12 是连着两条迁移：索引对齐之后，分类规则表在第二步被丢掉。
+    assertFalse(db.hasTable("classification_rules"))
   }
 
   /** 迁移不能让唯一约束失效：同一份 eventKey 仍然只能插一行。 */
@@ -138,6 +140,27 @@ class SextantDatabaseTest {
       )
     }
     assertTrue(error.message.orEmpty().contains("UNIQUE", ignoreCase = true))
+  }
+
+  /**
+   * v11 → v12：`classification_rules` 整张表被删掉，账本数据原样保留。
+   *
+   * 起点是真实的 v11 库——建表语句逐字抄自 `android/app/schemas/…/11.json` 的 `createSql`，
+   * 也就是 Room 自己在 v11 上建出来的样子。手抄 schema 时「抄成我以为的样子」是这条用例
+   * 唯一会骗人的方式（见上面 v10 那段）。
+   */
+  @Test
+  fun versionElevenUpgradeDropsClassificationRulesAndKeepsLedgerData() {
+    createVersionElevenDatabase()
+
+    val db = openCurrentDatabase()
+
+    assertFalse("分类规则表必须被删掉", db.hasTable("classification_rules"))
+    assertFalse("它的索引不能留下", db.hasIndex("idx_classification_rules_match"))
+    assertEquals("十一版分类", db.stringValue("SELECT name FROM categories WHERE id = 'category-v11'"))
+    assertEquals(1_100L, db.longValue("SELECT amountCents FROM transactions WHERE id = 'transaction-v11'"))
+    assertEquals("key-v11", db.stringValue("SELECT eventKey FROM automation_events WHERE id = 'event-v11'"))
+    assertTrue(db.hasIndex("idx_transactions_source_event"))
   }
 
   private fun openCurrentDatabase(): SupportSQLiteDatabase {
@@ -218,8 +241,9 @@ class SextantDatabaseTest {
       db.execSQL("CREATE INDEX idx_transactions_type_date ON transactions(type, transactionDate)")
       db.execSQL("CREATE INDEX idx_transactions_category_date ON transactions(categoryId, transactionDate)")
       db.execSQL("CREATE INDEX idx_transactions_payment_date ON transactions(paymentMethodId, transactionDate)")
-      // 三个「和 Room 期望不一致」的细节都要照抄，否则这条用例又只是在验证自己的假设：
-      // 部分索引的 WHERE、分类规则的 priority DESC、以及上面 eventKey 的列内联 UNIQUE。
+      // 三处「和 Room 期望不一致」的细节都要照抄，否则这条用例又只是在验证自己的假设：
+      // 部分索引的 WHERE、分类规则索引的 priority DESC（v12 会把那张表整个删掉，但 v10 的
+      // 库里它就长这样）、以及上面 eventKey 的列内联 UNIQUE。
       db.execSQL("CREATE UNIQUE INDEX idx_transactions_source_event ON transactions(sourceEventId) WHERE sourceEventId IS NOT NULL")
       db.execSQL("CREATE INDEX idx_recurring_expenses_active ON recurring_expenses(isActive, anchorDate)")
       db.execSQL("CREATE UNIQUE INDEX idx_automation_provider_reference ON automation_events(sourcePackage, providerReference) WHERE providerReference IS NOT NULL")
@@ -229,6 +253,41 @@ class SextantDatabaseTest {
       db.execSQL("INSERT INTO transactions (id, categoryId, amountCents, type, transactionDate, createdAt, updatedAt) VALUES ('transaction-v10', 'category-v10', 990, 'expense', 5, 5, 5)")
       db.execSQL("INSERT INTO automation_events (id, eventKey, sourcePackage, notificationKey, postedAt, payloadHash, status, createdAt) VALUES ('event-v10', 'key-v10', 'com.tencent.mm', 'n-v10', 7, 'hash-v10', 'captured', 7)")
       db.version = 10
+    }
+  }
+
+  /**
+   * 一个真实的 v11 库：建表语句逐字抄自 `android/app/schemas/…/11.json` 的 `createSql`。
+   *
+   * Room 是从 v11 开始接管 schema 的，所以真机上的 v11 库要么是新装时由这些语句建出来的，
+   * 要么是从 v10 迁移过来、再被 Room 的 schema 校验放行的——两条路的结构一致，抄这一份
+   * 就是抄磁盘上的真相。
+   */
+  private fun createVersionElevenDatabase() {
+    context.openOrCreateDatabase(DATABASE_NAME, Context.MODE_PRIVATE, null).use { db ->
+      db.execSQL("CREATE TABLE IF NOT EXISTS `categories` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, `color` INTEGER NOT NULL, `includeInSpending` INTEGER NOT NULL DEFAULT 1, `parentCategoryId` TEXT, `isBuiltIn` INTEGER NOT NULL DEFAULT 0, `isActive` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+      db.execSQL("CREATE TABLE IF NOT EXISTS `transactions` (`id` TEXT NOT NULL, `categoryId` TEXT, `paymentMethodId` TEXT, `amountCents` INTEGER NOT NULL, `type` TEXT NOT NULL, `description` TEXT NOT NULL DEFAULT '', `transactionDate` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `entryOrigin` TEXT NOT NULL DEFAULT 'manual', `automationKind` TEXT, `sourceEventId` TEXT, `isUserEdited` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))")
+      db.execSQL("CREATE INDEX IF NOT EXISTS `idx_transactions_date` ON `transactions` (`transactionDate`)")
+      db.execSQL("CREATE INDEX IF NOT EXISTS `idx_transactions_type_date` ON `transactions` (`type`, `transactionDate`)")
+      db.execSQL("CREATE INDEX IF NOT EXISTS `idx_transactions_category_date` ON `transactions` (`categoryId`, `transactionDate`)")
+      db.execSQL("CREATE INDEX IF NOT EXISTS `idx_transactions_payment_date` ON `transactions` (`paymentMethodId`, `transactionDate`)")
+      db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `idx_transactions_source_event` ON `transactions` (`sourceEventId`)")
+      db.execSQL("CREATE TABLE IF NOT EXISTS `payment_methods` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `color` INTEGER NOT NULL, `isBuiltIn` INTEGER NOT NULL DEFAULT 0, `isActive` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+      db.execSQL("CREATE TABLE IF NOT EXISTS `budgets` (`id` TEXT NOT NULL, `categoryId` TEXT NOT NULL, `amountCents` INTEGER NOT NULL, `period` TEXT NOT NULL, `startDate` INTEGER NOT NULL, `alertThreshold` REAL NOT NULL DEFAULT 0.8, `isActive` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`))")
+      db.execSQL("CREATE TABLE IF NOT EXISTS `app_settings` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))")
+      db.execSQL("CREATE TABLE IF NOT EXISTS `recurring_expenses` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `amountCents` INTEGER NOT NULL, `cycle` TEXT NOT NULL, `customDays` INTEGER, `anchorDate` INTEGER NOT NULL, `categoryId` TEXT, `paymentMethodId` TEXT, `endedAt` INTEGER, `isActive` INTEGER NOT NULL DEFAULT 1, `note` TEXT NOT NULL DEFAULT '', `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+      db.execSQL("CREATE INDEX IF NOT EXISTS `idx_recurring_expenses_active` ON `recurring_expenses` (`isActive`, `anchorDate`)")
+      db.execSQL("CREATE TABLE IF NOT EXISTS `automation_events` (`id` TEXT NOT NULL, `eventKey` TEXT NOT NULL, `sourcePackage` TEXT NOT NULL, `notificationKey` TEXT NOT NULL, `postedAt` INTEGER NOT NULL, `payloadHash` TEXT NOT NULL, `encryptedPayload` BLOB, `payloadIv` BLOB, `status` TEXT NOT NULL, `parser` TEXT, `providerReference` TEXT, `failureCode` TEXT, `parsedSummary` TEXT, `transactionId` TEXT, `createdAt` INTEGER NOT NULL, `processedAt` INTEGER, PRIMARY KEY(`id`))")
+      db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_automation_events_eventKey` ON `automation_events` (`eventKey`)")
+      db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `idx_automation_provider_reference` ON `automation_events` (`sourcePackage`, `providerReference`)")
+      db.execSQL("CREATE INDEX IF NOT EXISTS `idx_automation_status_created` ON `automation_events` (`status`, `createdAt`)")
+      db.execSQL("CREATE TABLE IF NOT EXISTS `classification_rules` (`id` TEXT NOT NULL, `sourcePackage` TEXT NOT NULL, `direction` TEXT NOT NULL, `automationKind` TEXT NOT NULL, `matchMode` TEXT NOT NULL, `pattern` TEXT NOT NULL, `categoryId` TEXT NOT NULL, `priority` INTEGER NOT NULL DEFAULT 0, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+      db.execSQL("CREATE INDEX IF NOT EXISTS `idx_classification_rules_match` ON `classification_rules` (`sourcePackage`, `direction`, `automationKind`, `priority`)")
+      db.execSQL("INSERT INTO categories VALUES ('category-v11', '十一版分类', 'expense', 1, 1, NULL, 0, 1, 1)")
+      db.execSQL("INSERT INTO transactions (id, categoryId, amountCents, type, transactionDate, createdAt, updatedAt) VALUES ('transaction-v11', 'category-v11', 1100, 'expense', 5, 5, 5)")
+      db.execSQL("INSERT INTO automation_events (id, eventKey, sourcePackage, notificationKey, postedAt, payloadHash, status, createdAt) VALUES ('event-v11', 'key-v11', 'com.tencent.mm', 'n-v11', 7, 'hash-v11', 'captured', 7)")
+      db.execSQL("INSERT INTO classification_rules VALUES ('rule-v11', 'com.tencent.mm', 'expense', 'purchase', 'contains', '咖啡', 'category-v11', 100, 9, 9)")
+      db.version = 11
     }
   }
 

@@ -194,28 +194,6 @@ internal data class AutomationEventEntity(
   }
 }
 
-@Entity(
-  tableName = "classification_rules",
-  indices = [
-    Index(
-      value = ["sourcePackage", "direction", "automationKind", "priority"],
-      name = "idx_classification_rules_match",
-    ),
-  ],
-)
-internal data class ClassificationRuleEntity(
-  @PrimaryKey @ColumnInfo(name = "id") val id: String,
-  @ColumnInfo(name = "sourcePackage") val sourcePackage: String,
-  @ColumnInfo(name = "direction") val direction: TransactionType,
-  @ColumnInfo(name = "automationKind") val automationKind: AutomationKind,
-  @ColumnInfo(name = "matchMode") val matchMode: String,
-  @ColumnInfo(name = "pattern") val pattern: String,
-  @ColumnInfo(name = "categoryId") val categoryId: String,
-  @ColumnInfo(name = "priority", defaultValue = "0") val priority: Int,
-  @ColumnInfo(name = "createdAt") val createdAt: Long,
-  @ColumnInfo(name = "updatedAt") val updatedAt: Long,
-)
-
 /** 来源列表带一笔流水数：用于「已被流水使用的来源不能删除」这条不变式。 */
 internal data class PaymentMethodWithUsage(
   @Embedded val method: PaymentMethodEntity,

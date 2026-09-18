@@ -23,7 +23,6 @@ class NotificationParsersTest {
     assertEquals(AutomationKind.Purchase, candidate.kind)
     assertEquals(2_350L, candidate.amountCents)
     assertEquals("1234567890", candidate.providerReference)
-    assertEquals("奶茶咖啡", candidate.categoryHint)
   }
 
   @Test
@@ -71,7 +70,6 @@ class NotificationParsersTest {
     assertEquals(TransactionType.Income, candidate.direction)
     assertEquals(AutomationKind.Refund, candidate.kind)
     assertEquals(1_880L, candidate.amountCents)
-    assertEquals("退款返现", candidate.categoryHint)
   }
 
   @Test

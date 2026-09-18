@@ -181,17 +181,6 @@ class SextantRepository(context: Context) {
       .firstOrNull { it.transaction.id == id }
   }
 
-  suspend fun saveClassificationRule(
-    sourcePackage: String,
-    direction: TransactionType,
-    kind: AutomationKind,
-    pattern: String,
-    categoryId: String,
-  ) {
-    automationStore.saveRule(sourcePackage, direction, kind, pattern, categoryId)
-    notifyChanged()
-  }
-
   internal fun notifyChanged() {
     _changes.tryEmit(Unit)
   }
@@ -458,9 +447,8 @@ class SextantRepository(context: Context) {
       paymentMethodId = filter.paymentMethodId.orEmpty(),
       // 方向是「传空即不过滤」的筛选项，所以要绑库里的字面量而不是枚举：枚举会被
       // TypeConverter 绑成 "expense"，`:type = ''` 永远不成立，「全部」就退化成「只看支出」，
-      // 连按方向拆分的月汇总也跟着只算支出。字面量直接复用实体那一份映射，
-      // `BackupStore` / `AutomationStore` 里已经各有一份私有副本，不再抄第三份。
-      type = filter.type?.let { transactionTypeStorageValue(it) }.orEmpty(),
+      // 连按方向拆分的月汇总也跟着只算支出。字面量取自实体那份唯一映射。
+      type = filter.type?.storageValue().orEmpty(),
       minAmountCents = filter.minAmountCents ?: -1L,
       maxAmountCents = filter.maxAmountCents ?: -1L,
     ).map { row ->

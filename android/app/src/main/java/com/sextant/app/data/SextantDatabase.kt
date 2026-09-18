@@ -14,7 +14,7 @@ import java.util.UUID
  *
  * Room 负责建表、版本管理和 schema 校验；[DATABASE_VERSION] 与 `android/app/schemas`
  * 下导出的 JSON 是表结构的权威记录。改实体字段时，除了抬版本号，还要补一条
- * [MIGRATION_10_11] 那样的迁移，并在 `SextantDatabaseTest` 里覆盖。
+ * [MIGRATION_11_12] 那样的迁移，并在 `SextantDatabaseTest` 里覆盖。
  *
  * 版本号沿用 `SQLiteOpenHelper` 时代的历史：v10 是迁移前的最后一个版本，表和列都和 v11
  * 一致，差的只有索引——Room 接管的是同一份 schema，没有重建任何表。v10 的老库走
@@ -30,7 +30,6 @@ import java.util.UUID
     AppSettingEntity::class,
     RecurringExpenseEntity::class,
     AutomationEventEntity::class,
-    ClassificationRuleEntity::class,
   ],
   version = SextantDatabase.DATABASE_VERSION,
   exportSchema = true,
@@ -44,10 +43,9 @@ abstract class SextantDatabase : RoomDatabase() {
   internal abstract fun appSettingDao(): AppSettingDao
   internal abstract fun recurringExpenseDao(): RecurringExpenseDao
   internal abstract fun automationEventDao(): AutomationEventDao
-  internal abstract fun classificationRuleDao(): ClassificationRuleDao
 
   companion object {
-    const val DATABASE_VERSION = 11
+    const val DATABASE_VERSION = 12
 
     private const val DATABASE_NAME = "sextant.db"
     const val THEME_PREFERENCE_KEY = "theme_preference"
@@ -70,7 +68,7 @@ abstract class SextantDatabase : RoomDatabase() {
 
     private fun build(context: Context): SextantDatabase = Room
       .databaseBuilder(context, SextantDatabase::class.java, DATABASE_NAME)
-      .addMigrations(MIGRATION_10_11, MIGRATION_LEGACY)
+      .addMigrations(MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
       .addCallback(SeedCallback)
       // Room 的 AUTOMATIC 在真机上本来就会选 WAL，但那是运行时的选择：显式写下来，
       // 「监听服务写流水的同时页面在读书、两边不互相阻塞」才是这个库的既定行为。
@@ -86,7 +84,7 @@ abstract class SextantDatabase : RoomDatabase() {
      */
     internal fun createForTests(context: Context, name: String = DATABASE_NAME): SextantDatabase =
       Room.databaseBuilder(context.applicationContext, SextantDatabase::class.java, name)
-        .addMigrations(MIGRATION_10_11, MIGRATION_LEGACY)
+        .addMigrations(MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
         .addCallback(SeedCallback)
         .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
         .allowMainThreadQueries()
@@ -110,41 +108,30 @@ abstract class SextantDatabase : RoomDatabase() {
      * v10 → v11：把 v9 建出来的索引对齐 Room 由实体生成的那一套。
      *
      * v10 的表结构和 v11 **不是**完全一致，差的全在索引上，而且只有真机升级才会暴露——
-     * 新装的库走 `onCreate`，由 Room 自己建索引，一切正常。三处差异：
+     * 新装的库走 `onCreate`，由 Room 自己建索引，一切正常。两处差异：
      *
      * 1. `automation_events.eventKey` 在 v9 是**列内联 UNIQUE**，SQLite 为它生成
      *    `sqlite_autoindex_automation_events_1`；实体声明的是一个叫
      *    `index_automation_events_eventKey` 的独立索引。两者语义等价，但 Room 按名字比对
      *    索引集合，对不上就拒绝打开库。改名来回一次会让约束的自动索引被重建，随后新建
      *    同名索引就能真正插进去。
-     * 2. `idx_classification_rules_match` 当年写的是 `priority DESC`，实体上的 `Index`
-     *    声明不出排序方向，Room 生成的是升序。
-     * 3. `idx_transactions_source_event` 与 `idx_automation_provider_reference` 当年是
+     * 2. `idx_transactions_source_event` 与 `idx_automation_provider_reference` 当年是
      *    **部分索引**（带 `WHERE … IS NOT NULL`）。`Index` 也表达不了谓词，Room 期望的是
      *    无谓词的版本。
      *
-     * 这三条都不是「结构其实一样、只是校验太严」：Room 的校验逐项比对列序、排序方向和
+     * 这两条都不是「结构其实一样、只是校验太严」：Room 的校验逐项比对列序、排序方向和
      * 谓词，而它无法表达的东西一律按「没有」来要求。既然表结构由实体定义，索引就以实体
      * 为准——老库这边按 Room 的期望重建。
+     *
+     * 这里本来还有第三处：`idx_classification_rules_match` 当年写的是 `priority DESC`。
+     * v12 把 `classification_rules` 整张表删掉了（见 [MIGRATION_11_12]），这条索引不再需要
+     * 重建——走过这里的库紧接着就会被下一步连表和索引一起丢掉。
      */
     val MIGRATION_10_11 = object : Migration(10, 11) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE automation_events RENAME COLUMN eventKey TO eventKey_legacy")
         db.execSQL("ALTER TABLE automation_events RENAME COLUMN eventKey_legacy TO eventKey")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_automation_events_eventKey ON automation_events(eventKey)")
-        recreateIndex(
-          db = db,
-          table = "classification_rules",
-          name = "idx_classification_rules_match",
-          columns = "sourcePackage, direction, automationKind, priority",
-        )
-        recreateIndex(
-          db = db,
-          table = "transactions",
-          name = "idx_transactions_source_event",
-          columns = "sourceEventId",
-          unique = true,
-        )
         recreateIndex(
           db = db,
           table = "automation_events",
@@ -156,11 +143,28 @@ abstract class SextantDatabase : RoomDatabase() {
     }
 
     /**
+     * v11 → v12：删掉用户自己教的分类规则。
+     *
+     * 这套规则的前提是「通知正文里有商户」，而微信和支付宝的支付通知里根本没有商户——
+     * 规则几乎命中不了，命中了的也多是猜错。整张表连同索引一起删掉，等有了更可靠的解析
+     * 来源（比如无障碍）再重新设计。
+     *
+     * 用户教过的规则随之丢失，这是有意的：留着一张再也读不到的表，只会让下一个读到它的
+     * 人去猜「规则是谁写的、为什么不起作用」。
+     */
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP INDEX IF EXISTS idx_classification_rules_match")
+        db.execSQL("DROP TABLE IF EXISTS classification_rules")
+      }
+    }
+
+    /**
      * 按给定的列序/排序重建一个索引：先删掉老的定义（如果有），再照 Room 的期望建。
      *
-     * 表名显式传进来，不从索引名反推。索引名里带下划线（`idx_classification_rules_match`），
-     * 想靠前缀加第一个下划线切出表名只会得到 `classification`——「按命名约定猜」这种省一个
-     * 参数的写法，代价是多一个只在特定命名下才成立的隐式约定。
+     * 表名显式传进来，不从索引名反推。索引名里带下划线（`idx_automation_provider_reference`），
+     * 想靠前缀加第一个下划线切出表名只会得到 `automation`——而表叫 `automation_events`。
+     * 「按命名约定猜」这种省一个参数的写法，代价是多一个只在特定命名下才成立的隐式约定。
      */
     private fun recreateIndex(
       db: SupportSQLiteDatabase,
@@ -215,7 +219,7 @@ abstract class SextantDatabase : RoomDatabase() {
     """.trimIndent()
 
     /**
-     * 任意旧版本 → 11：重放 `SQLiteOpenHelper` 时代的 `onUpgrade` 分支，再补齐后续版本
+     * 任意旧版本 → 12：重放 `SQLiteOpenHelper` 时代的 `onUpgrade` 分支，再补齐后续版本
      * 才引入的表。
      *
      * 加列走 [addColumnIfMissing]（先 `PRAGMA table_info` 判断），而不是无脑 `ALTER TABLE
@@ -379,25 +383,9 @@ abstract class SextantDatabase : RoomDatabase() {
         )
         """.trimIndent(),
       )
-      db.execSQL(
-        """
-        CREATE TABLE IF NOT EXISTS classification_rules (
-          id TEXT PRIMARY KEY NOT NULL,
-          sourcePackage TEXT NOT NULL,
-          direction TEXT NOT NULL,
-          automationKind TEXT NOT NULL,
-          matchMode TEXT NOT NULL,
-          pattern TEXT NOT NULL,
-          categoryId TEXT NOT NULL,
-          priority INTEGER NOT NULL DEFAULT 0,
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        )
-        """.trimIndent(),
-      )
-      // 这三条索引的列序与排序方向必须和实体上 `Index` 生成的完全一致：`Index` 表达不出
-      // DESC，也表达不出部分索引的谓词，所以 Room 一律按「无排序方向、无谓词」来要求。
-      // 迁移里 [MIGRATION_10_11] 会把老库上带 DESC / WHERE 的版本照这个样子重建。
+      // 这两条索引的列序与排序方向必须和实体上 `Index` 生成的完全一致：`Index` 表达不出
+      // 部分索引的谓词，所以 Room 一律按「无谓词」来要求。迁移里 [MIGRATION_10_11] 会把
+      // 老库上带 WHERE 的版本照这个样子重建。
       db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_automation_events_eventKey ON automation_events(eventKey)")
       db.execSQL(
         """
@@ -406,12 +394,6 @@ abstract class SextantDatabase : RoomDatabase() {
         """.trimIndent(),
       )
       db.execSQL("CREATE INDEX IF NOT EXISTS idx_automation_status_created ON automation_events(status, createdAt)")
-      db.execSQL(
-        """
-        CREATE INDEX IF NOT EXISTS idx_classification_rules_match
-        ON classification_rules(sourcePackage, direction, automationKind, priority)
-        """.trimIndent(),
-      )
     }
 
     /**

@@ -39,12 +39,6 @@ internal interface CategoryDao {
   )
   suspend fun findChildId(name: String, type: TransactionType, parentCategoryId: String): String?
 
-  @Query("SELECT id FROM categories WHERE name = :name AND type = :type AND isActive = 1 ORDER BY parentCategoryId IS NULL ASC LIMIT 1")
-  suspend fun findIdByNameAndType(name: String, type: TransactionType): String?
-
-  @Query("SELECT name FROM categories WHERE id = :id")
-  suspend fun findNameById(id: String): String?
-
   @Insert
   suspend fun insert(category: CategoryEntity)
 

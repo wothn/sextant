@@ -14,7 +14,7 @@ import androidx.room.TypeConverter
  */
 internal class SextantTypeConverters {
   @TypeConverter
-  fun transactionTypeToStorage(value: TransactionType): String = transactionTypeStorageValue(value)
+  fun transactionTypeToStorage(value: TransactionType): String = value.storageValue()
 
   @TypeConverter
   fun transactionTypeFromStorage(value: String?): TransactionType = when (value) {
@@ -59,13 +59,14 @@ internal class SextantTypeConverters {
 }
 
 /**
- * `transactions.type` 存进库里的字面量。
+ * `transactions.type` 在库里、以及备份文件里存的那个字面量。
  *
- * 单独提出来是因为它不只服务于 Room 的读写：账本里「传空即不过滤」的方向筛选参数也必须
- * 绑同一个字面量。传枚举时 Room 会走 [SextantTypeConverters.transactionTypeToStorage] 绑成
- * `"expense"`，SQL 里的 `:type = ''` 于是永远不成立，「全部」就静默退化成「只看支出」。
+ * 提成包级扩展是为了全仓只留这一份映射：账本明细「传空即不过滤」的方向筛选参数必须绑
+ * 同一个字面量，而传枚举时 Room 会走 [SextantTypeConverters.transactionTypeToStorage] 绑成
+ * `"expense"`，SQL 里的 `:type = ''` 就永远不成立，「全部」静默退化成「只看支出」。
+ * `BackupStore` / `AutomationStore` 里原来各有一份私有副本，备份格式沿用同一套取值。
  */
-internal fun transactionTypeStorageValue(type: TransactionType): String = when (type) {
+internal fun TransactionType.storageValue(): String = when (this) {
   TransactionType.Expense -> "expense"
   TransactionType.Income -> "income"
   TransactionType.Transfer -> "transfer"
