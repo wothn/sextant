@@ -66,6 +66,8 @@ fun QuickEntryDialog(
   var showTimePicker by rememberSaveable { mutableStateOf(false) }
   var amountError by rememberSaveable { mutableStateOf(false) }
   var panel by rememberSaveable { mutableStateOf(EntryPanel.Form) }
+  // 分类面板浏览到的父分类。打开面板时回到一级，重新进来不会停在上次钻进去的那一层。
+  var browsingParentId by rememberSaveable { mutableStateOf<String?>(null) }
   val typeCategories = state.categories.filter { it.type == type }
   val selectedCategory = typeCategories.firstOrNull { it.id == categoryId }
   val paymentMethodOptions = state.paymentMethods.toMutableList().apply {
@@ -160,6 +162,7 @@ fun QuickEntryDialog(
                 SextantDetailTile("分类", selectedCategory?.displayName(state.categories) ?: "选择分类",
                   categoryIcon(selectedCategory?.name.orEmpty()), Modifier.weight(1f)) {
                   focus.clearFocus()
+                  browsingParentId = null
                   panel = EntryPanel.Category
                 }
                 SextantDetailTile("来源", selectedMethod?.name ?: "选择来源", Icons.Outlined.AccountBalanceWallet,
@@ -204,7 +207,9 @@ fun QuickEntryDialog(
             }
             EntryPanel.Category -> {
               Text("${type.label}分类", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
-              CategoryBrowser(categories = typeCategories, selectedId = categoryId, onSelect = { category ->
+              CategoryBrowser(categories = typeCategories, parentId = browsingParentId,
+                onParentChange = { browsingParentId = it },
+                selectedId = categoryId, onSelect = { category ->
                 categoryId = category?.id
                 panel = EntryPanel.Form
               })

@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
@@ -42,6 +43,14 @@ fun CategoryManagement(
   var parentForNewChildId by rememberSaveable { mutableStateOf<String?>(null) }
   val parentForNewChild = categories.firstOrNull { it.id == parentForNewChildId }
   var showAddRoot by rememberSaveable { mutableStateOf(false) }
+  // 当前浏览到的层级由这里唯一持有，标题栏和列表都读它：页面标题显示父分类名时，浏览器
+  // 就不再画自己的返回行，屏幕上始终只有一个返回箭头、一个「你在哪」。
+  var browsingParentId by rememberSaveable { mutableStateOf<String?>(null) }
+  val browsingParent = categories.firstOrNull { it.id == browsingParentId }
+  // 浏览到的父分类被停用后，标题栏不能继续停在一个已经不存在的层级上。
+  LaunchedEffect(categories, browsingParentId) {
+    if (browsingParentId != null && browsingParent == null) browsingParentId = null
+  }
   // 写分类是挂起调用（Room 不允许主线程访问数据库），而对话框的 onSave 不是协程。
   val saveAction = rememberSaveAction("categories") {
     showAddRoot = false
@@ -56,26 +65,34 @@ fun CategoryManagement(
         verticalAlignment = Alignment.CenterVertically,
       ) {
         if (onNavigateBack != null) {
-          SextantIconButton(onClick = onNavigateBack) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回设置")
+          SextantIconButton(onClick = { if (browsingParent != null) browsingParentId = null else onNavigateBack() }) {
+            Icon(
+              Icons.AutoMirrored.Outlined.ArrowBack,
+              contentDescription = if (browsingParent != null) "返回全部分类" else "返回设置",
+            )
           }
         }
-        SectionTitle("分类管理")
+        SectionTitle(browsingParent?.name ?: "分类管理")
       }
       SextantTextButton(onClick = { showAddRoot = true }) { Text("新增分类") }
     }
     if (categories.isEmpty()) {
       EmptyCard("暂无分类", "新增收入或支出分类后，就可以在记账时选择。")
     } else {
-      CategoryBrowser(categories = categories, actions = { category ->
-        CategoryActions(
-          category = category,
-          categories = categories,
-          onAddChild = { parentForNewChildId = category.id },
-          onEdit = { editingCategoryId = category.id },
-          onArchive = { saveAction.launch { repository.archiveCategory(category.id) } },
-        )
-      })
+      CategoryBrowser(
+        categories = categories,
+        parentId = browsingParentId,
+        onParentChange = { browsingParentId = it },
+        actions = { category ->
+          CategoryActions(
+            category = category,
+            categories = categories,
+            onAddChild = { parentForNewChildId = category.id },
+            onEdit = { editingCategoryId = category.id },
+            onArchive = { saveAction.launch { repository.archiveCategory(category.id) } },
+          )
+        },
+      )
     }
   }
   if (showAddRoot) {

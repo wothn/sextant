@@ -91,6 +91,8 @@ fun RecurringExpenseEditor(
   var note by rememberSaveable(editing?.id) { mutableStateOf(editing?.note.orEmpty()) }
   var isActive by rememberSaveable(editing?.id) { mutableStateOf(editing?.isActive ?: true) }
   var panel by rememberSaveable { mutableStateOf(RecurringPanel.Form) }
+  // 分类面板浏览到的父分类。打开面板时回到一级，重新进来不会停在上次钻进去的那一层。
+  var browsingParentId by rememberSaveable { mutableStateOf<String?>(null) }
   var dateTarget by rememberSaveable { mutableStateOf<DateTarget?>(null) }
 
   val expenseCategories = state.categories.filter { it.type == TransactionType.Expense }
@@ -227,6 +229,7 @@ fun RecurringExpenseEditor(
                   Modifier.weight(1f),
                 ) {
                   focus.clearFocus()
+                  browsingParentId = null
                   panel = RecurringPanel.Category
                 }
                 SextantDetailTile(
@@ -274,6 +277,8 @@ fun RecurringExpenseEditor(
               Text("这笔周期支出记入哪个分类", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
               CategoryBrowser(
                 categories = expenseCategories,
+                parentId = browsingParentId,
+                onParentChange = { browsingParentId = it },
                 selectedId = categoryId,
                 onSelect = { category ->
                   categoryId = category?.id

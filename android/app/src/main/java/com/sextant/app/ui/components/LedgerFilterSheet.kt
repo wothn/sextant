@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -486,6 +487,7 @@ private fun FilterCategoryPage(
   onSelect: (String?) -> Unit,
 ) {
   BackHandler { onBack() }
+  var browsingParentId by rememberSaveable { mutableStateOf<String?>(null) }
   Column(modifier.navigationBarsPadding()) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
       SextantIconButton(onClick = onBack) {
@@ -497,7 +499,9 @@ private fun FilterCategoryPage(
     Text("选择后返回筛选，点击查看结果生效", Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
       style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-      CategoryBrowser(categories = categories, selectedId = selectedId, allowAll = true,
+      CategoryBrowser(categories = categories, parentId = browsingParentId,
+        onParentChange = { browsingParentId = it },
+        selectedId = selectedId, allowAll = true,
         onSelect = { onSelect(it?.id) })
     }
   }
