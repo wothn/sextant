@@ -8,7 +8,6 @@ import com.sextant.app.ui.components.SextantRadioButton
 import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.ui.components.SextantTextButton
 
-import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,19 +41,21 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
+import com.sextant.app.data.BackupCoordinator
 import com.sextant.app.data.BackupException
+import com.sextant.app.data.BackupOutcome
 import com.sextant.app.data.BackupSummary
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.data.ThemePreference
@@ -64,49 +65,29 @@ import com.sextant.app.ui.theme.SextantColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
   state: AppState,
   repository: SextantRepository,
+  backupCoordinator: BackupCoordinator,
   themePreference: ThemePreference,
   onThemePreferenceChanged: (ThemePreference) -> Unit,
   onChanged: () -> Unit,
 ) {
-  var destination by remember { mutableStateOf(SettingsDestination.Overview) }
-  var operationMessage by remember { mutableStateOf<DataOperationMessage?>(null) }
+  // 设置里的子页面同样是「用户在哪儿」：用 remember 存的话，旋转屏幕或分屏改变窗口大小
+  // 触发的 Activity 重建会把它弹回设置首页。
+  var destination by rememberSaveable { mutableStateOf(SettingsDestination.Overview) }
   var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
   var showThemeDialog by remember { mutableStateOf(false) }
-  var isBusy by remember { mutableStateOf(false) }
-  val context = LocalContext.current
-  val scope = rememberCoroutineScope()
-
-  // 备份内容本身是挂起调用：导出要读全库，恢复还要在一个事务里整体替换。Room 的挂起
-  // 查询自己会切到数据库线程，所以这里不需要再包一层 IO——只有读写文件那一小段要显式切。
-  fun runExport(uri: Uri, content: suspend () -> String, successMessage: String, addBom: Boolean = false) {
-    isBusy = true
-    scope.launch {
-      val result = runCatching {
-        val text = content()
-        withContext(Dispatchers.IO) {
-          context.writeText(uri, text, addBom)
-        }
-      }
-      operationMessage = result.fold(
-        onSuccess = { DataOperationMessage("导出完成", successMessage) },
-        onFailure = { DataOperationMessage("导出失败", it.toDataErrorMessage()) },
-      )
-      isBusy = false
-    }
-  }
+  // 备份的进行状态与结果放在应用级的协调者里，而不是这里的组合状态：读写文件、替换账本都
+  // 比这一屏界面活得久，旋转时不该被取消，也不该丢掉「导出完成」这类提示。
+  val backupState by backupCoordinator.state.collectAsState()
 
   val backupExportLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.CreateDocument("application/json"),
   ) { uri ->
-    if (uri != null) runExport(uri, { repository.exportBackup() }, "完整账本备份已保存。")
+    if (uri != null) backupCoordinator.export(uri)
   }
   val backupImportLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.OpenDocument(),
@@ -123,7 +104,7 @@ fun SettingsScreen(
       onPaymentMethodManagementClick = { destination = SettingsDestination.PaymentMethodManagement },
       themePreference = themePreference,
       onThemeClick = { showThemeDialog = true },
-      isBusy = isBusy,
+      isBusy = backupState.isBusy,
       onBackupExport = { backupExportLauncher.launch(backupFileName()) },
       onBackupImport = { backupImportLauncher.launch(arrayOf("application/json", "text/plain")) },
     )
@@ -156,20 +137,7 @@ fun SettingsScreen(
       confirmButton = {
         SextantTextButton(onClick = {
           pendingRestoreUri = null
-          isBusy = true
-          scope.launch {
-            val result = runCatching {
-              // 读文件在 IO 线程上，替换账本由 restoreBackup 自己在事务里完成。
-              val backup = withContext(Dispatchers.IO) { context.readBackupText(uri) }
-              repository.restoreBackup(backup)
-            }
-            operationMessage = result.fold(
-              onSuccess = { summary -> DataOperationMessage("恢复完成", summary.restoreMessage()) },
-              onFailure = { DataOperationMessage("恢复失败", it.toDataErrorMessage()) },
-            )
-            if (result.isSuccess) onChanged()
-            isBusy = false
-          }
+          backupCoordinator.restore(uri)
         }) { Text("覆盖并恢复") }
       },
       dismissButton = { SextantTextButton(onClick = { pendingRestoreUri = null }) { Text("取消") } },
@@ -178,12 +146,14 @@ fun SettingsScreen(
     )
   }
 
-  operationMessage?.let { message ->
+  backupState.outcome?.let { outcome ->
     SextantAlertDialog(
-      onDismissRequest = { operationMessage = null },
-      confirmButton = { SextantTextButton(onClick = { operationMessage = null }) { Text("完成") } },
-      title = { Text(message.title) },
-      text = { Text(message.body) },
+      onDismissRequest = { backupCoordinator.dismissOutcome() },
+      confirmButton = {
+        SextantTextButton(onClick = { backupCoordinator.dismissOutcome() }) { Text("完成") }
+      },
+      title = { Text(outcome.title()) },
+      text = { Text(outcome.body()) },
     )
   }
 
@@ -474,10 +444,22 @@ private fun ThemePreference.description(): String = when (this) {
   ThemePreference.System -> "跟随手机的系统设置"
 }
 
-private data class DataOperationMessage(val title: String, val body: String)
-
 private fun BackupSummary.restoreMessage(): String =
   "已恢复 $transactionCount 笔流水、$categoryCount 个分类、$paymentMethodCount 个来源、$budgetCount 项预算和 $recurringExpenseCount 笔周期支出。"
+
+private fun BackupOutcome.title(): String = when (this) {
+  BackupOutcome.ExportSucceeded -> "导出完成"
+  is BackupOutcome.ExportFailed -> "导出失败"
+  is BackupOutcome.RestoreSucceeded -> "恢复完成"
+  is BackupOutcome.RestoreFailed -> "恢复失败"
+}
+
+private fun BackupOutcome.body(): String = when (this) {
+  BackupOutcome.ExportSucceeded -> "完整账本备份已保存。"
+  is BackupOutcome.ExportFailed -> cause.toDataErrorMessage()
+  is BackupOutcome.RestoreSucceeded -> summary.restoreMessage()
+  is BackupOutcome.RestoreFailed -> cause.toDataErrorMessage()
+}
 
 private fun Throwable.toDataErrorMessage(): String = when (this) {
   is BackupException -> message ?: "备份文件无效。"
@@ -486,30 +468,3 @@ private fun Throwable.toDataErrorMessage(): String = when (this) {
 
 private fun backupFileName(): String = "sextant-backup-${fileDate()}.json"
 private fun fileDate(): String = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
-
-private fun Context.writeText(uri: Uri, content: String, addBom: Boolean) {
-  val stream = contentResolver.openOutputStream(uri, "wt")
-    ?: throw IllegalStateException("无法打开目标文件")
-  stream.bufferedWriter(Charsets.UTF_8).use { writer ->
-    if (addBom) writer.write('\uFEFF'.code)
-    writer.write(content)
-  }
-}
-
-private fun Context.readBackupText(uri: Uri): String {
-  val stream = contentResolver.openInputStream(uri)
-    ?: throw IllegalStateException("无法打开备份文件")
-  return stream.bufferedReader(Charsets.UTF_8).use { reader ->
-    val output = StringBuilder()
-    val buffer = CharArray(8192)
-    while (true) {
-      val count = reader.read(buffer)
-      if (count < 0) break
-      output.append(buffer, 0, count)
-      if (output.length > MAX_BACKUP_CHARACTERS) throw BackupException("备份文件过大")
-    }
-    output.toString()
-  }
-}
-
-private const val MAX_BACKUP_CHARACTERS = 25 * 1024 * 1024

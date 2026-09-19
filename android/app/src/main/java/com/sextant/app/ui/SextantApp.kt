@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.data.AppState
+import com.sextant.app.data.BackupCoordinator
 import com.sextant.app.data.LedgerFilter
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.SextantRepository
@@ -44,23 +46,30 @@ import com.sextant.app.ui.screens.HomeScreen
 import com.sextant.app.ui.screens.PlansScreen
 import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
+import com.sextant.app.ui.util.LedgerFilterSaver
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @Composable
 fun SextantApp(
   repository: SextantRepository,
+  backupCoordinator: BackupCoordinator,
   themePreference: ThemePreference,
   onThemePreferenceChanged: (ThemePreference) -> Unit,
   requestedEditTransactionId: String? = null,
   onEditRequestConsumed: () -> Unit = {},
 ) {
+  // 账本数据本身来自仓储，重建后由 LaunchedEffect 重新加载；而「用户在哪儿」只能由界面自己
+  // 记住：Activity 在旋转、分屏改变窗口大小、切换深浅色时都会被重建，用 remember 存的位置
+  // 会跟着组合一起消失，表现就是「在设置页转一下屏幕又回到了概览」。
   var state by remember { mutableStateOf(AppState()) }
-  var tab by remember { mutableStateOf(Tab.Home) }
+  var tab by rememberSaveable { mutableStateOf(Tab.Home) }
   var showQuickEntry by remember { mutableStateOf(false) }
   var editingTransaction by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingDelete by remember { mutableStateOf<TransactionListItem?>(null) }
-  var filter by remember { mutableStateOf(LedgerFilter.allTime()) }
+  var filter by rememberSaveable(stateSaver = LedgerFilterSaver) {
+    mutableStateOf(LedgerFilter.allTime())
+  }
   var lastPaymentMethodId by remember { mutableStateOf<String?>(null) }
   var reloadKey by remember { mutableIntStateOf(0) }
   val quickEntryFab = rememberQuickEntryFabState()
@@ -127,6 +136,7 @@ fun SextantApp(
           Tab.Settings -> SettingsScreen(
             state = state,
             repository = repository,
+            backupCoordinator = backupCoordinator,
             themePreference = themePreference,
             onThemePreferenceChanged = { preference ->
               scope.launch { repository.setThemePreference(preference) }

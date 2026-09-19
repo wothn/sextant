@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,7 +34,7 @@ enum class PlanSection(val title: String, val subtitle: String) {
 fun PlansScreen(state: AppState, repository: SextantRepository, onSaved: () -> Unit) {
   val budgetListState = rememberLazyListState()
   val recurringListState = rememberLazyListState()
-  var section by remember { mutableStateOf(PlanSection.Budget) }
+  var section by rememberSaveable { mutableStateOf(PlanSection.Budget) }
   val activeListState = when (section) {
     PlanSection.Budget -> budgetListState
     PlanSection.Recurring -> recurringListState
