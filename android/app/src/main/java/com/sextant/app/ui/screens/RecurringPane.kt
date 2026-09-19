@@ -1,5 +1,7 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,12 +25,11 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.sextant.app.ui.components.rememberSaveAction
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,7 +61,6 @@ import com.sextant.app.ui.util.futureDayLabel
 import com.sextant.app.ui.util.label
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
-import kotlinx.coroutines.launch
 
 /** 时间轴覆盖的天数，也是「近期要扣多少」的口径。 */
 private const val UPCOMING_DAYS = 30L
@@ -80,13 +80,18 @@ fun RecurringPane(
   listState: LazyListState,
   state: AppState,
   repository: SextantRepository,
-  onSaved: () -> Unit,
+
 ) {
-  var editing by remember { mutableStateOf<RecurringExpense?>(null) }
-  var creating by remember { mutableStateOf(false) }
+  var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+  val editing = state.recurringExpenses.firstOrNull { it.id == editingId }
+  var creating by rememberSaveable { mutableStateOf(false) }
   var pendingDelete by remember { mutableStateOf<RecurringExpense?>(null) }
   // 写周期支出是挂起调用（Room 不允许主线程访问数据库），而编辑器的保存回调不是协程。
-  val scope = rememberCoroutineScope()
+  val saveAction = rememberSaveAction("recurring") {
+    creating = false
+    editingId = null
+    pendingDelete = null
+  }
   val today = LocalDate.now()
 
   // 按「下一次扣费」排序：已停止和已暂停的没有下一次，统一沉到列表底部。
@@ -128,7 +133,7 @@ fun RecurringPane(
       }
     } else {
       items(ordered, key = { it.first.id }) { (expense, nextCharge) ->
-        RecurringRow(expense, nextCharge, today) { editing = expense }
+        RecurringRow(expense, nextCharge, today) { editingId = expense.id }
       }
     }
   }
@@ -137,13 +142,13 @@ fun RecurringPane(
     RecurringExpenseEditor(
       state = state,
       editing = editing,
-      onDismiss = { creating = false; editing = null },
+      onDismiss = { creating = false; editingId = null },
       onDelete = editing?.let { { pendingDelete = it } },
       onSubmit = { draft: RecurringExpenseDraft ->
-        scope.launch { repository.saveRecurringExpense(editing?.id, draft) }
-        creating = false
-        editing = null
-        onSaved()
+        val targetId = editing?.id
+        saveAction.launch {
+          repository.saveRecurringExpense(targetId, draft)
+        }
       },
     )
   }
@@ -155,10 +160,9 @@ fun RecurringPane(
       text = { Text("只会删掉这条计划记录，已经记进账本的流水不受影响。") },
       confirmButton = {
         SextantTextButton(onClick = {
-          scope.launch { repository.deleteRecurringExpense(target.id) }
-          pendingDelete = null
-          editing = null
-          onSaved()
+          saveAction.launch {
+            repository.deleteRecurringExpense(target.id)
+          }
         }) { Text("删除") }
       },
       dismissButton = { SextantTextButton(onClick = { pendingDelete = null }) { Text("取消") } },

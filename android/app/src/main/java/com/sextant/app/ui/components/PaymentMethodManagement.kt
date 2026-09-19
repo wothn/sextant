@@ -1,5 +1,7 @@
 package com.sextant.app.ui.components
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.layout.Arrangement
@@ -15,12 +17,9 @@ import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -32,20 +31,24 @@ import com.sextant.app.data.SextantRepository
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.categoryColorOptions
-import kotlinx.coroutines.launch
 
 @Composable
 fun PaymentMethodManagement(
   methods: List<PaymentMethod>,
   repository: SextantRepository,
-  onChanged: () -> Unit,
   onNavigateBack: () -> Unit,
 ) {
-  var showAdd by remember { mutableStateOf(false) }
-  var editing by remember { mutableStateOf<PaymentMethod?>(null) }
-  var pendingDelete by remember { mutableStateOf<PaymentMethod?>(null) }
+  var showAdd by rememberSaveable { mutableStateOf(false) }
+  var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+  val editing = methods.firstOrNull { it.id == editingId }
+  var pendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
+  val pendingDelete = methods.firstOrNull { it.id == pendingDeleteId }
   // 写来源是挂起调用（Room 不允许主线程访问数据库），而开关/对话框回调不是协程。
-  val scope = rememberCoroutineScope()
+  val saveAction = rememberSaveAction("payments") {
+    showAdd = false
+    editingId = null
+    pendingDeleteId = null
+  }
 
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(
@@ -74,13 +77,14 @@ fun PaymentMethodManagement(
       methods.forEach { method ->
         PaymentMethodRow(
           method = method,
-          onEdit = { editing = method },
+          onEdit = { editingId = method.id },
           onActiveChanged = { active ->
-            scope.launch { repository.setPaymentMethodActive(method.id, active) }
-            onChanged()
+            saveAction.launch {
+              repository.setPaymentMethodActive(method.id, active)
+            }
           },
           onDelete = if (!method.isBuiltIn && method.transactionCount == 0L) {
-            { pendingDelete = method }
+            { pendingDeleteId = method.id }
           } else {
             null
           },
@@ -95,9 +99,9 @@ fun PaymentMethodManagement(
       initial = null,
       onDismiss = { showAdd = false },
       onSubmit = { name, color ->
-        scope.launch { repository.addPaymentMethod(name, color) }
-        showAdd = false
-        onChanged()
+        saveAction.launch {
+          repository.addPaymentMethod(name, color)
+        }
       },
     )
   }
@@ -106,28 +110,28 @@ fun PaymentMethodManagement(
     PaymentMethodDialog(
       methods = methods,
       initial = method,
-      onDismiss = { editing = null },
+      onDismiss = { editingId = null },
       onSubmit = { name, color ->
-        scope.launch { repository.updatePaymentMethod(method.id, name, color) }
-        editing = null
-        onChanged()
+        saveAction.launch {
+          repository.updatePaymentMethod(method.id, name, color)
+        }
       },
     )
   }
 
   pendingDelete?.let { method ->
     SextantAlertDialog(
-      onDismissRequest = { pendingDelete = null },
+      onDismissRequest = { pendingDeleteId = null },
       title = { Text("删除“${method.name}”？") },
       text = { Text("这个来源尚未被流水使用，删除后无法恢复。") },
       confirmButton = {
         SextantTextButton(onClick = {
-          scope.launch { repository.deletePaymentMethod(method.id) }
-          pendingDelete = null
-          onChanged()
+          saveAction.launch {
+            repository.deletePaymentMethod(method.id)
+          }
         }) { Text("删除") }
       },
-      dismissButton = { SextantTextButton(onClick = { pendingDelete = null }) { Text("取消") } },
+      dismissButton = { SextantTextButton(onClick = { pendingDeleteId = null }) { Text("取消") } },
     )
   }
 }
@@ -139,7 +143,7 @@ private fun PaymentMethodRow(
   onActiveChanged: (Boolean) -> Unit,
   onDelete: (() -> Unit)?,
 ) {
-  var showActions by remember { mutableStateOf(false) }
+  var showActions by rememberSaveable { mutableStateOf(false) }
   SextantCard() {
     Row(
       modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -186,8 +190,8 @@ private fun PaymentMethodDialog(
   onDismiss: () -> Unit,
   onSubmit: (String, Long) -> Unit,
 ) {
-  var name by remember(initial) { mutableStateOf(initial?.name.orEmpty()) }
-  var color by remember(initial) { mutableStateOf(initial?.color ?: categoryColorOptions.first().first) }
+  var name by rememberSaveable(initial?.id) { mutableStateOf(initial?.name.orEmpty()) }
+  var color by rememberSaveable(initial?.id) { mutableStateOf(initial?.color ?: categoryColorOptions.first().first) }
   val trimmedName = name.trim()
   val nameError = when {
     trimmedName.isEmpty() -> null
@@ -229,4 +233,3 @@ private fun PaymentMethodDialog(
     dismissButton = { SextantTextButton(onClick = onDismiss) { Text("取消") } },
   )
 }
-

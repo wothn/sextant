@@ -1,5 +1,7 @@
 package com.sextant.app.ui.components
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,12 +28,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -78,20 +78,20 @@ fun RecurringExpenseEditor(
   onDelete: (() -> Unit)? = null,
   onSubmit: (RecurringExpenseDraft) -> Unit,
 ) {
-  var name by remember(editing) { mutableStateOf(editing?.name.orEmpty()) }
-  var amountText by remember(editing) { mutableStateOf(editing?.amountCents?.let(::formatAmountPlain).orEmpty()) }
-  var cycle by remember(editing) { mutableStateOf(editing?.cycle ?: RecurringCycle.Monthly) }
-  var customDaysText by remember(editing) { mutableStateOf(editing?.customDays?.toString().orEmpty()) }
-  var anchorDate by remember(editing) { mutableStateOf(editing?.anchorDate ?: todayStart()) }
-  var endedAt by remember(editing) { mutableStateOf(editing?.endedAt) }
-  var categoryId by remember(editing) {
+  var name by rememberSaveable(editing?.id) { mutableStateOf(editing?.name.orEmpty()) }
+  var amountText by rememberSaveable(editing?.id) { mutableStateOf(editing?.amountCents?.let(::formatAmountPlain).orEmpty()) }
+  var cycle by rememberSaveable(editing?.id) { mutableStateOf(editing?.cycle ?: RecurringCycle.Monthly) }
+  var customDaysText by rememberSaveable(editing?.id) { mutableStateOf(editing?.customDays?.toString().orEmpty()) }
+  var anchorDate by rememberSaveable(editing?.id) { mutableStateOf(editing?.anchorDate ?: todayStart()) }
+  var endedAt by rememberSaveable(editing?.id) { mutableStateOf(editing?.endedAt) }
+  var categoryId by rememberSaveable(editing?.id) {
     mutableStateOf(editing?.categoryId ?: state.categories.firstOrNull { it.type == TransactionType.Expense }?.id)
   }
-  var paymentMethodId by remember(editing) { mutableStateOf(editing?.paymentMethodId ?: state.paymentMethods.firstOrNull()?.id) }
-  var note by remember(editing) { mutableStateOf(editing?.note.orEmpty()) }
-  var isActive by remember(editing) { mutableStateOf(editing?.isActive ?: true) }
-  var panel by remember { mutableStateOf(RecurringPanel.Form) }
-  var dateTarget by remember { mutableStateOf<DateTarget?>(null) }
+  var paymentMethodId by rememberSaveable(editing?.id) { mutableStateOf(editing?.paymentMethodId ?: state.paymentMethods.firstOrNull()?.id) }
+  var note by rememberSaveable(editing?.id) { mutableStateOf(editing?.note.orEmpty()) }
+  var isActive by rememberSaveable(editing?.id) { mutableStateOf(editing?.isActive ?: true) }
+  var panel by rememberSaveable { mutableStateOf(RecurringPanel.Form) }
+  var dateTarget by rememberSaveable { mutableStateOf<DateTarget?>(null) }
 
   val expenseCategories = state.categories.filter { it.type == TransactionType.Expense }
   val selectedCategory = expenseCategories.firstOrNull { it.id == categoryId }

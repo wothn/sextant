@@ -1,5 +1,7 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantLoadingIndicator
@@ -42,15 +44,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.BackupCoordinator
@@ -73,7 +72,7 @@ fun SettingsScreen(
   backupCoordinator: BackupCoordinator,
   themePreference: ThemePreference,
   onThemePreferenceChanged: (ThemePreference) -> Unit,
-  onChanged: () -> Unit,
+
 ) {
   // 设置里的子页面同样是「用户在哪儿」：用 remember 存的话，旋转屏幕或分屏改变窗口大小
   // 触发的 Activity 重建会把它弹回设置首页。
@@ -112,21 +111,21 @@ fun SettingsScreen(
     SettingsDestination.CategoryManagement -> CategoryManagementScreen(
       state = state,
       repository = repository,
-      onChanged = onChanged,
+
       onNavigateBack = { destination = SettingsDestination.Overview },
     )
 
     SettingsDestination.PaymentMethodManagement -> PaymentMethodManagementScreen(
       state = state,
       repository = repository,
-      onChanged = onChanged,
+
       onNavigateBack = { destination = SettingsDestination.Overview },
     )
 
     SettingsDestination.Automation -> AutomationSettingsScreen(
       state = state,
       repository = repository,
-      onChanged = onChanged,
+
       onNavigateBack = { destination = SettingsDestination.Overview },
     )
   }
@@ -279,7 +278,7 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
 private fun CategoryManagementScreen(
   state: AppState,
   repository: SextantRepository,
-  onChanged: () -> Unit,
+
   onNavigateBack: () -> Unit,
 ) {
   LazyColumn(
@@ -291,7 +290,7 @@ private fun CategoryManagementScreen(
       CategoryManagement(
         categories = state.categories,
         repository = repository,
-        onChanged = onChanged,
+
         onNavigateBack = onNavigateBack,
       )
     }
@@ -302,7 +301,7 @@ private fun CategoryManagementScreen(
 private fun PaymentMethodManagementScreen(
   state: AppState,
   repository: SextantRepository,
-  onChanged: () -> Unit,
+
   onNavigateBack: () -> Unit,
 ) {
   LazyColumn(
@@ -314,7 +313,7 @@ private fun PaymentMethodManagementScreen(
       PaymentMethodManagement(
         methods = state.allPaymentMethods,
         repository = repository,
-        onChanged = onChanged,
+
         onNavigateBack = onNavigateBack,
       )
     }

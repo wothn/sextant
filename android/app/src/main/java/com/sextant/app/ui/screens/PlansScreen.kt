@@ -1,15 +1,14 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
@@ -31,7 +30,7 @@ enum class PlanSection(val title: String, val subtitle: String) {
  * 中间而头部还收着。分开之后还顺带得到了「每个视图记住自己的位置」——切来切去不会丢进度。
  */
 @Composable
-fun PlansScreen(state: AppState, repository: SextantRepository, onSaved: () -> Unit) {
+fun PlansScreen(state: AppState, repository: SextantRepository) {
   val budgetListState = rememberLazyListState()
   val recurringListState = rememberLazyListState()
   var section by rememberSaveable { mutableStateOf(PlanSection.Budget) }
@@ -55,8 +54,8 @@ fun PlansScreen(state: AppState, repository: SextantRepository, onSaved: () -> U
       modifier = Modifier.padding(horizontal = 20.dp),
     )
     when (section) {
-      PlanSection.Budget -> BudgetPane(budgetListState, state, repository, onSaved)
-      PlanSection.Recurring -> RecurringPane(recurringListState, state, repository, onSaved)
+      PlanSection.Budget -> BudgetPane(budgetListState, state, repository)
+      PlanSection.Recurring -> RecurringPane(recurringListState, state, repository)
     }
   }
 }

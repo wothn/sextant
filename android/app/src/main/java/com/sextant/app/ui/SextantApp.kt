@@ -2,6 +2,8 @@
 
 package com.sextant.app.ui
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.ui.components.SextantCollapsibleFab
 import com.sextant.app.ui.components.SextantTabContent
@@ -16,15 +18,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.sextant.app.data.StateProjection
+import com.sextant.app.ui.components.rememberSaveAction
+import com.sextant.app.ui.components.SextantLoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
@@ -47,58 +54,62 @@ import com.sextant.app.ui.screens.PlansScreen
 import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.util.LedgerFilterSaver
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
 
 @Composable
 fun SextantApp(
   repository: SextantRepository,
+  viewModel: LedgerViewModel,
   backupCoordinator: BackupCoordinator,
   themePreference: ThemePreference,
   onThemePreferenceChanged: (ThemePreference) -> Unit,
   requestedEditTransactionId: String? = null,
   onEditRequestConsumed: () -> Unit = {},
 ) {
-  // 账本数据本身来自仓储，重建后由 LaunchedEffect 重新加载；而「用户在哪儿」只能由界面自己
-  // 记住：Activity 在旋转、分屏改变窗口大小、切换深浅色时都会被重建，用 remember 存的位置
-  // 会跟着组合一起消失，表现就是「在设置页转一下屏幕又回到了概览」。
-  var state by remember { mutableStateOf(AppState()) }
   var tab by rememberSaveable { mutableStateOf(Tab.Home) }
-  var showQuickEntry by remember { mutableStateOf(false) }
+  var showQuickEntry by rememberSaveable { mutableStateOf(false) }
+  var editingId by rememberSaveable { mutableStateOf<String?>(null) }
   var editingTransaction by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingDelete by remember { mutableStateOf<TransactionListItem?>(null) }
-  var filter by rememberSaveable(stateSaver = LedgerFilterSaver) {
-    mutableStateOf(LedgerFilter.allTime())
+  var filter by rememberSaveable(stateSaver = LedgerFilterSaver) { mutableStateOf(LedgerFilter.allTime()) }
+  var lastPaymentMethodId by rememberSaveable { mutableStateOf<String?>(null) }
+  val ui by viewModel.state.collectAsState()
+  val projection = when (tab) {
+    Tab.Discover -> StateProjection.Plans
+    Tab.Settings -> StateProjection.Settings
+    Tab.Analytics -> StateProjection.Analytics
+    else -> StateProjection.Ledger
   }
-  var lastPaymentMethodId by remember { mutableStateOf<String?>(null) }
-  var reloadKey by remember { mutableIntStateOf(0) }
+  val request = LedgerRequest(if (tab == Tab.Home || tab == Tab.Analytics) filter else LedgerFilter.allTime(), projection)
+  val state = ui.data ?: AppState()
   val quickEntryFab = rememberQuickEntryFabState()
-  // 写下账本的方法都是挂起的（Room 不允许在主线程碰库），而按钮回调不是协程，所以这里
-  // 统一取一个组合作用域：写入在后台跑，界面状态在提交之后照旧立刻更新。写完之后
-  // repository 会通过 changes 触发重载，不需要在这一个个回调里手动刷新。
-  val scope = rememberCoroutineScope()
-
-  LaunchedEffect(reloadKey, filter) {
-    state = repository.loadState(filter)
+  val saveAction = rememberSaveAction("ledger") {
+    showQuickEntry = false
+    editingId = null
+    pendingDelete = null
   }
-
-  // 回到概览时复位：否则会继承上次在这个页面上滚出来的收起状态，入口凭空消失。
+  val pageStates = rememberSaveableStateHolder()
+  LaunchedEffect(request) { viewModel.show(request) }
+  LaunchedEffect(ui.theme) { if (ui.data != null) onThemePreferenceChanged(ui.theme) }
   LaunchedEffect(tab) { if (tab == Tab.Home) quickEntryFab.show() }
-
-  LaunchedEffect(repository) {
-    repository.changes.collect {
-      reloadKey++
-      onThemePreferenceChanged(repository.loadThemePreference())
-    }
+  LaunchedEffect(editingId) {
+    editingTransaction = editingId?.let { repository.findTransaction(it) }
   }
-
   LaunchedEffect(requestedEditTransactionId) {
     val id = requestedEditTransactionId ?: return@LaunchedEffect
     repository.findTransaction(id)?.let { item ->
-      editingTransaction = item
       filter = LedgerFilter.forMonth(item.transaction.transactionDate)
+      tab = Tab.Home
+      editingId = id
     }
     onEditRequestConsumed()
+  }
+  val lifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(lifecycleOwner, viewModel) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh()
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 
   Scaffold(
@@ -119,38 +130,44 @@ fun SextantApp(
         .nestedScroll(quickEntryFab.nestedScrollConnection),
     ) {
       SextantTabContent(selectedIndex = tab.ordinal) { index ->
-        when (Tab.entries[index]) {
-          Tab.Home -> HomeScreen(
-            state = state,
-            filter = filter,
-            onFilterChanged = { filter = it },
-            onTransactionClick = { editingTransaction = it },
-          )
-          Tab.Analytics -> AnalyticsScreen(
-            state = state,
-            monthStart = filter.anchorMonthStart,
-            // 分类明细里的流水和首页明细一样可以点开编辑。
-            onTransactionClick = { editingTransaction = it },
-          )
-          Tab.Discover -> PlansScreen(state, repository) { reloadKey++ }
-          Tab.Settings -> SettingsScreen(
-            state = state,
-            repository = repository,
-            backupCoordinator = backupCoordinator,
-            themePreference = themePreference,
-            onThemePreferenceChanged = { preference ->
-              scope.launch { repository.setThemePreference(preference) }
-              onThemePreferenceChanged(preference)
-            },
-            onChanged = { reloadKey++ },
-          )
+        if (ui.request != request || ui.data == null || index != tab.ordinal) {
+          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (ui.error == null || ui.request != request) SextantLoadingIndicator()
+            else SextantTextButton(onClick = viewModel::refresh) { Text("读取失败，点击重试") }
+          }
+        } else {
+          pageStates.SaveableStateProvider(index) {
+            when (Tab.entries[index]) {
+              Tab.Home -> HomeScreen(
+                state = state,
+                filter = filter,
+                onFilterChanged = { filter = it },
+                onTransactionClick = { editingId = it.transaction.id },
+              )
+              Tab.Analytics -> AnalyticsScreen(
+                state = state,
+                monthStart = filter.anchorMonthStart,
+                onTransactionClick = { editingId = it.transaction.id },
+              )
+              Tab.Discover -> PlansScreen(state, repository)
+              Tab.Settings -> SettingsScreen(
+                state = state,
+                repository = repository,
+                backupCoordinator = backupCoordinator,
+                themePreference = themePreference,
+                onThemePreferenceChanged = { preference ->
+                  saveAction.launch { repository.setThemePreference(preference) }
+                },
+              )
+            }
+          }
         }
       }
       SextantCollapsibleFab(
         // 记账入口只服务概览：这里才是「翻明细、看到想补记的一笔」的地方。
         // 分析、计划、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力；计划页的新增
         // 入口用区块标题右侧的按钮，和分类预算保持同一个模式。
-        visible = tab == Tab.Home && quickEntryFab.visible,
+        visible = tab == Tab.Home && quickEntryFab.visible && ui.data != null && ui.request == request,
         onClick = { showQuickEntry = true },
         icon = Icons.Outlined.Add,
         contentDescription = "记一笔",
@@ -159,36 +176,32 @@ fun SextantApp(
     }
   }
 
-  if (showQuickEntry) {
+  if (showQuickEntry && ui.data != null) {
     QuickEntryDialog(
       state = state,
       initialPaymentMethodId = lastPaymentMethodId,
       onDismiss = { showQuickEntry = false },
       onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate ->
-        scope.launch {
+        lastPaymentMethodId = paymentMethodId
+        saveAction.launch {
           repository.addTransaction(type, amountCents, categoryId, paymentMethodId, description, transactionDate)
         }
-        lastPaymentMethodId = paymentMethodId
-        showQuickEntry = false
-        reloadKey++
       },
     )
   }
 
-  editingTransaction?.let { item ->
+  editingTransaction?.takeIf { it.transaction.id == editingId }?.let { item ->
     QuickEntryDialog(
       state = state,
       editing = item,
-      onDismiss = { editingTransaction = null },
+      onDismiss = { editingId = null },
       onDelete = {
         pendingDelete = item
       },
       onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate ->
-        scope.launch {
+        saveAction.launch {
           repository.updateTransaction(item.transaction.id, type, amountCents, categoryId, paymentMethodId, description, transactionDate)
         }
-        editingTransaction = null
-        reloadKey++
       },
     )
   }
@@ -200,10 +213,9 @@ fun SextantApp(
       text = { Text("删除后将从流水和统计中移除。") },
       confirmButton = {
         SextantTextButton(onClick = {
-          scope.launch { repository.deleteTransaction(item.transaction.id) }
-          pendingDelete = null
-          editingTransaction = null
-          reloadKey++
+          saveAction.launch {
+            repository.deleteTransaction(item.transaction.id)
+          }
         }) { Text("删除") }
       },
       dismissButton = { SextantTextButton(onClick = { pendingDelete = null }) { Text("取消") } },

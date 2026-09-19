@@ -1,5 +1,7 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantButton
 import com.sextant.app.ui.components.SextantCard
 import com.sextant.app.ui.components.SextantIconButton
@@ -23,18 +25,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.sextant.app.ui.components.rememberSaveAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -52,7 +52,6 @@ import com.sextant.app.automation.WECHAT_PACKAGE
 import com.sextant.app.data.AppState
 import com.sextant.app.data.AutomationEventStatus
 import com.sextant.app.data.SextantRepository
-import com.sextant.app.ui.components.sextantSwitchColors
 import com.sextant.app.ui.theme.SextantColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -63,13 +62,14 @@ import kotlinx.coroutines.launch
 fun AutomationSettingsScreen(
   state: AppState,
   repository: SextantRepository,
-  onChanged: () -> Unit,
+
   onNavigateBack: () -> Unit,
 ) {
   val context = LocalContext.current
   var draft by remember(state.automationSettings) { mutableStateOf(state.automationSettings) }
   var message by remember { mutableStateOf<String?>(null) }
   val scope = rememberCoroutineScope()
+  val saveAction = rememberSaveAction("automation") { message = "自动记账设置已保存。" }
   val connection = repository.notificationListenerConnection
   val listenerStatus by connection.status.collectAsState()
   val listenerEnabled = listenerStatus.authorized
@@ -79,7 +79,7 @@ fun AutomationSettingsScreen(
     ActivityResultContracts.StartActivityForResult(),
   ) {
     scope.launch { connection.rebind(context) }
-    onChanged()
+
   }
   val notificationPermissionLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.RequestPermission(),
@@ -175,11 +175,8 @@ fun AutomationSettingsScreen(
     }
     item {
       SextantButton(onClick = {
-          scope.launch {
-            val result = runCatching { repository.updateAutomationSettings(draft) }
-            message = result.fold({ "自动记账设置已保存。" }, { it.message ?: "保存失败。" })
-            if (result.isSuccess) onChanged()
-          }
+          val submitted = draft
+          saveAction.launch { repository.updateAutomationSettings(submitted) }
         },
         modifier = Modifier.fillMaxWidth(),
       ) { Text("保存设置") }
@@ -204,7 +201,7 @@ fun AutomationSettingsScreen(
                 scope.launch {
                   val queued = (context.applicationContext as SextantApplication).automationCoordinator.retry(event.id)
                   message = if (queued) "已重新加入处理队列。" else "原通知已过期，无法重试。"
-                  onChanged()
+
                 }
               }) { Text("重试") }
             }

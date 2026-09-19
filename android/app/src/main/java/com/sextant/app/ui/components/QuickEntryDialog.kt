@@ -1,11 +1,8 @@
 package com.sextant.app.ui.components
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -20,10 +17,9 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
@@ -32,7 +28,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sextant.app.data.AppState
@@ -61,16 +56,16 @@ fun QuickEntryDialog(
   onDelete: (() -> Unit)? = null,
   onSubmit: (TransactionType, Long, String?, String?, String, Long) -> Unit,
 ) {
-  var type by remember(editing) { mutableStateOf(editing?.transaction?.type ?: TransactionType.Expense) }
-  var amountText by remember(editing) { mutableStateOf(editing?.transaction?.amountCents?.let(::formatAmountPlain).orEmpty()) }
-  var categoryId by remember(editing) { mutableStateOf(editing?.transaction?.categoryId ?: state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
-  var paymentMethodId by remember(editing) { mutableStateOf(editing?.transaction?.paymentMethodId ?: initialPaymentMethodId ?: state.paymentMethods.firstOrNull()?.id) }
-  var description by remember(editing) { mutableStateOf(editing?.transaction?.description.orEmpty()) }
-  var transactionDate by remember(editing) { mutableStateOf(editing?.transaction?.transactionDate ?: System.currentTimeMillis()) }
-  var showDatePicker by remember { mutableStateOf(false) }
-  var showTimePicker by remember { mutableStateOf(false) }
-  var amountError by remember { mutableStateOf(false) }
-  var panel by remember { mutableStateOf(EntryPanel.Form) }
+  var type by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.type ?: TransactionType.Expense) }
+  var amountText by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.amountCents?.let(::formatAmountPlain).orEmpty()) }
+  var categoryId by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.categoryId ?: state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
+  var paymentMethodId by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.paymentMethodId ?: initialPaymentMethodId ?: state.paymentMethods.firstOrNull()?.id) }
+  var description by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.description.orEmpty()) }
+  var transactionDate by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.transactionDate ?: System.currentTimeMillis()) }
+  var showDatePicker by rememberSaveable { mutableStateOf(false) }
+  var showTimePicker by rememberSaveable { mutableStateOf(false) }
+  var amountError by rememberSaveable { mutableStateOf(false) }
+  var panel by rememberSaveable { mutableStateOf(EntryPanel.Form) }
   val typeCategories = state.categories.filter { it.type == type }
   val selectedCategory = typeCategories.firstOrNull { it.id == categoryId }
   val paymentMethodOptions = state.paymentMethods.toMutableList().apply {
@@ -295,4 +290,3 @@ fun QuickEntryDialog(
     ) { SextantTimePicker(state = timeState) }
   }
 }
-

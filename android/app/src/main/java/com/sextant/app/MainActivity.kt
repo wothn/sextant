@@ -1,14 +1,17 @@
 package com.sextant.app
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.sextant.app.automation.AutomationNotifier
 import com.sextant.app.ui.SextantApp
+import com.sextant.app.ui.LedgerViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import com.sextant.app.ui.theme.SextantTheme
 import kotlinx.coroutines.runBlocking
 
@@ -24,10 +27,18 @@ class MainActivity : ComponentActivity() {
     // 深色/浅色之间闪一下。这是一次按主键取单值，没有聚合也没有写入队列，代价可以接受；
     // 其余所有读取都在协程里，不走这条路径。
     var themePreference by mutableStateOf(runBlocking { repository.loadThemePreference() })
+    val ledgerViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
+      override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        require(modelClass.isAssignableFrom(LedgerViewModel::class.java))
+        @Suppress("UNCHECKED_CAST")
+        return LedgerViewModel(repository) as T
+      }
+    })[LedgerViewModel::class.java]
     setContent {
       SextantTheme(themePreference = themePreference) {
         SextantApp(
           repository = repository,
+          viewModel = ledgerViewModel,
           backupCoordinator = sextantApplication.backupCoordinator,
           themePreference = themePreference,
           onThemePreferenceChanged = { themePreference = it },

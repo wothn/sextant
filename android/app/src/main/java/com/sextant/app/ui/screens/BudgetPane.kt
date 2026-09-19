@@ -1,5 +1,7 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantBottomSheet
 import com.sextant.app.ui.components.SextantButton
 import com.sextant.app.ui.components.SextantTonalButton
@@ -31,12 +33,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.sextant.app.ui.components.rememberSaveAction
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -54,11 +54,11 @@ import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.displayName
+import com.sextant.app.ui.util.formatAmountPlain
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.parseAmountCents
 import java.util.Calendar
 import kotlin.math.max
-import kotlinx.coroutines.launch
 
 /**
  * 「计划」页的预算视图。
@@ -72,15 +72,19 @@ fun BudgetPane(
   listState: LazyListState,
   state: AppState,
   repository: SextantRepository,
-  onSaved: () -> Unit,
+
 ) {
-  var editingTotal by remember { mutableStateOf(false) }
-  var editingCategory by remember { mutableStateOf(false) }
-  var totalText by remember(state.monthlyBudgetCents) { mutableStateOf(state.monthlyBudgetCents?.let { "%.2f".format(it / 100.0) }.orEmpty()) }
-  var selectedCategoryId by remember { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }?.id) }
-  var categoryAmountText by remember { mutableStateOf("") }
+  var editingTotal by rememberSaveable { mutableStateOf(false) }
+  var editingCategory by rememberSaveable { mutableStateOf(false) }
+  var totalText by rememberSaveable(state.monthlyBudgetCents) { mutableStateOf(state.monthlyBudgetCents?.let(::formatAmountPlain).orEmpty()) }
+  var selectedCategoryId by rememberSaveable { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }?.id) }
+  var categoryAmountText by rememberSaveable { mutableStateOf("") }
   // 写预算是挂起调用（Room 不允许主线程访问数据库），而底部面板的保存回调不是协程。
-  val scope = rememberCoroutineScope()
+  val saveAction = rememberSaveAction("budget") {
+    editingTotal = false
+    editingCategory = false
+    categoryAmountText = ""
+  }
   val expenseCategories = state.categories.filter { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }
 
   LazyColumn(
@@ -120,9 +124,9 @@ fun BudgetPane(
         onAmountChanged = { totalText = it },
         onSave = {
           parseAmountCents(totalText)?.let {
-            scope.launch { repository.setMonthlyBudget(it) }
-            editingTotal = false
-            onSaved()
+            saveAction.launch {
+              repository.setMonthlyBudget(it)
+            }
           }
         },
       )
@@ -163,10 +167,9 @@ fun BudgetPane(
             val categoryId = selectedCategoryId
             val amount = parseAmountCents(categoryAmountText)
             if (categoryId != null && amount != null) {
-              scope.launch { repository.upsertBudget(categoryId, amount) }
-              categoryAmountText = ""
-              editingCategory = false
-              onSaved()
+              saveAction.launch {
+                repository.upsertBudget(categoryId, amount)
+              }
             }
           },
           enabled = selectedCategoryId != null && parseAmountCents(categoryAmountText) != null,

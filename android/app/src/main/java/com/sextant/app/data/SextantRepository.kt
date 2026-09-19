@@ -7,21 +7,16 @@ import com.sextant.app.automation.AUTOMATION_WORK_TAG
 import com.sextant.app.automation.AutomationSecretStore
 import com.sextant.app.automation.NotificationListenerConnection
 import java.util.UUID
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
-/**
- * 账本的读写入口。
- *
- * 所有方法都是 `suspend`：Room 不允许在主线程上碰数据库，而账本查询本身是重活
- * （一次 [loadState] 要跑四五条聚合）。这里因此不存在「同步版本」——调用方要么在协程里
- * 调用，要么自己说明为什么必须阻塞。
- *
- * 写入成功后通过 [changes] 通知界面重载。发一条信号而不是把 [AppState] 做成 `Flow`，
- * 是因为这份状态是「筛选条件 + 当日 + 本月 + 上月」的联合投影：做成 Flow 就要在每条
- * DAO 查询上重复一遍同样的拼装逻辑，收益却只是省掉一次显式重载。
- */
+/** 账本读写入口。成功写入递增版本；界面按当前页面重新读取一致的数据库快照。 */
+enum class StateProjection { All, Ledger, Analytics, Plans, Settings }
+
 class SextantRepository(context: Context) {
   private val appContext = context.applicationContext
   internal val database = SextantDatabase.get(context)
@@ -29,16 +24,43 @@ class SextantRepository(context: Context) {
   internal val automationStore = AutomationStore(database)
   internal val automationSecretStore = AutomationSecretStore(context.applicationContext)
   val notificationListenerConnection = NotificationListenerConnection.create(appContext)
-  private val _changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-  val changes: SharedFlow<Unit> = _changes.asSharedFlow()
+  private val _changes = MutableStateFlow(0L)
+  val changes: StateFlow<Long> = _changes.asStateFlow()
 
-  suspend fun loadState(filter: LedgerFilter = LedgerFilter.allTime()): AppState {
+  suspend fun loadState(
+    filter: LedgerFilter = LedgerFilter.allTime(),
+    projection: StateProjection = StateProjection.All,
+  ): AppState = withContext(Dispatchers.Default) {
+    database.withTransaction { loadSnapshot(filter, projection) }
+  }
+
+  private suspend fun loadSnapshot(filter: LedgerFilter, projection: StateProjection): AppState {
     val categories = listCategories()
     val allPaymentMethods = listPaymentMethods()
     val paymentMethods = allPaymentMethods.filter { it.isActive }
-    val transactions = listTransactions(categories, allPaymentMethods, filter)
+    if (projection == StateProjection.Settings) return AppState(
+      categories = categories,
+      paymentMethods = paymentMethods,
+      allPaymentMethods = allPaymentMethods,
+      automationSettings = automationStore.loadSettings(),
+      automationEvents = automationStore.listRecentEvents(),
+    )
+    if (projection == StateProjection.Plans) {
+      val month = LedgerFilter.currentMonth()
+      val rows = listTransactions(categories, allPaymentMethods, month)
+      return AppState(
+        categories = categories,
+        paymentMethods = paymentMethods,
+        allPaymentMethods = allPaymentMethods,
+        monthSummary = LedgerCalculations.summarize(rows),
+        budgets = budgetProgress(categories, rows, month.rangeStart),
+        monthlyBudgetCents = monthlyBudget(),
+        recurringExpenses = listRecurringExpenses(),
+      )
+    }
+    val transactions = if (projection == StateProjection.Analytics) emptyList() else listTransactions(categories, allPaymentMethods, filter)
     val (todayStart, todayEnd) = todayRange()
-    val todayTransactions = listTransactions(
+    val todayTransactions = if (projection == StateProjection.Analytics) emptyList() else listTransactions(
       categories,
       allPaymentMethods,
       LedgerFilter(rangeStart = todayStart, rangeEnd = todayEnd),
@@ -50,6 +72,17 @@ class SextantRepository(context: Context) {
       categories,
       allPaymentMethods,
       LedgerFilter(rangeStart = monthStart, rangeEnd = monthEnd),
+    )
+    if (projection == StateProjection.Ledger) return AppState(
+      categories = categories,
+      paymentMethods = paymentMethods,
+      allPaymentMethods = allPaymentMethods,
+      transactions = transactions,
+      groups = groups,
+      todaySummary = LedgerCalculations.summarize(todayTransactions),
+      rangeSummary = LedgerCalculations.summarize(transactions),
+      monthSummary = LedgerCalculations.summarize(analysisTransactions),
+      monthlyBudgetCents = monthlyBudget(),
     )
     val previousMonthStart = monthRangeOf(monthStart - 1).first
     val previousTransactions = listTransactions(
@@ -75,18 +108,19 @@ class SextantRepository(context: Context) {
       analysisTransactions = analysisTransactions,
       budgets = budgetProgress(categories, analysisTransactions, monthStart),
       monthlyBudgetCents = monthlyBudget(),
-      recurringExpenses = listRecurringExpenses(),
+      recurringExpenses = if (projection == StateProjection.All) listRecurringExpenses() else emptyList(),
       previousMonthSummary = LedgerCalculations.summarize(previousTransactions),
       dailySpending = LedgerCalculations.dailySpending(analysisTransactions, monthStart),
       projectedExpenseCents = LedgerCalculations.projectedExpense(analysisSummary.expenseCents, monthStart),
-      automationSettings = automationStore.loadSettings(),
-      automationEvents = automationStore.listRecentEvents(),
+      automationSettings = if (projection == StateProjection.All) automationStore.loadSettings() else AutomationSettings(),
+      automationEvents = if (projection == StateProjection.All) automationStore.listRecentEvents() else emptyList(),
     )
   }
 
   suspend fun setMonthlyBudget(amountCents: Long) {
     require(amountCents > 0) { "月预算金额必须大于 0" }
     database.appSettingDao().upsert(AppSettingEntity(SextantDatabase.MONTHLY_BUDGET_KEY, amountCents.toString()))
+    notifyChanged()
   }
 
   suspend fun loadThemePreference(): ThemePreference =
@@ -182,7 +216,7 @@ class SextantRepository(context: Context) {
   }
 
   internal fun notifyChanged() {
-    _changes.tryEmit(Unit)
+    _changes.update { it + 1 }
   }
 
   suspend fun upsertBudget(categoryId: String, amountCents: Long) {
@@ -206,6 +240,7 @@ class SextantRepository(context: Context) {
         ),
       )
     }
+    notifyChanged()
   }
 
   /**

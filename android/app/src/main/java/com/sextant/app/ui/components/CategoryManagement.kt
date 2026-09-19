@@ -1,31 +1,26 @@
 package com.sextant.app.ui.components
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.Category
 import com.sextant.app.data.SextantRepository
@@ -35,20 +30,24 @@ import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.categoryColorOptions
 import com.sextant.app.ui.util.displayName
 import com.sextant.app.ui.util.label
-import kotlinx.coroutines.launch
 
 @Composable
 fun CategoryManagement(
   categories: List<Category>,
   repository: SextantRepository,
-  onChanged: () -> Unit,
   onNavigateBack: (() -> Unit)? = null,
 ) {
-  var editingCategory by remember { mutableStateOf<Category?>(null) }
-  var parentForNewChild by remember { mutableStateOf<Category?>(null) }
-  var showAddRoot by remember { mutableStateOf(false) }
+  var editingCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
+  val editingCategory = categories.firstOrNull { it.id == editingCategoryId }
+  var parentForNewChildId by rememberSaveable { mutableStateOf<String?>(null) }
+  val parentForNewChild = categories.firstOrNull { it.id == parentForNewChildId }
+  var showAddRoot by rememberSaveable { mutableStateOf(false) }
   // 写分类是挂起调用（Room 不允许主线程访问数据库），而对话框的 onSave 不是协程。
-  val scope = rememberCoroutineScope()
+  val saveAction = rememberSaveAction("categories") {
+    showAddRoot = false
+    parentForNewChildId = null
+    editingCategoryId = null
+  }
 
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -72,9 +71,9 @@ fun CategoryManagement(
         CategoryActions(
           category = category,
           categories = categories,
-          onAddChild = { parentForNewChild = category },
-          onEdit = { editingCategory = category },
-          onArchive = { scope.launch { repository.archiveCategory(category.id) }; onChanged() },
+          onAddChild = { parentForNewChildId = category.id },
+          onEdit = { editingCategoryId = category.id },
+          onArchive = { saveAction.launch { repository.archiveCategory(category.id) } },
         )
       })
     }
@@ -86,9 +85,9 @@ fun CategoryManagement(
       fixedParent = null,
       onDismiss = { showAddRoot = false },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
-        scope.launch { repository.addCategory(name, type, color, includeInSpending, parentCategoryId) }
-        showAddRoot = false
-        onChanged()
+        saveAction.launch {
+          repository.addCategory(name, type, color, includeInSpending, parentCategoryId)
+        }
       },
     )
   }
@@ -98,11 +97,11 @@ fun CategoryManagement(
       categories = categories,
       initial = null,
       fixedParent = parent,
-      onDismiss = { parentForNewChild = null },
+      onDismiss = { parentForNewChildId = null },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
-        scope.launch { repository.addCategory(name, type, color, includeInSpending, parentCategoryId) }
-        parentForNewChild = null
-        onChanged()
+        saveAction.launch {
+          repository.addCategory(name, type, color, includeInSpending, parentCategoryId)
+        }
       },
     )
   }
@@ -112,11 +111,11 @@ fun CategoryManagement(
       categories = categories,
       initial = category,
       fixedParent = null,
-      onDismiss = { editingCategory = null },
+      onDismiss = { editingCategoryId = null },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
-        scope.launch { repository.updateCategory(category.id, name, type, color, includeInSpending, parentCategoryId) }
-        editingCategory = null
-        onChanged()
+        saveAction.launch {
+          repository.updateCategory(category.id, name, type, color, includeInSpending, parentCategoryId)
+        }
       },
     )
   }
@@ -130,7 +129,7 @@ private fun CategoryActions(
   onEdit: () -> Unit,
   onArchive: () -> Unit,
 ) {
-  var showActions by remember { mutableStateOf(false) }
+  var showActions by rememberSaveable { mutableStateOf(false) }
   Box {
     SextantIconButton(onClick = { showActions = true }) {
       Icon(Icons.Outlined.MoreVert, contentDescription = "管理${category.displayName(categories)}")
@@ -153,13 +152,13 @@ private fun CategoryDialog(
   onDismiss: () -> Unit,
   onSubmit: (String, TransactionType, Long, Boolean, String?) -> Unit,
 ) {
-  var name by remember(initial, fixedParent) { mutableStateOf(initial?.name.orEmpty()) }
-  var type by remember(initial, fixedParent) { mutableStateOf(fixedParent?.type ?: initial?.type ?: TransactionType.Expense) }
-  var color by remember(initial, fixedParent) { mutableStateOf(initial?.color ?: fixedParent?.color ?: categoryColorOptions.first().first) }
-  var includeInSpending by remember(initial, fixedParent) {
+  var name by rememberSaveable(initial?.id, fixedParent?.id) { mutableStateOf(initial?.name.orEmpty()) }
+  var type by rememberSaveable(initial?.id, fixedParent?.id) { mutableStateOf(fixedParent?.type ?: initial?.type ?: TransactionType.Expense) }
+  var color by rememberSaveable(initial?.id, fixedParent?.id) { mutableStateOf(initial?.color ?: fixedParent?.color ?: categoryColorOptions.first().first) }
+  var includeInSpending by rememberSaveable(initial?.id, fixedParent?.id) {
     mutableStateOf(initial?.includeInSpending ?: fixedParent?.includeInSpending ?: true)
   }
-  var parentCategoryId by remember(initial, fixedParent) { mutableStateOf(fixedParent?.id ?: initial?.parentCategoryId) }
+  var parentCategoryId by rememberSaveable(initial?.id, fixedParent?.id) { mutableStateOf(fixedParent?.id ?: initial?.parentCategoryId) }
   val parentOptions = categories.filter {
     it.parentCategoryId == null && it.type == type && it.id != initial?.id
   }
@@ -229,4 +228,3 @@ private fun CategoryDialog(
     },
   )
 }
-

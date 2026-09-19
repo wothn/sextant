@@ -22,8 +22,8 @@ UI 采用 **Material 3 / Jetpack Compose Material3**，数据层使用 **Room**�
 
 ## 技术栈
 
-- Android Gradle Plugin 8.6
-- Kotlin 2.0
+- Android Gradle Plugin 9.2.1
+- Kotlin Compose / Serialization 插件 2.3.21
 - Jetpack Compose
 - Material 3
 - Room（KSP 生成 DAO 实现，schema 版本与迁移都在 `data/SextantDatabase.kt`）
@@ -79,9 +79,11 @@ keystore 和密码只能保存在安全位置或 GitHub Secrets 中，不要提�
 android/app/            Android 原生应用模块
   src/main/java/
     com/sextant/app/
-      data/             SQLite schema、仓库、领域模型
+      data/             Room 实体、DAO、迁移、仓库和领域计算
       ui/theme/         Material 3 颜色与主题
-      MainActivity.kt   Compose 页面与交互入口
+      ui/components/    共享控件、导航和业务编辑器
+      ui/LedgerViewModel.kt  页面数据投影与加载状态
+      MainActivity.kt   Activity、ViewModel 与主题接线
 ```
 
 ## 开发约定

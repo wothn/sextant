@@ -46,6 +46,51 @@ class SextantRepositoryTest {
   }
 
   @Test
+  fun budgetWritesPublishCommittedValuesAndFailuresDoNotPublish() = runBlocking {
+    val repository = SextantRepository(context)
+    val initialRevision = repository.changes.value
+    repository.setMonthlyBudget(120000)
+    assertTrue(repository.changes.value > initialRevision)
+    assertEquals(120000L, repository.loadState(projection = StateProjection.Plans).monthlyBudgetCents)
+    val category = repository.loadState().categories.first { it.type == TransactionType.Expense && it.parentCategoryId == null }
+    val beforeCategoryWrite = repository.changes.value
+    repository.upsertBudget(category.id, 30000)
+    assertTrue(repository.changes.value > beforeCategoryWrite)
+    assertTrue(repository.loadState(projection = StateProjection.Plans).budgets.any { it.amountCents == 30000L })
+    val committed = repository.changes.value
+    assertThrows(IllegalArgumentException::class.java) { runBlocking { repository.setMonthlyBudget(0) } }
+    assertEquals(committed, repository.changes.value)
+  }
+
+  @Test
+  fun plansIgnoreHistoricalLedgerFilterAndSettingsDoNotLoadLedgerRows() = runBlocking {
+    val repository = SextantRepository(context)
+    val originalZone = java.util.TimeZone.getDefault()
+    try {
+      java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+      val today = java.time.LocalDate.now()
+      val current = today.toStartOfDayMillis()
+      val historical = today.minusMonths(2).withDayOfMonth(10).toStartOfDayMillis()
+      repository.addTransaction(TransactionType.Expense, 1234, null, null, "current", current)
+      repository.addTransaction(TransactionType.Expense, 9999, null, null, "history", historical)
+      val historicalFilter = LedgerFilter.forMonth(historical)
+      assertEquals(9999L, repository.loadState(historicalFilter, StateProjection.Ledger).monthSummary.expenseCents)
+      val plans = repository.loadState(historicalFilter, StateProjection.Plans)
+      assertEquals(1234L, plans.monthSummary.expenseCents)
+      assertTrue(plans.transactions.isEmpty())
+      val settings = repository.loadState(historicalFilter, StateProjection.Settings)
+      assertTrue(settings.transactions.isEmpty())
+      assertTrue(settings.categories.isNotEmpty())
+      val analytics = repository.loadState(historicalFilter, StateProjection.Analytics)
+      assertTrue(analytics.transactions.isEmpty())
+      assertEquals(9999L, analytics.monthSummary.expenseCents)
+      assertEquals(1, analytics.analysisTransactions.size)
+    } finally {
+      java.util.TimeZone.setDefault(originalZone)
+    }
+  }
+
+  @Test
   fun defaultLedgerIncludesPastYearsWithoutMergingDaysAndKeepsMonthlySummary() = runBlocking {
     val repository = SextantRepository(context)
     val originalZone = java.util.TimeZone.getDefault()

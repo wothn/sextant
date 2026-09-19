@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.Category
 import com.sextant.app.data.PaymentMethod
+import com.sextant.app.ui.theme.sextantEmphasized
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantFullShape
 
@@ -55,7 +56,7 @@ fun EmptyCard(title: String, description: String) {
 fun SectionTitle(text: String) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
     SextantMark()
-    Text(text, style = MaterialTheme.typography.headlineMedium, color = SextantColors.Text)
+    Text(text, style = MaterialTheme.typography.headlineMedium.sextantEmphasized(), color = SextantColors.Text)
   }
 }
 
@@ -109,7 +110,7 @@ fun <T> FlowChips(
   items: List<T>,
   selectedId: String?,
   label: (T) -> String,
-  color: (T) -> Color,
+  color: @Composable (T) -> Color,
   modifier: Modifier = Modifier,
   icon: ((T) -> ImageVector)? = null,
   onSelect: (T) -> Unit,

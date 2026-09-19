@@ -1,5 +1,7 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -29,10 +31,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -339,6 +339,7 @@ private fun ComparisonMetric(label: String, value: String, color: Color = Sextan
 
 @Composable
 private fun SpendingChart(points: List<DailySpending>) {
+  val chartTrackColor = SextantColors.SurfaceContainerHighest
   val maxAmount = points.maxOfOrNull { it.amountCents }?.coerceAtLeast(1) ?: 1
   val peak = points.maxByOrNull { it.amountCents }
   var selectedPoint by remember(points) { mutableStateOf(peak) }
@@ -366,7 +367,7 @@ private fun SpendingChart(points: List<DailySpending>) {
       Box(Modifier.weight(1f).height(132.dp)) {
         Canvas(Modifier.matchParentSize()) {
           listOf(0f, size.height / 2f, size.height - 1f).forEach { y ->
-            drawLine(SextantColors.SurfaceContainerHighest, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
+            drawLine(chartTrackColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
           }
         }
         Row(
@@ -461,12 +462,13 @@ private fun CategoryStructure(
 
 @Composable
 private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
+  val chartTrackColor = SextantColors.SurfaceContainerHighest
   Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
       Canvas(Modifier.matchParentSize().padding(7.dp)) {
         val stroke = 22.dp.toPx()
         drawArc(
-          color = SextantColors.SurfaceContainerHighest,
+          color = chartTrackColor,
           startAngle = -90f,
           sweepAngle = 360f,
           useCenter = false,

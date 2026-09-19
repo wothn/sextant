@@ -18,7 +18,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
@@ -125,58 +126,55 @@ private val DarkPalette = SextantPalette(
  * 浅色主题阶越高越暗，深色主题阶越高越亮。阶梯上的每个色值都来自原有 palette，
  * 没有引入新色相——铜橙和中性色的取值都没有变。
  */
+private val LocalSextantPalette = staticCompositionLocalOf { LightPalette }
+
 object SextantColors {
-  private val isDarkTheme = mutableStateOf(false)
   private val palette: SextantPalette
-    get() = if (isDarkTheme.value) DarkPalette else LightPalette
+    @Composable @ReadOnlyComposable get() = LocalSextantPalette.current
 
-  internal fun updateTheme(isDark: Boolean) {
-    isDarkTheme.value = isDark
-  }
-
-  val Accent get() = palette.accent
-  val AccentStrong get() = palette.accentStrong
-  val AccentSoft get() = palette.accentSoft
-  val AccentMuted get() = palette.accentMuted
-  val OnAccent get() = palette.onAccent
-  val Secondary get() = palette.secondary
-  val SecondaryStrong get() = palette.secondaryStrong
-  val SecondarySoft get() = palette.secondarySoft
-  val Tertiary get() = palette.tertiary
-  val TertiaryStrong get() = palette.tertiaryStrong
-  val TertiarySoft get() = palette.tertiarySoft
-  val Surface get() = palette.surface
-  val SurfaceAlt get() = palette.surfaceAlt
-  val SurfaceStrong get() = palette.surfaceStrong
-  val Background get() = palette.background
-  val BackgroundSoft get() = palette.backgroundSoft
-  val Text get() = palette.text
-  val TextMuted get() = palette.textMuted
-  val TextSubtle get() = palette.textSubtle
-  val Border get() = palette.border
-  val Success get() = palette.success
-  val Danger get() = palette.danger
-  val Warning get() = palette.warning
-  val Info get() = palette.info
-  val TabInactive get() = palette.tabInactive
+  val Accent @Composable @ReadOnlyComposable get() = palette.accent
+  val AccentStrong @Composable @ReadOnlyComposable get() = palette.accentStrong
+  val AccentSoft @Composable @ReadOnlyComposable get() = palette.accentSoft
+  val AccentMuted @Composable @ReadOnlyComposable get() = palette.accentMuted
+  val OnAccent @Composable @ReadOnlyComposable get() = palette.onAccent
+  val Secondary @Composable @ReadOnlyComposable get() = palette.secondary
+  val SecondaryStrong @Composable @ReadOnlyComposable get() = palette.secondaryStrong
+  val SecondarySoft @Composable @ReadOnlyComposable get() = palette.secondarySoft
+  val Tertiary @Composable @ReadOnlyComposable get() = palette.tertiary
+  val TertiaryStrong @Composable @ReadOnlyComposable get() = palette.tertiaryStrong
+  val TertiarySoft @Composable @ReadOnlyComposable get() = palette.tertiarySoft
+  val Surface @Composable @ReadOnlyComposable get() = palette.surface
+  val SurfaceAlt @Composable @ReadOnlyComposable get() = palette.surfaceAlt
+  val SurfaceStrong @Composable @ReadOnlyComposable get() = palette.surfaceStrong
+  val Background @Composable @ReadOnlyComposable get() = palette.background
+  val BackgroundSoft @Composable @ReadOnlyComposable get() = palette.backgroundSoft
+  val Text @Composable @ReadOnlyComposable get() = palette.text
+  val TextMuted @Composable @ReadOnlyComposable get() = palette.textMuted
+  val TextSubtle @Composable @ReadOnlyComposable get() = palette.textSubtle
+  val Border @Composable @ReadOnlyComposable get() = palette.border
+  val Success @Composable @ReadOnlyComposable get() = palette.success
+  val Danger @Composable @ReadOnlyComposable get() = palette.danger
+  val Warning @Composable @ReadOnlyComposable get() = palette.warning
+  val Info @Composable @ReadOnlyComposable get() = palette.info
+  val TabInactive @Composable @ReadOnlyComposable get() = palette.tabInactive
 
   /** 页面底色，阶梯的最低一级。 */
-  val SurfaceContainerLowest get() = palette.background
+  val SurfaceContainerLowest @Composable @ReadOnlyComposable get() = palette.background
 
   /** 浮在页面之上的卡片、面板、菜单、弹窗。 */
-  val SurfaceContainerLow get() = palette.surface
+  val SurfaceContainerLow @Composable @ReadOnlyComposable get() = palette.surface
 
   /** 卡片内部的凹槽：输入框、chip、图标底块所在的层级。 */
-  val SurfaceContainer get() = if (isDarkTheme.value) palette.backgroundSoft else palette.surfaceAlt
+  val SurfaceContainer @Composable @ReadOnlyComposable get() = if (palette == DarkPalette) palette.backgroundSoft else palette.surfaceAlt
 
   /** 凹槽里的凹槽：嵌套分组、备注行。 */
-  val SurfaceContainerHigh get() = if (isDarkTheme.value) palette.surfaceAlt else palette.backgroundSoft
+  val SurfaceContainerHigh @Composable @ReadOnlyComposable get() = if (palette == DarkPalette) palette.surfaceAlt else palette.backgroundSoft
 
   /** 最重的一级：轨道、进度槽、装饰条。 */
-  val SurfaceContainerHighest get() = palette.surfaceStrong
+  val SurfaceContainerHighest @Composable @ReadOnlyComposable get() = palette.surfaceStrong
 
   /** 选中态：铜橙淡底，与 [AccentSoft] 同源，读起来更像「被点亮的表面」而不是「描了边的框」。 */
-  val SelectedContainer get() = palette.accentSoft
+  val SelectedContainer @Composable @ReadOnlyComposable get() = palette.accentSoft
 }
 
 private val SextantLightScheme: ColorScheme = lightColorScheme(
@@ -271,7 +269,6 @@ fun SextantTheme(
   val view = LocalView.current
 
   SideEffect {
-    SextantColors.updateTheme(isDarkTheme)
     val activity = view.context as? Activity
     if (activity != null) {
       activity.window.statusBarColor = colorScheme.background.toArgb()
@@ -283,16 +280,15 @@ fun SextantTheme(
     }
   }
 
-  // MaterialExpressiveTheme 而不是 MaterialTheme：前者把 expressive 的 MotionScheme 与
-  // emphasized 排版默认值装进 CompositionLocal，组件内部（导航栏、按钮组、加载指示器、
-  // 顶部 App Bar）才会跟着用弹性弹簧和更重的字重。
-  MaterialExpressiveTheme(
-    colorScheme = colorScheme,
-    typography = SextantTypography,
-    shapes = SextantShapes,
-    motionScheme = MotionScheme.expressive(),
-    content = content,
-  )
+  CompositionLocalProvider(LocalSextantPalette provides if (isDarkTheme) DarkPalette else LightPalette) {
+    MaterialExpressiveTheme(
+      colorScheme = colorScheme,
+      typography = SextantTypography,
+      shapes = SextantShapes,
+      motionScheme = MotionScheme.expressive(),
+      content = content,
+    )
+  }
 }
 
 fun argbColor(value: Long): Color {
@@ -344,7 +340,7 @@ object SextantRadius {
 /**
  * 胶囊：按钮、chip、分段控件和导航选中指示共用。
  *
- * Expressive 里「可点的东西」默认就是全圆角，形状本身承担了「这是操作」的语义，
+ * Sextant 为按钮、chip 和导航指示选用全圆角，形状本身承担了「这是操作」的语义，
  * 所以它不能跟着 [SextantShapes] 一起缩水。
  */
 val SextantFullShape: Shape = RoundedCornerShape(percent = 50)
@@ -402,33 +398,24 @@ object SextantMotion {
   fun <T> slowEffects(): FiniteAnimationSpec<T> = MaterialTheme.motionScheme.slowEffectsSpec()
 }
 
-/**
- * Sextant 的字号阶梯。
- *
- * 直接取 M3 Expressive 的官方字号 token：display / headline / title / label 用 emphasized
- * 档位，body 保持 baseline——整屏正文加粗会糊成一片。唯一被改写的尺寸是 headlineLarge：
- * 官方 32sp 对首页的「今日支出」偏小，这里提到 40sp；emphasized 字段保留官方值，
- * 供顶部 App Bar 这类由组件自己决定字号的场合使用。
- *
- * 全表启用 `tnum` 数字特性，金额按位对齐。
- */
+/** 基础排版保留常规层级；核心金额单独强调，金额使用等宽数字。 */
 private val SextantTypography: Typography = Typography().let { base ->
   Typography(
-    displayLarge = base.displayLargeEmphasized.tnum(),
-    displayMedium = base.displayMediumEmphasized.tnum(),
-    displaySmall = base.displaySmallEmphasized.tnum(),
+    displayLarge = base.displayLarge.tnum(),
+    displayMedium = base.displayMedium.tnum(),
+    displaySmall = base.displaySmall.tnum(),
     headlineLarge = base.headlineLargeEmphasized.tnum().copy(fontSize = 40.sp, lineHeight = 48.sp),
-    headlineMedium = base.headlineMediumEmphasized.tnum(),
-    headlineSmall = base.headlineSmallEmphasized.tnum(),
-    titleLarge = base.titleLargeEmphasized.tnum(),
-    titleMedium = base.titleMediumEmphasized.tnum(),
-    titleSmall = base.titleSmallEmphasized.tnum(),
+    headlineMedium = base.headlineMedium.tnum(),
+    headlineSmall = base.headlineSmall.tnum(),
+    titleLarge = base.titleLarge.tnum(),
+    titleMedium = base.titleMedium.tnum(),
+    titleSmall = base.titleSmall.tnum(),
     bodyLarge = base.bodyLarge.tnum(),
     bodyMedium = base.bodyMedium.tnum(),
     bodySmall = base.bodySmall.tnum(),
-    labelLarge = base.labelLargeEmphasized.tnum(),
-    labelMedium = base.labelMediumEmphasized.tnum(),
-    labelSmall = base.labelSmallEmphasized.tnum(),
+    labelLarge = base.labelLarge.tnum(),
+    labelMedium = base.labelMedium.tnum(),
+    labelSmall = base.labelSmall.tnum(),
   )
 }
 
@@ -437,9 +424,8 @@ private fun TextStyle.tnum(): TextStyle = copy(fontFeatureSettings = "tnum")
 /**
  * 把任意语义样式提到 M3 Expressive 的 emphasized 档位，用于临时加强某处。
  *
- * 规则取自 M3：display/headline/body 的 400 提到 500，title/label 的 500 提到 700。
- * 这里合并成「≥500 就跳到 700，否则到 500」，因为 Sextant 的 title/label 预置字重已经
- * 高于基线，再按原档位映射会算错。
+ * Sextant 的局部强调约定：常规字重提到 Medium，Medium 及以上提到 Bold。
+ * 只用于关键标题和状态，基础排版保留未强调的层级。
  */
 fun TextStyle.sextantEmphasized(): TextStyle {
   val weight = fontWeight ?: androidx.compose.ui.text.font.FontWeight.Normal
@@ -450,13 +436,3 @@ fun TextStyle.sextantEmphasized(): TextStyle {
   }
   return copy(fontWeight = emphasized)
 }
-
-/**
- * Sextant 的字号阶梯。
- *
- * 尺寸沿用原有语义角色，字重换成 M3 Expressive 的 emphasized 档位：标题和标签更重
- * （display/headline 600，title/label 700），正文保持常规字重以免整屏发糊。
- * 行高按 M3 的紧凑节奏收窄（bodyMedium 从 22 收到 20），让密集的明细列表更整齐。
- *
- * 需要临时加强某处时用 [sextantEmphasized]，不要在调用处手写 fontWeight。
- */
