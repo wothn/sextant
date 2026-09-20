@@ -53,6 +53,8 @@ import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.util.LedgerFilterSaver
 
+private val BottomBarHorizontalMargin = 48.dp
+
 @Composable
 fun SextantApp(
   repository: SextantRepository,
@@ -169,7 +171,8 @@ fun SextantApp(
         onClick = { showQuickEntry = true },
         icon = Icons.Outlined.Add,
         contentDescription = "记一笔",
-        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        modifier = Modifier.align(Alignment.BottomEnd)
+          .padding(horizontal = BottomBarHorizontalMargin, vertical = 16.dp),
       )
     }
   }
@@ -230,7 +233,8 @@ private fun LedgerBottomBar(
   selectedTab: Tab,
   onTabSelected: (Tab) -> Unit,
 ) {
-  Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 16.dp)) {
+  Box(Modifier.fillMaxWidth().navigationBarsPadding()
+    .padding(horizontal = BottomBarHorizontalMargin, vertical = 16.dp)) {
     LedgerNavigationBar(
       selectedTab = selectedTab,
       onTabSelected = onTabSelected,

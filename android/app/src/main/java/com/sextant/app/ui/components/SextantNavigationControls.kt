@@ -150,7 +150,7 @@ fun SextantNavigationBar(
     shadowElevation = 2.dp,
   ) {
     Row(
-      modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).selectableGroup()
+      modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).selectableGroup()
         .padding(horizontal = 4.dp, vertical = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
       content = content,
@@ -188,7 +188,7 @@ fun RowScope.SextantNavigationItem(
   Column(
     modifier = modifier
       .weight(1f)
-      .heightIn(min = 64.dp)
+      .heightIn(min = 52.dp)
       .selectable(
         selected = selected,
         interactionSource = interactionSource,
@@ -196,7 +196,7 @@ fun RowScope.SextantNavigationItem(
         role = Role.Tab,
         onClick = onClick,
       )
-      .padding(vertical = 6.dp),
+      .padding(vertical = 2.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
   ) {
