@@ -134,7 +134,7 @@ fun SextantCollapsibleFab(
 // 底部导航
 // ---------------------------------------------------------------------------
 
-/** Sextant 的等宽底栏。自定义布局保留品牌指示条；升级 Material 3 时重新评估官方组件。 */
+/** Sextant 的悬浮等宽底栏。外部负责安全区和留白，内部保留品牌指示条。 */
 @Composable
 fun SextantNavigationBar(
   modifier: Modifier = Modifier,
@@ -145,8 +145,9 @@ fun SextantNavigationBar(
     modifier = modifier,
     color = containerColor,
     contentColor = SextantColors.Text,
+    shape = MaterialTheme.shapes.extraLarge,
     tonalElevation = 0.dp,
-    shadowElevation = 0.dp,
+    shadowElevation = 2.dp,
   ) {
     Row(
       modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).selectableGroup()

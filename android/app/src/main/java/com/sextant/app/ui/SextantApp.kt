@@ -34,10 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
-import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.data.AppState
 import com.sextant.app.data.BackupCoordinator
 import com.sextant.app.data.LedgerFilter
@@ -224,26 +222,19 @@ fun SextantApp(
 }
 
 /**
- * 底栏：只有四个目的地，占满整行。
+ * 悬浮底栏：四个等宽目的地，外部留白与系统安全区一起计入 Scaffold 内容边距。
  *
- * 记账 FAB 曾经内嵌在这一行里：导航栏为了给它让位缩进 72dp，四个标签被挤到左边，而 FAB
- * 仍然会压住明细最右列——也就是金额。现在两者分开：导航栏独占底栏，记账入口只出现在概览，
- * 浮在内容区右下角并随滚动方向收起（见 [SextantCollapsibleFab]）。
- *
- * FAB 也曾经展开一个「记支出 / 记收入」菜单，后来去掉了：支出和收入不是两个动作，是同一个
- * 动作的一个参数，而记账面板顶部本来就有收支方向的三段选择（还多一个转账）。把参数提到
- * 菜单层，只会让高频的记支出每次多一次点击。现在单击直接进表单，方向在表单里选。
  */
 @Composable
 private fun LedgerBottomBar(
   selectedTab: Tab,
   onTabSelected: (Tab) -> Unit,
 ) {
-  SextantSurface(color = SextantColors.SurfaceContainerLow, shape = RectangleShape) {
+  Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 16.dp)) {
     LedgerNavigationBar(
       selectedTab = selectedTab,
       onTabSelected = onTabSelected,
-      modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+      modifier = Modifier.fillMaxWidth(),
     )
   }
 }
