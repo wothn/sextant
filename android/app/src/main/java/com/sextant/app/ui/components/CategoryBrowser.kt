@@ -37,6 +37,7 @@ import com.sextant.app.ui.util.label
  *   「查看子分类」按钮；管理上下文没有选中动作，整行点击就是进子级，箭头退回成纯提示。
  * - 管理上下文不画这一行：父分类名由页面标题栏承担，浏览器再画一行就是同一个位置说两遍。
  * - 回退手势和返回箭头走同一个回调，系统返回不会绕过当前层级。
+ * - 调用方标题栏提供逐级返回时，设置 [showLevelBackButton] 为 false，仅保留首行的选择功能。
  */
 @Composable
 fun CategoryBrowser(
@@ -47,6 +48,7 @@ fun CategoryBrowser(
   allowAll: Boolean = false,
   onSelect: ((Category?) -> Unit)? = null,
   actions: (@Composable (Category) -> Unit)? = null,
+  showLevelBackButton: Boolean = true,
 ) {
   val parent = categories.firstOrNull { it.id == parentId }
   val visible = categories.filter { it.parentCategoryId == parent?.id }
@@ -61,7 +63,9 @@ fun CategoryBrowser(
         color = parent?.let { argbColor(it.color) } ?: SextantColors.TextMuted,
         detail = parent?.type?.label,
         selected = parent != null && selectedId == parent.id,
-        leading = { DepthBackButton(onNavigateUp = { onParentChange(null) }) },
+        leading = if (showLevelBackButton) {
+          { DepthBackButton(onNavigateUp = { onParentChange(null) }) }
+        } else null,
         onClick = if (parent != null) ({ onSelect?.invoke(parent) }) else null,
         onClickLabel = if (parent != null) "选择全部${parent.name}" else null,
       )

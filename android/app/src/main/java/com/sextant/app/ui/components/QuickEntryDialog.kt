@@ -94,8 +94,12 @@ fun QuickEntryDialog(
     ) {
       Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (panel != EntryPanel.Form) {
-          SextantIconButton(onClick = { panel = EntryPanel.Form }) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回记账")
+          val inCategoryChildren = panel == EntryPanel.Category && browsingParentId != null
+          SextantIconButton(onClick = {
+            if (inCategoryChildren) browsingParentId = null else panel = EntryPanel.Form
+          }) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack,
+              contentDescription = if (inCategoryChildren) "返回全部分类" else "返回记账")
           }
         }
         SextantHeading(
@@ -209,6 +213,7 @@ fun QuickEntryDialog(
               Text("${type.label}分类", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
               CategoryBrowser(categories = typeCategories, parentId = browsingParentId,
                 onParentChange = { browsingParentId = it },
+                showLevelBackButton = false,
                 selectedId = categoryId, onSelect = { category ->
                 categoryId = category?.id
                 panel = EntryPanel.Form

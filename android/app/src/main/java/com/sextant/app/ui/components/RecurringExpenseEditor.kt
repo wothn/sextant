@@ -124,8 +124,12 @@ fun RecurringExpenseEditor(
     ) {
       Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (panel != RecurringPanel.Form) {
-          SextantIconButton(onClick = { panel = RecurringPanel.Form }) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回周期支出")
+          val inCategoryChildren = panel == RecurringPanel.Category && browsingParentId != null
+          SextantIconButton(onClick = {
+            if (inCategoryChildren) browsingParentId = null else panel = RecurringPanel.Form
+          }) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack,
+              contentDescription = if (inCategoryChildren) "返回全部分类" else "返回周期支出")
           }
         }
         SextantHeading(
@@ -278,6 +282,7 @@ fun RecurringExpenseEditor(
               CategoryBrowser(
                 categories = expenseCategories,
                 parentId = browsingParentId,
+                showLevelBackButton = false,
                 onParentChange = { browsingParentId = it },
                 selectedId = categoryId,
                 onSelect = { category ->
