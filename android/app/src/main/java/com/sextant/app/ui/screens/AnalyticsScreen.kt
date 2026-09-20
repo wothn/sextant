@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -463,43 +465,59 @@ private fun CategoryStructure(
 @Composable
 private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
   val chartTrackColor = SextantColors.SurfaceContainerHighest
-  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-    Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
-      Canvas(Modifier.matchParentSize().padding(7.dp)) {
-        val stroke = 22.dp.toPx()
-        drawArc(
-          color = chartTrackColor,
-          startAngle = -90f,
-          sweepAngle = 360f,
-          useCenter = false,
-          style = Stroke(stroke),
-        )
-        var startAngle = -90f
-        slices.forEach { slice ->
-          val sweep = if (total <= 0) 0f else slice.amountCents.toFloat() / total * 360f
-          val gap = if (sweep > 4f) 2f else 0f
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(16.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(Modifier.weight(0.44f), contentAlignment = Alignment.Center) {
+      Box(Modifier.widthIn(max = 148.dp).fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.matchParentSize().padding(12.dp)) {
+          val stroke = 22.dp.toPx()
           drawArc(
-            color = slice.color,
-            startAngle = startAngle + gap / 2f,
-            sweepAngle = (sweep - gap).coerceAtLeast(0f),
+            color = chartTrackColor,
+            startAngle = -90f,
+            sweepAngle = 360f,
             useCenter = false,
             style = Stroke(stroke),
           )
-          startAngle += sweep
+          var startAngle = -90f
+          slices.forEach { slice ->
+            val sweep = if (total <= 0) 0f else slice.amountCents.toFloat() / total * 360f
+            val gap = if (sweep > 4f) 2f else 0f
+            drawArc(
+              color = slice.color,
+              startAngle = startAngle + gap / 2f,
+              sweepAngle = (sweep - gap).coerceAtLeast(0f),
+              useCenter = false,
+              style = Stroke(stroke),
+            )
+            startAngle += sweep
+          }
+        }
+        Column(
+          modifier = Modifier.fillMaxWidth(0.65f),
+          horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+          Text("总支出", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
+          Text(
+            compactAmount(total),
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.semantics { contentDescription = "总支出${formatCurrency(total)}" },
+          )
         }
       }
-      Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("总支出", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
-        Text(compactAmount(total), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-      }
     }
-    Spacer(Modifier.width(18.dp))
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(Modifier.weight(0.56f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
       slices.forEach { slice ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
           Box(Modifier.size(8.dp).clip(CircleShape).background(slice.color))
           Spacer(Modifier.width(8.dp))
           Text(slice.label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+          Spacer(Modifier.width(8.dp))
           Text(
             "${if (total <= 0) 0 else (slice.amountCents * 100 / total)}%",
             color = SextantColors.TextMuted,
