@@ -133,8 +133,9 @@ jobs:
           echo "versionCode ${previous_code} (${previous_tag}) -> ${new_code} (v${VERSION})."
 
       # Release 正文由上一个版本标签到本次标签之间的提交生成，按 conventional commit
-      # 的类型分节。--generate-notes 在本仓库只会生成一行 Full Changelog——提交直接进
-      # dev、没有 PR，GitHub 没有可列举的条目，所以这里自己拼。
+      # 的类型分节。不用 --generate-notes 是因为它按「合并进默认分支的 PR」列举条目，而
+      # 本仓库的 PR 都合进 dev、默认分支 main 早就停更，v0.4.2~v0.4.4 的正文都只剩一行
+      # Full Changelog。
       - name: Build release notes
         id: notes
         shell: bash
