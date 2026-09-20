@@ -42,6 +42,17 @@ class NotificationParsersTest {
   }
 
   @Test
+  fun parsesWechatRenewalNotificationAsExpense() {
+    val notification = notification(WECHAT_PACKAGE, "微信支付", "已续费¥8.00")
+
+    assertTrue(NotificationParserRegistry.isPlausibleFinancial(notification))
+    val result = NotificationParserRegistry.parse(notification) as LocalParseOutcome.Parsed
+    assertEquals(TransactionType.Expense, result.candidate.direction)
+    assertEquals(AutomationKind.Purchase, result.candidate.kind)
+    assertEquals(800L, result.candidate.amountCents)
+  }
+
+  @Test
   fun parsesWechatIncomingPaymentAndTransferCounterparty() {
     val paidToUser = NotificationParserRegistry.parse(
       notification(WECHAT_PACKAGE, "微信支付", "向你付款 100.00 元"),

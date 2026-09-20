@@ -194,7 +194,7 @@ private val AMOUNTLESS_INCOMING_REGEX = Regex(
 )
 private val DIRECTION_EVIDENCE_REGEX = Regex(
   "退款成功|退款到账|收到退款|已退款|成功收款|收款成功|收款到账|已收款|向你付款|向您付款|收到转账|到账|转入|" +
-    "付款码|已支付|支付成功|付款成功|成功付款|已付款|向[^，,。；;]{1,40}付款|支出|消费|扣款|充值成功|还款成功",
+    "付款码|已支付|已续费|支付成功|付款成功|成功付款|已付款|向[^，,。；;]{1,40}付款|支出|消费|扣款|充值成功|还款成功",
 )
 
 private val WECHAT_RULES = listOf(
@@ -214,6 +214,7 @@ private val WECHAT_RULES = listOf(
     merchantGroup = "merchant",
   ),
   PaymentRule(TransactionType.Expense, Regex("付款码[^0-9]{0,30}(?:已支付|付款成功|付款)\\s*$OPTIONAL_CURRENCY$AMOUNT_CAPTURE\\s*元?")),
+  PaymentRule(TransactionType.Expense, Regex("已续费\\s*$OPTIONAL_CURRENCY$AMOUNT_CAPTURE\\s*元?")),
   PaymentRule(TransactionType.Expense, Regex("(?:已支付|支付成功|付款成功|成功付款|已付款|您已支付|您已付款)\\s*$OPTIONAL_CURRENCY$AMOUNT_CAPTURE\\s*元?")),
   PaymentRule(TransactionType.Expense, Regex("(?:支付|付款)\\s*[¥￥]\\s*$AMOUNT_CAPTURE\\s*元?")),
   PaymentRule(TransactionType.Expense, Regex("一笔\\s*$AMOUNT_CAPTURE\\s*元的支出")),
@@ -253,7 +254,7 @@ private val PROMOTIONAL_KEYWORDS = listOf(
   "登录", "安全提醒", "物流", "发货", "待收货", "即将过期", "红包封面", "点击领取",
 )
 private val CONFIRMED_PAYMENT_PHRASES = listOf(
-  "支付成功", "付款成功", "成功付款", "已支付", "已付款", "成功收款", "收款成功", "收款到账", "退款成功", "退款到账", "收到退款", "已退款",
+  "支付成功", "付款成功", "成功付款", "已支付", "已续费", "已付款", "成功收款", "收款成功", "收款到账", "退款成功", "退款到账", "收到退款", "已退款",
 )
 private val WECHAT_FINANCIAL_TITLES = listOf("微信支付", "微信收款助手", "支付通知", "收款通知", "服务通知")
 private val ALIPAY_FINANCIAL_TITLES = listOf("支付宝", "付款成功", "支付通知", "收款通知", "账单", "资金", "服务提醒")
