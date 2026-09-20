@@ -2,7 +2,6 @@ package com.sextant.app.ui.screens
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import com.sextant.app.ui.components.SextantButton
 import com.sextant.app.ui.components.SextantCard
 import com.sextant.app.ui.components.SextantIconButton
 import com.sextant.app.ui.components.SextantOutlinedButton
@@ -28,7 +27,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import com.sextant.app.ui.components.rememberSaveAction
+import com.sextant.app.ui.components.rememberAutosave
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -52,6 +51,7 @@ import com.sextant.app.automation.WECHAT_PACKAGE
 import com.sextant.app.automation.isPaymentPageServiceEnabled
 import com.sextant.app.data.AppState
 import com.sextant.app.data.AutomationEventStatus
+import com.sextant.app.data.AutomationSettings
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.ui.theme.SextantColors
 import java.text.SimpleDateFormat
@@ -70,7 +70,13 @@ fun AutomationSettingsScreen(
   var draft by remember(state.automationSettings) { mutableStateOf(state.automationSettings) }
   var message by remember { mutableStateOf<String?>(null) }
   val scope = rememberCoroutineScope()
-  val saveAction = rememberSaveAction("automation") { message = "自动记账设置已保存。" }
+  // 这些开关改一下就生效，不该再要求点一次「保存设置」。开关自己就是草稿，改动由这里
+  // 合并后落库；界面对成功保持沉默，只有失败才出声。
+  val autosave = rememberAutosave(
+    spec = draft,
+    load = { repository.loadAutomationSettings() },
+    save = { repository.updateAutomationSettings(it as AutomationSettings) },
+  )
   val connection = repository.notificationListenerConnection
   val listenerStatus by connection.status.collectAsState()
   val listenerEnabled = listenerStatus.authorized
@@ -163,7 +169,7 @@ fun AutomationSettingsScreen(
             if (pageAuthorized) "系统授权：已开启" else "系统授权：未开启",
             color = if (pageAuthorized) SextantColors.Success else SextantColors.TextMuted,
           )
-          InlineSwitch("识别商户并补全记账", "默认关闭，开启后请保存设置；已有手动备注不会被覆盖", draft.paymentPageEnabled) {
+          InlineSwitch("识别商户并补全记账", "开启后，从支付页面读到的商户名会补进尚未填写的备注，已有手动备注不会被覆盖", draft.paymentPageEnabled) {
             draft = draft.copy(paymentPageEnabled = it)
           }
           SextantOutlinedButton(onClick = {
@@ -204,13 +210,15 @@ fun AutomationSettingsScreen(
         }
       }
     }
-    item {
-      SextantButton(onClick = {
-          val submitted = draft
-          saveAction.launch { repository.updateAutomationSettings(submitted) }
-        },
-        modifier = Modifier.fillMaxWidth(),
-      ) { Text("保存设置") }
+    // 自动保存成功是正常路径，不摆文案；只有没写进去才需要说话。
+    autosave.failure?.let { reason ->
+      item {
+        Text(
+          "$reason 再改一次开关会重试。",
+          color = SextantColors.Danger,
+          style = MaterialTheme.typography.bodySmall,
+        )
+      }
     }
     message?.let { value -> item { Text(value, color = SextantColors.TextMuted) } }
     item { Text("最近处理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }

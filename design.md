@@ -85,6 +85,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 - 概览的明细列表底部预留 `SextantFabClearance`，最后一笔的金额不会停在 FAB 底下；没有 FAB 的页面不预留。
 - 替换导航实现前，在实际底栏组合中验证所有目的地、标签和记账入口的布局与点击范围。
 - 设置按功能分组；记账、筛选、预算编辑与周期支出编辑继承共享外观，保留输入、选中、取消、保存、禁用和错误反馈，长表单可滚动。分类与来源选择复用 `SextantDetailTile` 加子面板的模式。
+- 开关类的设置不设「保存」按钮：改动在用户停手后自动落库，并合并连续操作，避免连点几个开关就写几次库。成功和进行中都不出文案——「已自动保存」只是在播报一个正常路径；只有失败才出声，保留当前选择并可再改一次开关重试。只有需要校验、多字段或不可逆的操作才保留显式保存。这一条与上一条的「表单」不冲突：面板里的输入是一份待提交的草稿，开关本身就是要提交的动作。
 
 ## 5. 组件复用与代码入口
 
@@ -104,6 +105,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 | `ui/components/SextantNavigationControls.kt` | FAB、底栏、页面标题和一级切换；统一导航形态及按下/聚焦反馈 |
 | `ui/components/SextantDialogs.kt` | 底部面板、日期时间弹窗及其主题配色 |
 | `ui/components/SaveAction.kt` | 保存 ViewModel、互斥、等待和错误反馈，提交完成后由当前组合执行关闭 |
+| `ui/components/Autosave.kt` | 无保存按钮的开关类设置的合并写入与失败反馈 |
 | `ui/LedgerViewModel.kt` | 页面投影加载、版本订阅、取消过期查询和读取错误 |
 | `ui/components/CommonComponents.kt` | 区块标题、空状态、徽标和分类 chip |
 | `ui/components/CategoryIcons.kt`、`CategoryBrowser.kt` | 分类图标和选择行为 |
