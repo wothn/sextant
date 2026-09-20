@@ -20,6 +20,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          # 生成发布说明要对比上一个版本的标签，浅克隆里没有历史标签可用。
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -128,8 +132,91 @@ jobs:
           fi
           echo "versionCode ${previous_code} (${previous_tag}) -> ${new_code} (v${VERSION})."
 
+      # Release 正文由上一个版本标签到本次标签之间的提交生成，按 conventional commit
+      # 的类型分节。--generate-notes 在本仓库只会生成一行 Full Changelog——提交直接进
+      # dev、没有 PR，GitHub 没有可列举的条目，所以这里自己拼。
+      - name: Build release notes
+        id: notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          previous_tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [[ -n "${previous_tag}" ]]; then
+            range="${previous_tag}..HEAD"
+          else
+            range="HEAD"
+          fi
+
+          work="${RUNNER_TEMP}/release-notes"
+          mkdir -p "${work}"
+
+          # 正则放进变量再匹配：直接写字面量的话，未加引号的 ")" 会被 bash 当成语法错误。
+          subject_re='^([A-Za-z]+)(\(([^)]*)\))?!?:[[:space:]]+(.*)$'
+
+          git log --no-merges --pretty=format:'%s' "${range}" > "${work}/subjects.txt"
+          while IFS= read -r subject || [[ -n "${subject}" ]]; do
+            [[ -z "${subject}" ]] && continue
+            if [[ "${subject}" =~ ${subject_re} ]]; then
+              type=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
+              scope="${BASH_REMATCH[3]}"
+              text="${BASH_REMATCH[4]}"
+            else
+              type="other"
+              scope=""
+              text="${subject}"
+            fi
+            case "${type}" in
+              feat|fix|perf|refactor|ui|docs|test|build|ci|chore|revert) ;;
+              *) type="other" ;;
+            esac
+            if [[ -n "${scope}" ]]; then
+              printf -- '- **%s**: %s\n' "${scope}" "${text}" >> "${work}/${type}.txt"
+            else
+              printf -- '- %s\n' "${text}" >> "${work}/${type}.txt"
+            fi
+          done < "${work}/subjects.txt"
+
+          emit() {
+            [[ -s "${work}/$1.txt" ]] || return 0
+            printf '### %s\n\n' "$2"
+            cat "${work}/$1.txt"
+            printf '\n'
+          }
+
+          {
+            printf '## Sextant %s\n\n' "${TAG}"
+            if [[ -n "${previous_tag}" ]]; then
+              printf '自 [%s](https://github.com/%s/releases/tag/%s) 以来的变更：[完整对比](https://github.com/%s/compare/%s...%s)。\n\n' \
+                "${previous_tag}" "${GITHUB_REPOSITORY}" "${previous_tag}" \
+                "${GITHUB_REPOSITORY}" "${previous_tag}" "${TAG}"
+            else
+              printf '首个正式版本。\n\n'
+            fi
+            emit feat "✨ 新功能"
+            emit fix "🐛 问题修复"
+            emit perf "⚡ 性能"
+            emit refactor "♻️ 重构"
+            emit ui "🎨 界面"
+            emit docs "📝 文档"
+            emit test "✅ 测试"
+            emit build "🔧 构建"
+            emit ci "🤖 CI"
+            emit chore "🧹 杂项"
+            emit revert "⏪ 回滚"
+            emit other "📦 其他"
+          } > "${work}/release-notes.md"
+
+          echo "----- release notes -----"
+          cat "${work}/release-notes.md"
+          echo "notes_file=${work}/release-notes.md" >> "${GITHUB_OUTPUT}"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: gh release create "${RELEASE_TAG}" release/* --verify-tag --generate-notes --title "Sextant ${RELEASE_TAG}"
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: gh release create "${RELEASE_TAG}" release/* --verify-tag --notes-file "${NOTES_FILE}" --title "Sextant ${RELEASE_TAG}"
