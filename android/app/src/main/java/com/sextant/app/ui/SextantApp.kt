@@ -182,7 +182,7 @@ fun SextantApp(
       state = state,
       initialPaymentMethodId = lastPaymentMethodId,
       onDismiss = { showQuickEntry = false },
-      onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate ->
+      onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate, rememberMerchant ->
         lastPaymentMethodId = paymentMethodId
         saveAction.launch {
           repository.addTransaction(type, amountCents, categoryId, paymentMethodId, description, transactionDate)
@@ -199,9 +199,9 @@ fun SextantApp(
       onDelete = {
         pendingDelete = item
       },
-      onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate ->
+      onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate, rememberMerchant ->
         saveAction.launch {
-          repository.updateTransaction(item.transaction.id, type, amountCents, categoryId, paymentMethodId, description, transactionDate)
+          repository.updateTransaction(item.transaction.id, type, amountCents, categoryId, paymentMethodId, description, transactionDate, rememberMerchant)
         }
       },
     )

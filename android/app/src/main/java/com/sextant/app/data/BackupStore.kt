@@ -19,7 +19,7 @@ data class BackupSummary(
 class BackupException(message: String, cause: Throwable? = null) : IllegalArgumentException(message, cause)
 
 internal class BackupStore(private val database: SextantDatabase) {
-  suspend fun export(): String {
+  suspend fun export(): String = database.withTransaction {
     val document = BackupDocument(
       exportedAt = System.currentTimeMillis(),
       databaseVersion = SextantDatabase.DATABASE_VERSION,
@@ -28,11 +28,12 @@ internal class BackupStore(private val database: SextantDatabase) {
       transactions = database.transactionDao().listAllForBackup().map { it.toBackup() },
       budgets = database.budgetDao().listAll().map { it.toBackup() },
       recurringExpenses = database.recurringExpenseDao().listAll().map { it.toBackup() },
+      merchantCategoryRules = database.merchantCategoryRuleDao().listAll().map { BackupMerchantCategoryRule(it.merchantKey, it.merchantName, it.categoryId) },
       // 自动记账的设置项带着本机的解析偏好，属于敏感配置，不进备份；
       // 校验那一侧同样会拒绝导入带 automation_ 前缀的设置项。
       settings = database.appSettingDao().listBackupSettings().map { BackupSetting(it.key, it.value) },
     )
-    return BackupCodec.encode(document)
+    BackupCodec.encode(document)
   }
 
   /**
@@ -52,6 +53,7 @@ internal class BackupStore(private val database: SextantDatabase) {
         val recurringExpenses = database.recurringExpenseDao()
         val settings = database.appSettingDao()
 
+        database.merchantCategoryRuleDao().deleteAll()
         budgets.deleteAll()
         recurringExpenses.deleteAll()
         database.automationEventDao().deleteAll()
@@ -61,6 +63,7 @@ internal class BackupStore(private val database: SextantDatabase) {
         categories.deleteAll()
 
         document.categories.forEach { categories.insert(it.toEntity()) }
+        document.merchantCategoryRules.forEach { database.merchantCategoryRuleDao().upsert(MerchantCategoryRuleEntity(it.merchantKey, it.merchantName, it.categoryId)) }
         document.paymentMethods.forEach { paymentMethods.insert(it.toEntity()) }
         document.transactions.forEach { transactions.insert(it.toEntity()) }
         document.budgets.forEach { budgets.insert(it.toEntity()) }
@@ -136,6 +139,7 @@ private fun TransactionEntity.toBackup() = BackupTransaction(
   entryOrigin = entryOrigin.storageValue(),
   automationKind = automationKind?.storageValue(),
   isUserEdited = isUserEdited,
+  merchantName = merchantName,
 )
 
 /**
@@ -159,6 +163,7 @@ private fun BackupTransaction.toEntity() = TransactionEntity(
   automationKind = automationKind?.toAutomationKind(),
   sourceEventId = null,
   isUserEdited = isUserEdited,
+  merchantName = merchantName,
 )
 
 private fun BudgetEntity.toBackup() = BackupBudget(
@@ -266,6 +271,11 @@ internal object BackupCodec {
     requireUnique(document.budgets.map { it.id }, "预算 ID")
     requireUnique(document.recurringExpenses.map { it.id }, "周期支出 ID")
     requireUnique(document.settings.map { it.key }, "设置项")
+    requireUnique(document.merchantCategoryRules.map { it.merchantKey }, "商户规则")
+    document.merchantCategoryRules.forEach { rule ->
+      requireBackup(rule.merchantKey.isNotBlank() && rule.merchantKey == normalizeMerchant(rule.merchantName)) { "商户规则名称无效" }
+      requireBackup(document.categories.any { it.id == rule.categoryId }) { "商户规则分类引用无效" }
+    }
 
     val categoryIds = document.categories.mapTo(mutableSetOf()) { it.id }
     val paymentMethodIds = document.paymentMethods.mapTo(mutableSetOf()) { it.id }
@@ -325,6 +335,7 @@ internal data class BackupDocument(
   val budgets: List<BackupBudget> = emptyList(),
   val recurringExpenses: List<BackupRecurringExpense> = emptyList(),
   val settings: List<BackupSetting> = emptyList(),
+  val merchantCategoryRules: List<BackupMerchantCategoryRule> = emptyList(),
 ) {
   fun summary() = BackupSummary(transactions.size, categories.size, paymentMethods.size, budgets.size, recurringExpenses.size)
 }
@@ -366,6 +377,7 @@ internal data class BackupTransaction(
   val entryOrigin: String = "manual",
   val automationKind: String? = null,
   val isUserEdited: Boolean = false,
+  val merchantName: String? = null,
 )
 
 @Serializable
@@ -378,6 +390,9 @@ internal data class BackupBudget(
   val alertThreshold: Double,
   val isActive: Boolean,
 )
+
+@Serializable
+internal data class BackupMerchantCategoryRule(val merchantKey: String, val merchantName: String, val categoryId: String)
 
 @Serializable
 internal data class BackupSetting(val key: String, val value: String)
@@ -425,6 +440,6 @@ private inline fun requireBackup(condition: Boolean, message: () -> String) {
 }
 
 private const val BACKUP_FORMAT = "sextant-backup"
-private const val BACKUP_VERSION = 3
+private const val BACKUP_VERSION = 4
 private val TRANSACTION_TYPES = setOf("expense", "income", "transfer")
 private val AUTOMATION_KINDS = setOf("purchase", "refund", "receipt", "transfer_in", "transfer_out", "recharge", "repayment", "red_packet", "withdrawal", "other")

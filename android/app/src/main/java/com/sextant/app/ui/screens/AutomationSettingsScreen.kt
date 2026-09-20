@@ -221,6 +221,7 @@ fun AutomationSettingsScreen(
       }
     }
     message?.let { value -> item { Text(value, color = SextantColors.TextMuted) } }
+    item { com.sextant.app.ui.components.MerchantCategoryRulesCard(state, repository) }
     item { Text("最近处理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     if (state.automationEvents.isEmpty()) {
       item { Text("暂无自动记账事件。", color = SextantColors.TextMuted) }

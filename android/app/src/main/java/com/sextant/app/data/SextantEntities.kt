@@ -57,6 +57,7 @@ internal data class TransactionEntity(
   @ColumnInfo(name = "automationKind") val automationKind: AutomationKind?,
   @ColumnInfo(name = "sourceEventId") val sourceEventId: String?,
   @ColumnInfo(name = "isUserEdited", defaultValue = "0") val isUserEdited: Boolean,
+  @ColumnInfo(name = "merchantName") val merchantName: String? = null,
 )
 
 @Entity(tableName = "payment_methods")
@@ -206,4 +207,11 @@ internal data class BudgetWithCategory(
   @ColumnInfo(name = "amountCents") val amountCents: Long,
   @ColumnInfo(name = "name") val categoryName: String,
   @ColumnInfo(name = "color") val categoryColor: Long,
+)
+
+@Entity(tableName = "merchant_category_rules")
+internal data class MerchantCategoryRuleEntity(
+  @PrimaryKey val merchantKey: String,
+  val merchantName: String,
+  val categoryId: String,
 )

@@ -70,6 +70,12 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 - 预算刻度复用 `BudgetScale`，填充限制在 0–100%，超额数值和状态由周边文字完整表达。刻度缺口色需匹配实际承载背景。
 - 周期支出的「未来 30 天」刻度横轴是真实日期、纵轴是当天扣费金额，两轴都不做美化；没有扣费的日子保留凹槽色基线而不是留空。柱高允许一个最小可见高度，但精确数值必须同时由文字给出。
 
+### 商户分类
+
+- 自动分类只用于已识别商户的消费支出；商户名称独立于可编辑备注保存，不从备注反推商户。用户商户规则优先于保守的内置规则，无法确定时保持未分类。
+- 编辑消费流水时，「以后该商户也使用此分类」默认关闭，与表单一起提交；临时更改单笔分类不影响未来记录。自动补全不能覆盖已手动编辑的流水。
+- 自动记账设置中的「商户分类」可修改或删除用户规则，停用分类明确提示重新选择。规则按完整商户名匹配，不跨门店模糊合并；修改规则不批量重写历史流水。
+
 ### 导航与表单
 
 - 底栏只保留四个目的地，复用 `SextantNavigationBar` 和 `SextantNavigationItem`；导航层级不随视觉修改改变。
@@ -113,6 +119,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 | `ui/components/CategoryIcons.kt`、`CategoryBrowser.kt` | 分类图标和选择行为 |
 | `ui/components/LedgerIdentity.kt` | 品牌标记与预算刻度 |
 | `ui/components/SextantTransitions.kt` | 列表入场与页面切换 |
+| `ui/components/MerchantCategoryRulesCard.kt` | 商户规则说明、修改分类与删除确认 |
 | `ui/components/QuickEntryDialog.kt`、`LedgerFilterSheet.kt` | 记账与筛选面板 |
 | `ui/components/RecurringExpenseEditor.kt` | 周期支出的新增与编辑面板 |
 | `ui/navigation/LedgerNavigationBar.kt`、`QuickEntryFabState.kt`、`ui/screens/` | 导航接线、记账入口的滚动收起状态与页面布局 |

@@ -1,5 +1,7 @@
 package com.sextant.app.data
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.decodeFromString
 import android.content.Context
 import android.database.Cursor
 import androidx.sqlite.db.SimpleSQLiteQuery
@@ -58,6 +60,8 @@ class SextantDatabaseTest {
     assertTrue(db.hasTable("automation_events"))
     assertFalse(db.hasTable("classification_rules"))
     assertTrue(db.hasTable("recurring_expenses"))
+    assertTrue(db.hasTable("merchant_category_rules"))
+    assertTrue(db.hasColumn("transactions", "merchantName"))
     assertTrue(db.hasColumn("transactions", "amountCents"))
     assertTrue(db.hasColumn("transactions", "entryOrigin"))
     assertTrue(db.hasColumn("transactions", "automationKind"))
@@ -160,6 +164,25 @@ class SextantDatabaseTest {
     assertEquals("十一版分类", db.stringValue("SELECT name FROM categories WHERE id = 'category-v11'"))
     assertEquals(1_100L, db.longValue("SELECT amountCents FROM transactions WHERE id = 'transaction-v11'"))
     assertEquals("key-v11", db.stringValue("SELECT eventKey FROM automation_events WHERE id = 'event-v11'"))
+    assertTrue(db.hasIndex("idx_transactions_source_event"))
+  }
+
+  /** Exact sqlite_master statements captured from the existing v12 emulator database. */
+  @Test
+  fun versionTwelveUpgradePreservesRowsAndCreatesEmptyMerchantRules() {
+    val schema = javaClass.getResource("/database/v12-device-schema.json")!!.readText()
+    context.openOrCreateDatabase(DATABASE_NAME, Context.MODE_PRIVATE, null).use { db ->
+      Json.decodeFromString<List<String>>(schema).forEach { db.execSQL(it) }
+      db.execSQL("INSERT INTO transactions (id, amountCents, type, description, transactionDate, createdAt, updatedAt) VALUES ('v12-row', 1234, 'expense', '旧备注不是商户', 10, 11, 12)")
+      db.version = 12
+    }
+    val db = openCurrentDatabase()
+    assertEquals(13, db.version)
+    assertTrue(db.hasTable("merchant_category_rules"))
+    assertEquals(0L, db.longValue("SELECT COUNT(*) FROM merchant_category_rules"))
+    assertEquals(1234L, db.longValue("SELECT amountCents FROM transactions WHERE id = 'v12-row'"))
+    assertEquals("旧备注不是商户", db.stringValue("SELECT description FROM transactions WHERE id = 'v12-row'"))
+    assertEquals(1L, db.longValue("SELECT COUNT(*) FROM transactions WHERE id = 'v12-row' AND merchantName IS NULL"))
     assertTrue(db.hasIndex("idx_transactions_source_event"))
   }
 

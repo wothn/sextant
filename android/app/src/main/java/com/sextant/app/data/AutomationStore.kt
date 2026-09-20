@@ -153,10 +153,15 @@ internal class AutomationStore(private val database: SextantDatabase) {
       }
       val row = previous.transactionId?.let { database.transactionDao().findById(it) }
       var updated: PostedTransaction? = null
-      if (row != null && !row.isUserEdited && row.description.isBlank() && candidate.description.isNotBlank()) {
-        val updatedAt = maxOf(now, row.updatedAt + 1)
-        database.transactionDao().fillAutomationDescription(row.id, candidate.description.trim().take(120), updatedAt)
-        updated = PostedTransaction(row.id, row.type, row.amountCents, candidate.description, updatedAt)
+      if (row != null && !row.isUserEdited) {
+        val merchant = row.merchantName ?: candidate.merchant?.trim()?.takeIf { it.isNotBlank() }
+        val category = row.categoryId ?: if (row.merchantName == null) MerchantClassifier(database).classify(merchant, row.type, row.automationKind) else null
+        val description = row.description.ifBlank { candidate.description.trim().take(120) }
+        if (merchant != row.merchantName || category != row.categoryId || description != row.description) {
+          val updatedAt = maxOf(now, row.updatedAt + 1)
+          database.transactionDao().enrichMerchant(row.id, merchant, category, description, updatedAt)
+          updated = PostedTransaction(row.id, row.type, row.amountCents, description, updatedAt)
+        }
       }
       events.updateStatus(eventId, AutomationEventStatus.Duplicate, now, candidate.parser,
         "payment_merged", true, summary, previous.transactionId, true, null, true)
@@ -192,9 +197,8 @@ internal class AutomationStore(private val database: SextantDatabase) {
     database.transactionDao().insert(
       TransactionEntity(
         id = transactionId,
-        // 自动入账不猜分类：通知正文里没有可靠的商户信息，猜错的分类比「未分类」
-        // 更难被发现和纠正。分类留给用户自己填。
-        categoryId = null,
+        categoryId = MerchantClassifier(database).classify(candidate.merchant, candidate.direction, candidate.kind),
+        merchantName = candidate.merchant?.trim()?.takeIf { it.isNotBlank() },
         paymentMethodId = paymentMethodId,
         amountCents = candidate.amountCents,
         type = candidate.direction,

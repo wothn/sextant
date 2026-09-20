@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -54,14 +55,18 @@ fun QuickEntryDialog(
   initialPaymentMethodId: String? = null,
   onDismiss: () -> Unit,
   onDelete: (() -> Unit)? = null,
-  onSubmit: (TransactionType, Long, String?, String?, String, Long) -> Unit,
+  onSubmit: (TransactionType, Long, String?, String?, String, Long, Boolean) -> Unit,
 ) {
   var type by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.type ?: TransactionType.Expense) }
   var amountText by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.amountCents?.let(::formatAmountPlain).orEmpty()) }
-  var categoryId by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.categoryId ?: state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
+  var categoryId by rememberSaveable(editing?.transaction?.id) { mutableStateOf(if (editing != null) editing.transaction.categoryId else state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
   var paymentMethodId by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.paymentMethodId ?: initialPaymentMethodId ?: state.paymentMethods.firstOrNull()?.id) }
   var description by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.description.orEmpty()) }
   var transactionDate by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.transactionDate ?: System.currentTimeMillis()) }
+  var rememberMerchant by rememberSaveable(editing?.transaction?.id) { mutableStateOf(false) }
+  val merchantName = editing?.transaction?.merchantName
+  val canRememberMerchant = !merchantName.isNullOrBlank() && type == TransactionType.Expense &&
+    editing.transaction.automationKind == com.sextant.app.data.AutomationKind.Purchase && selectedExpenseCategory(state, categoryId)
   var showDatePicker by rememberSaveable { mutableStateOf(false) }
   var showTimePicker by rememberSaveable { mutableStateOf(false) }
   var amountError by rememberSaveable { mutableStateOf(false) }
@@ -175,6 +180,18 @@ fun QuickEntryDialog(
                   panel = EntryPanel.Source
                 }
               }
+              if (!merchantName.isNullOrBlank()) {
+                Text("已识别商户：$merchantName", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+                if (canRememberMerchant) {
+                  Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
+                    value = rememberMerchant, role = Role.Switch, onValueChange = { rememberMerchant = it },
+                  ), verticalAlignment = Alignment.CenterVertically) {
+                    Text("以后该商户也使用此分类", modifier = Modifier.weight(1f))
+                    SextantSwitch(checked = rememberMerchant, onCheckedChange = null)
+                  }
+                  Text("保存时记住，仅用于今后的消费记录。", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
+                }
+              }
               SextantSurface(color = SextantColors.SurfaceContainer) {
                 Column(Modifier.padding(horizontal = 16.dp)) {
                   Row(Modifier.fillMaxWidth().heightIn(min = 54.dp), verticalAlignment = Alignment.CenterVertically,
@@ -250,7 +267,7 @@ fun QuickEntryDialog(
           } else {
             val cents = parseAmountCents(amountText)
             amountError = cents == null
-            if (cents != null) onSubmit(type, cents, categoryId, paymentMethodId, description.trim(), transactionDate)
+            if (cents != null) onSubmit(type, cents, categoryId, paymentMethodId, description.trim(), transactionDate, rememberMerchant && canRememberMerchant)
           }
         },
         size = SextantButtonSize.Medium,
@@ -300,3 +317,6 @@ fun QuickEntryDialog(
     ) { SextantTimePicker(state = timeState) }
   }
 }
+
+private fun selectedExpenseCategory(state: AppState, id: String?): Boolean =
+  state.categories.any { it.id == id && it.type == TransactionType.Expense }

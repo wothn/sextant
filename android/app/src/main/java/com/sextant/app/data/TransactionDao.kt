@@ -59,6 +59,9 @@ internal interface TransactionDao {
   @Insert
   suspend fun insert(transaction: TransactionEntity)
 
+  @Query("UPDATE transactions SET merchantName = :merchantName, categoryId = :categoryId, description = :description, updatedAt = :updatedAt WHERE id = :id AND isUserEdited = 0 AND entryOrigin != 'manual'")
+  suspend fun enrichMerchant(id: String, merchantName: String?, categoryId: String?, description: String, updatedAt: Long)
+
   @Query("UPDATE transactions SET description = :description, updatedAt = :updatedAt WHERE id = :id AND isUserEdited = 0 AND description = '' AND entryOrigin != 'manual'")
   suspend fun fillAutomationDescription(id: String, description: String, updatedAt: Long)
 

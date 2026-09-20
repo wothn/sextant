@@ -44,6 +44,7 @@ class SextantRepository(context: Context) {
       allPaymentMethods = allPaymentMethods,
       automationSettings = automationStore.loadSettings(),
       automationEvents = automationStore.listRecentEvents(),
+      merchantCategoryRules = listMerchantCategoryRules(),
     )
     if (projection == StateProjection.Plans) {
       val month = LedgerFilter.currentMonth()
@@ -114,6 +115,7 @@ class SextantRepository(context: Context) {
       projectedExpenseCents = LedgerCalculations.projectedExpense(analysisSummary.expenseCents, monthStart),
       automationSettings = if (projection == StateProjection.All) automationStore.loadSettings() else AutomationSettings(),
       automationEvents = if (projection == StateProjection.All) automationStore.listRecentEvents() else emptyList(),
+      merchantCategoryRules = if (projection == StateProjection.All) listMerchantCategoryRules() else emptyList(),
     )
   }
 
@@ -170,20 +172,42 @@ class SextantRepository(context: Context) {
     paymentMethodId: String?,
     description: String,
     transactionDate: Long,
+    rememberMerchantCategory: Boolean = false,
   ) {
     require(amountCents > 0) { "流水金额必须大于 0" }
-    // 改过的自动入账流水会被打上 isUserEdited 标记，之后通知里的「撤销」就不能再删掉它——
-    // 用户的修改优先于通知的过期意图。
-    database.transactionDao().update(
-      id = id,
-      type = type,
-      amountCents = amountCents,
-      categoryId = categoryId,
-      paymentMethodId = paymentMethodId,
-      description = description.trim(),
-      transactionDate = transactionDate,
-      updatedAt = System.currentTimeMillis(),
-    )
+    database.withTransaction {
+      val row = requireNotNull(database.transactionDao().findById(id)) { "这笔记录已不存在" }
+      if (rememberMerchantCategory) {
+        require(type == TransactionType.Expense && row.automationKind == AutomationKind.Purchase) { "仅消费记录可记住商户分类" }
+        saveMerchantCategoryRule(requireNotNull(row.merchantName) { "这笔记录没有已识别商户" }, categoryId)
+      }
+      database.transactionDao().update(
+        id, type, amountCents, categoryId, paymentMethodId, description.trim(), transactionDate,
+        maxOf(System.currentTimeMillis(), row.updatedAt + 1),
+      )
+    }
+    notifyChanged()
+  }
+
+  suspend fun listMerchantCategoryRules(): List<MerchantCategoryRule> =
+    database.merchantCategoryRuleDao().listAll().map { MerchantCategoryRule(it.merchantKey, it.merchantName, it.categoryId) }
+
+  private suspend fun saveMerchantCategoryRule(merchantName: String, categoryId: String?) {
+    require(normalizeMerchant(merchantName).isNotBlank()) { "商户名称不能为空" }
+    require(database.categoryDao().listActive().any { it.id == categoryId && it.type == TransactionType.Expense }) { "请选择有效的支出分类" }
+    database.merchantCategoryRuleDao().upsert(MerchantCategoryRuleEntity(normalizeMerchant(merchantName), merchantName.trim(), requireNotNull(categoryId)))
+  }
+
+  suspend fun updateMerchantCategoryRule(merchantKey: String, categoryId: String) {
+    database.withTransaction {
+      val rule = requireNotNull(database.merchantCategoryRuleDao().find(merchantKey)) { "商户规则已不存在" }
+      saveMerchantCategoryRule(rule.merchantName, categoryId)
+    }
+    notifyChanged()
+  }
+
+  suspend fun deleteMerchantCategoryRule(merchantKey: String) {
+    database.merchantCategoryRuleDao().delete(merchantKey)
     notifyChanged()
   }
 
@@ -502,6 +526,7 @@ class SextantRepository(context: Context) {
         entryOrigin = row.entryOrigin,
         automationKind = row.automationKind,
         isUserEdited = row.isUserEdited,
+        merchantName = row.merchantName,
       )
       TransactionListItem(
         transaction = transaction,

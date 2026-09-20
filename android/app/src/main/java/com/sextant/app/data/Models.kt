@@ -56,6 +56,7 @@ data class Transaction(
   val entryOrigin: EntryOrigin = EntryOrigin.Manual,
   val automationKind: AutomationKind? = null,
   val isUserEdited: Boolean = false,
+  val merchantName: String? = null,
 )
 
 enum class AutomationEventStatus {
@@ -241,4 +242,7 @@ data class AppState(
   val projectedExpenseCents: Long = 0,
   val automationSettings: AutomationSettings = AutomationSettings(),
   val automationEvents: List<AutomationEventSummary> = emptyList(),
+  val merchantCategoryRules: List<MerchantCategoryRule> = emptyList(),
 )
+
+data class MerchantCategoryRule(val merchantKey: String, val merchantName: String, val categoryId: String)
