@@ -20,6 +20,18 @@ internal interface AutomationEventDao {
   @Query("SELECT * FROM automation_events WHERE id = :id")
   suspend fun findById(id: String): AutomationEventEntity?
 
+  @Query("SELECT * FROM automation_events WHERE sourcePackage = :sourcePackage AND providerReference = :reference AND id != :eventId AND status IN ('posted', 'duplicate', 'undone') ORDER BY createdAt ASC LIMIT 1")
+  suspend fun findByReference(sourcePackage: String, reference: String, eventId: String): AutomationEventEntity?
+
+  @Query("UPDATE automation_events SET providerReference = :reference WHERE id = :id AND providerReference IS NULL")
+  suspend fun attachReference(id: String, reference: String)
+
+  @Query("SELECT * FROM automation_events WHERE sourcePackage = :sourcePackage AND postedAt BETWEEN :start AND :end AND parsedSummary = :summary AND id != :eventId AND status IN ('posted', 'undone') ORDER BY postedAt DESC")
+  suspend fun findNearby(sourcePackage: String, start: Long, end: Long, summary: String, eventId: String): List<AutomationEventEntity>
+
+  @Query("SELECT EXISTS(SELECT 1 FROM automation_events WHERE transactionId = :transactionId AND status = 'duplicate' AND ((:isPage AND notificationKey LIKE :pattern) OR (NOT :isPage AND notificationKey NOT LIKE 'payment-page:%')))")
+  suspend fun hasMergedChannel(transactionId: String?, pattern: String, isPage: Boolean): Boolean
+
   @Query(
     """
     SELECT id, sourcePackage, postedAt, status, parser, failureCode, parsedSummary, transactionId

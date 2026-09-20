@@ -6,6 +6,14 @@ import org.junit.Test
 
 class BackupCodecTest {
   @Test
+  fun preservesPaymentPageOrigin() {
+    val document = sampleDocument().let { it.copy(transactions = it.transactions.map { row -> row.copy(entryOrigin = "accessibility") }) }
+    assertEquals(document, BackupCodec.decodeAndValidate(BackupCodec.encode(document)))
+    val converters = SextantTypeConverters()
+    assertEquals(EntryOrigin.Accessibility, converters.entryOriginFromStorage(converters.entryOriginToStorage(EntryOrigin.Accessibility)))
+  }
+
+  @Test
   fun roundTripPreservesCompleteBackup() {
     val document = sampleDocument()
 

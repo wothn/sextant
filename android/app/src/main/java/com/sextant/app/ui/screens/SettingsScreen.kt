@@ -208,7 +208,7 @@ private fun SettingsOverview(
         SettingsSection("账本") {
           SettingsEntry(
             title = "自动记账",
-            description = "从微信、支付宝支付通知生成流水",
+            description = "识别微信、支付宝的支付通知与页面",
             icon = Icons.Outlined.AutoAwesome,
             onClick = onAutomationClick,
           )

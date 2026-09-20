@@ -91,6 +91,99 @@ class AutomationStoreTest {
     assertEquals(1L, database.count("transactions"))
   }
 
+  @Test
+  fun pageSettingsAreOptInAndPersist() = runBlocking {
+    assertFalse(store.loadSettings().paymentPageEnabled)
+    store.updateSettings(AutomationSettings(enabled = true, paymentPageEnabled = true))
+    assertTrue(store.loadSettings().paymentPageEnabled)
+  }
+
+  @Test
+  fun pageEnrichesNotificationWithoutAddingTransactionAndRefreshesUndoVersion() = runBlocking {
+    val event = store.capture(notification("notification-first"), encrypted())!!
+    val posted = store.postCandidate(event, WECHAT_PACKAGE, candidate().copy(description = ""))!!
+    val page = pageCandidate()
+    val pageEvent = store.capture(pageNotification("page-first", page), encrypted())!!
+    val enriched = store.postCandidate(pageEvent, WECHAT_PACKAGE, page)!!
+    assertEquals(posted.id, enriched.id)
+    assertEquals(1L, database.count("transactions"))
+    assertEquals("街角咖啡", database.transactionDao().findById(posted.id)!!.description)
+    assertFalse(store.undoAutomatedTransaction(posted.id, posted.updatedAt))
+    assertTrue(store.undoAutomatedTransaction(enriched.id, enriched.updatedAt))
+    // Reopening a detail after undo must not resurrect it, even from a new event.
+    val repeat = store.capture(pageNotification("repeat", page.copy(providerReference = null)), encrypted())!!
+    assertNull(store.postCandidate(repeat, WECHAT_PACKAGE, page))
+    assertEquals(0L, database.count("transactions"))
+  }
+
+  @Test
+  fun notificationAfterPageDoesNotDuplicateAndPageOriginSurvivesRoom() = runBlocking {
+    val page = pageCandidate()
+    val pageEvent = store.capture(pageNotification("page", page), encrypted())!!
+    val posted = store.postCandidate(pageEvent, WECHAT_PACKAGE, page)!!
+    assertEquals(EntryOrigin.Accessibility, database.transactionDao().findById(posted.id)!!.entryOrigin)
+    val event = store.capture(notification("later"), encrypted())!!
+    assertNull(store.postCandidate(event, WECHAT_PACKAGE, candidate().copy(description = "")))
+    assertEquals(1L, database.count("transactions"))
+    assertEquals(AutomationEventStatus.Duplicate, store.getEvent(event)!!.status)
+  }
+
+  @Test
+  fun repeatedPageCaptureUsesStableReferenceOrSessionInsteadOfScanTime() = runBlocking {
+    val page = pageCandidate()
+    assertNotNull(store.capture(pageNotification("ref", page), encrypted()))
+    assertNull(store.capture(pageNotification("ref", page.copy(occurredAt = 2000)), encrypted()))
+    val withoutReference = page.copy(providerReference = null)
+    assertNotNull(store.capture(pageNotification("session", withoutReference), encrypted()))
+    assertNull(store.capture(pageNotification("session", withoutReference.copy(occurredAt = 2000)), encrypted()))
+  }
+
+  @Test
+  fun editedDescriptionsArePreservedAndPageOriginEditsDisableUndo() = runBlocking {
+    val page = pageCandidate()
+    val event = store.capture(pageNotification("edit", page), encrypted())!!
+    val posted = store.postCandidate(event, WECHAT_PACKAGE, page)!!
+    database.transactionDao().update(posted.id, TransactionType.Expense, 1200, null, null, "用户备注", 1000, posted.updatedAt + 1)
+    val next = store.capture(notification("edited-later"), encrypted())!!
+    assertNull(store.postCandidate(next, WECHAT_PACKAGE, candidate().copy(providerReference = page.providerReference)))
+    assertEquals("用户备注", database.transactionDao().findById(posted.id)!!.description)
+    assertTrue(database.transactionDao().findById(posted.id)!!.isUserEdited)
+    assertFalse(store.undoAutomatedTransaction(posted.id))
+    assertEquals(1L, database.count("transactions"))
+  }
+
+  @Test
+  fun ambiguousSameAmountNotificationsRemainSeparateAndPageRequiresReview() = runBlocking {
+    for (key in listOf("one", "two")) {
+      val event = store.capture(notification(key), encrypted())!!
+      store.postCandidate(event, WECHAT_PACKAGE, candidate().copy(description = ""))
+    }
+    val page = pageCandidate()
+    val event = store.capture(pageNotification("ambiguous", page), encrypted())!!
+    assertNull(store.postCandidate(event, WECHAT_PACKAGE, page))
+    assertEquals(2L, database.count("transactions"))
+    assertEquals(AutomationEventStatus.Failed, store.getEvent(event)!!.status)
+    assertEquals("payment_match_ambiguous", store.listRecentEvents().first { it.id == event }.failureCode)
+  }
+
+  @Test
+  fun differentReferencesAndHistoricalDatesAreNotMerged() = runBlocking {
+    val page = pageCandidate()
+    val first = store.capture(pageNotification("first", page), encrypted())!!
+    store.postCandidate(first, WECHAT_PACKAGE, page)
+    val second = store.capture(notification("different-reference"), encrypted())!!
+    store.postCandidate(second, WECHAT_PACKAGE, candidate().copy(description = "", providerReference = "different123"))
+    val oldPage = page.copy(occurredAt = -86_400_000, providerReference = "historical123", hasExactTime = true)
+    val old = store.capture(pageNotification("old", oldPage), encrypted())!!
+    store.postCandidate(old, WECHAT_PACKAGE, oldPage)
+    assertEquals(3L, database.count("transactions"))
+  }
+
+  private fun pageCandidate() = candidate().copy(description = "街角咖啡", merchant = "街角咖啡", parser = "wechat-page-v1", providerReference = "20260920123456")
+  private fun pageNotification(key: String, candidate: ParsedTransactionCandidate) = notification("payment-page:$key").copy(
+    postedAt = candidate.occurredAt, pageCandidate = candidate,
+  )
+
   private fun notification(key: String) = CapturedNotification(
     sourcePackage = WECHAT_PACKAGE,
     notificationKey = key,

@@ -49,6 +49,7 @@ import com.sextant.app.SextantApplication
 import com.sextant.app.automation.ALIPAY_PACKAGE
 import com.sextant.app.automation.ListenerConnectionState
 import com.sextant.app.automation.WECHAT_PACKAGE
+import com.sextant.app.automation.isPaymentPageServiceEnabled
 import com.sextant.app.data.AppState
 import com.sextant.app.data.AutomationEventStatus
 import com.sextant.app.data.SextantRepository
@@ -74,6 +75,10 @@ fun AutomationSettingsScreen(
   val listenerStatus by connection.status.collectAsState()
   val listenerEnabled = listenerStatus.authorized
   val listenerConnected = listenerStatus.connection == ListenerConnectionState.Connected
+  var pageAuthorized by remember { mutableStateOf(isPaymentPageServiceEnabled(context)) }
+  val pageAccessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+    pageAuthorized = isPaymentPageServiceEnabled(context)
+  }
 
   val notificationAccessLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.StartActivityForResult(),
@@ -90,7 +95,10 @@ fun AutomationSettingsScreen(
   val lifecycleOwner = LocalLifecycleOwner.current
   DisposableEffect(lifecycleOwner, connection) {
     val observer = LifecycleEventObserver { _, event ->
-      if (event == Lifecycle.Event.ON_RESUME) scope.launch { connection.rebind(context) }
+      if (event == Lifecycle.Event.ON_RESUME) {
+        pageAuthorized = isPaymentPageServiceEnabled(context)
+        scope.launch { connection.rebind(context) }
+      }
     }
     lifecycleOwner.lifecycle.addObserver(observer)
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -143,11 +151,34 @@ fun AutomationSettingsScreen(
       }
     }
     item {
+      SextantCard {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Text("支付页面识别", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+          Text(
+            "通过无障碍服务读取微信、支付宝支付结果页和账单详情页的金额、商户、时间与交易单号，仅在本机解析，不保存或上传原始页面，也不会自动操作支付。",
+            color = SextantColors.TextMuted,
+          )
+          Text("支付完成后停留片刻；打开账单详情可补记。当前支持已完成的人民币消费，转账、退款等仍通过通知记录。页面结构不受支持时可能无法识别。", color = SextantColors.TextMuted)
+          Text(
+            if (pageAuthorized) "系统授权：已开启" else "系统授权：未开启",
+            color = if (pageAuthorized) SextantColors.Success else SextantColors.TextMuted,
+          )
+          InlineSwitch("识别商户并补全记账", "默认关闭，开启后请保存设置；已有手动备注不会被覆盖", draft.paymentPageEnabled) {
+            draft = draft.copy(paymentPageEnabled = it)
+          }
+          SextantOutlinedButton(onClick = {
+            runCatching { pageAccessLauncher.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+              .onFailure { message = "当前系统无法打开无障碍设置。" }
+          }) { Text(if (pageAuthorized) "管理页面读取授权" else "前往开启无障碍服务") }
+        }
+      }
+    }
+    item {
       SettingsSwitchCard(
         title = "启用自动记账",
-        description = if (listenerEnabled) "监听新的支付通知并自动生成有效流水" else "请先授予通知读取权限",
+        description = if (listenerEnabled || pageAuthorized) "根据已授权的通知和支付页面生成流水" else "请先授权通知读取或支付页面识别",
         checked = draft.enabled,
-        enabled = listenerEnabled,
+        enabled = listenerEnabled || pageAuthorized || draft.enabled,
       ) { draft = draft.copy(enabled = it) }
     }
     item {
@@ -190,17 +221,18 @@ fun AutomationSettingsScreen(
         val event = state.automationEvents[index]
         SextantCard() {
           Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("${event.sourcePackage.sourceName()} · ${event.status.label()}", fontWeight = FontWeight.SemiBold)
+            val captureSource = if (event.parser?.contains("-page-") == true) "页面" else "通知"
+            Text("${event.sourcePackage.sourceName()}$captureSource · ${event.status.label()}", fontWeight = FontWeight.SemiBold)
             Text(SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(event.postedAt)), color = SextantColors.TextMuted)
             event.parsedSummary?.let { Text(it, color = SextantColors.TextMuted) }
             if (event.status == AutomationEventStatus.Failed) {
               event.failureCode?.let { Text("原因：${it.failureLabel()}", color = SextantColors.Danger) }
             }
-            if (event.status == AutomationEventStatus.Failed) {
+            if (event.status == AutomationEventStatus.Failed && event.failureCode !in setOf("payment_match_ambiguous", "automation_disabled")) {
               SextantOutlinedButton(onClick = {
                 scope.launch {
                   val queued = (context.applicationContext as SextantApplication).automationCoordinator.retry(event.id)
-                  message = if (queued) "已重新加入处理队列。" else "原通知已过期，无法重试。"
+                  message = if (queued) "已重新加入处理队列。" else "原始信息不可用，请检查账本后手动补记。"
 
                 }
               }) { Text("重试") }
@@ -271,5 +303,7 @@ private fun String.failureLabel() = when (this) {
   "amount_missing" -> "通知未包含明确金额"
   "amount_ambiguous" -> "通知包含多个可能的金额"
   "direction_missing" -> "无法确定收支方向"
+  "payment_match_ambiguous" -> "存在相近的同金额交易，请检查账本后手动补记"
+  "automation_disabled" -> "自动记账或对应来源已关闭"
   else -> this
 }

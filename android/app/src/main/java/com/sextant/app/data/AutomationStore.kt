@@ -24,6 +24,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
       wechatEnabled = values[KEY_WECHAT].toBooleanSetting(default = true),
       alipayEnabled = values[KEY_ALIPAY].toBooleanSetting(default = true),
       resultNotificationsEnabled = values[KEY_RESULT_NOTIFICATIONS].toBooleanSetting(default = true),
+      paymentPageEnabled = values[KEY_PAYMENT_PAGE].toBooleanSetting(),
     )
   }
 
@@ -33,6 +34,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
       KEY_WECHAT to settings.wechatEnabled.asSetting(),
       KEY_ALIPAY to settings.alipayEnabled.asSetting(),
       KEY_RESULT_NOTIFICATIONS to settings.resultNotificationsEnabled.asSetting(),
+      KEY_PAYMENT_PAGE to settings.paymentPageEnabled.asSetting(),
     )
     database.withTransaction {
       values.forEach { (key, value) ->
@@ -49,7 +51,13 @@ internal class AutomationStore(private val database: SextantDatabase) {
    */
   suspend fun capture(notification: CapturedNotification, encrypted: EncryptedValue): String? {
     val id = UUID.randomUUID().toString()
-    val eventKey = sha256("${notification.sourcePackage}|${notification.notificationKey}|${notification.postedAt}")
+    val page = notification.pageCandidate
+    val eventKey = when {
+      page?.providerReference != null -> sha256("${notification.sourcePackage}|${notification.notificationKey}")
+      page?.hasExactTime == true -> sha256("${notification.sourcePackage}|page|${page.occurredAt}|${page.amountCents}|${page.description}")
+      page != null -> sha256("${notification.sourcePackage}|${notification.notificationKey}")
+      else -> sha256("${notification.sourcePackage}|${notification.notificationKey}|${notification.postedAt}")
+    }
     val payloadHash = sha256(notification.normalizedText())
     val inserted = database.automationEventDao().insertIgnoringDuplicates(
       AutomationEventEntity(
@@ -110,6 +118,52 @@ internal class AutomationStore(private val database: SextantDatabase) {
     val events = database.automationEventDao()
     val now = System.currentTimeMillis()
 
+    val event = events.findById(eventId) ?: return@withTransaction null
+    if (event.status != AutomationEventStatus.Captured || event.sourcePackage != sourcePackage) return@withTransaction null
+    val summary = "${candidate.direction.storageValue()}|${candidate.kind.storageValue()}|${candidate.amountCents}"
+    val isPage = candidate.parser.contains("-page-")
+    val referenceMatch = candidate.providerReference?.let { events.findByReference(sourcePackage, it, eventId) }
+    val matches = if (referenceMatch != null) listOf(referenceMatch) else {
+      events.findNearby(sourcePackage, candidate.occurredAt - 90_000, candidate.occurredAt + 90_000, summary, eventId)
+        .filter { previous ->
+          val previousPage = previous.notificationKey.startsWith("payment-page:")
+          // Same-channel notifications can be two legitimate purchases. Page repeats require a matching merchant.
+          val row = previous.transactionId?.let { database.transactionDao().findById(it) }
+          val compatibleParty = row == null || row.description.isBlank() || candidate.description.isBlank() ||
+            row.description == candidate.description || row.isUserEdited
+          val compatibleReference = previous.providerReference == null || candidate.providerReference == null ||
+            previous.providerReference == candidate.providerReference
+          compatibleReference && compatibleParty && (previousPage != isPage ||
+            (isPage && row != null && row.description == candidate.description))
+        }
+    }
+    if (matches.size > 1) {
+      updateEvent(eventId, AutomationEventStatus.Failed, candidate.parser, "payment_match_ambiguous", clearPayload = true)
+      return@withTransaction null
+    }
+    matches.singleOrNull()?.let { previous ->
+      if (referenceMatch == null && events.hasMergedChannel(previous.transactionId, if (isPage) "payment-page:%" else "%", isPage)) {
+        updateEvent(eventId, AutomationEventStatus.Failed, candidate.parser, "payment_match_ambiguous", clearPayload = true)
+        return@withTransaction null
+      }
+      if (referenceMatch == null && isPage && previous.notificationKey.startsWith("payment-page:") &&
+        !(candidate.hasExactTime && previous.postedAt == candidate.occurredAt)) {
+        updateEvent(eventId, AutomationEventStatus.Failed, candidate.parser, "payment_match_ambiguous", clearPayload = true)
+        return@withTransaction null
+      }
+      val row = previous.transactionId?.let { database.transactionDao().findById(it) }
+      var updated: PostedTransaction? = null
+      if (row != null && !row.isUserEdited && row.description.isBlank() && candidate.description.isNotBlank()) {
+        val updatedAt = maxOf(now, row.updatedAt + 1)
+        database.transactionDao().fillAutomationDescription(row.id, candidate.description.trim().take(120), updatedAt)
+        updated = PostedTransaction(row.id, row.type, row.amountCents, candidate.description, updatedAt)
+      }
+      events.updateStatus(eventId, AutomationEventStatus.Duplicate, now, candidate.parser,
+        "payment_merged", true, summary, previous.transactionId, true, null, true)
+      if (candidate.providerReference != null) events.attachReference(previous.id, candidate.providerReference)
+      return@withTransaction updated
+    }
+
     if (candidate.providerReference != null &&
       events.providerReferenceExists(sourcePackage, candidate.providerReference, eventId)
     ) {
@@ -148,7 +202,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
         transactionDate = candidate.occurredAt,
         createdAt = now,
         updatedAt = now,
-        entryOrigin = EntryOrigin.Notification,
+        entryOrigin = if (isPage) EntryOrigin.Accessibility else EntryOrigin.Notification,
         automationKind = candidate.kind,
         sourceEventId = eventId,
         isUserEdited = false,
@@ -180,7 +234,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
   suspend fun undoAutomatedTransaction(transactionId: String, expectedUpdatedAt: Long? = null): Boolean =
     database.withTransaction {
       val row = database.transactionDao().findById(transactionId) ?: return@withTransaction false
-      if (row.entryOrigin != EntryOrigin.Notification || row.isUserEdited) return@withTransaction false
+      if (row.entryOrigin == EntryOrigin.Manual || row.isUserEdited) return@withTransaction false
       if (expectedUpdatedAt != null && row.updatedAt != expectedUpdatedAt) return@withTransaction false
 
       database.transactionDao().deleteById(transactionId)
@@ -249,6 +303,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
     const val KEY_WECHAT = "automation_wechat_enabled"
     const val KEY_ALIPAY = "automation_alipay_enabled"
     const val KEY_RESULT_NOTIFICATIONS = "automation_result_notifications_enabled"
+    const val KEY_PAYMENT_PAGE = "automation_payment_page_enabled"
     const val RAW_RETENTION_MILLIS = 7L * 24 * 60 * 60 * 1000
     const val AUDIT_RETENTION_MILLIS = 90L * 24 * 60 * 60 * 1000
   }

@@ -343,7 +343,7 @@ private fun LedgerTransactionRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
           )
-          if (item.transaction.entryOrigin == EntryOrigin.Notification) {
+          if (item.transaction.entryOrigin != EntryOrigin.Manual) {
             LedgerOriginTag()
           }
         }

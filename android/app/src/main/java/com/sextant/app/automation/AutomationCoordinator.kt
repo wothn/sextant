@@ -36,6 +36,23 @@ class AutomationCoordinator(
     scope.launch { receive(notification) }
   }
 
+  suspend fun receivePaymentPage(sourcePackage: String, session: String, candidate: ParsedTransactionCandidate) {
+    val settings = repository.loadAutomationSettings()
+    if (!settings.enabled || !settings.paymentPageEnabled || !settings.sourceEnabled(sourcePackage)) return
+    // Persist only extracted payment fields, never the surrounding screen content.
+    val captured = CapturedNotification(
+      sourcePackage = sourcePackage,
+      notificationKey = "payment-page:${candidate.providerReference ?: "$session|${candidate.amountCents}|${candidate.description}"}",
+      postedAt = candidate.occurredAt,
+      text = candidate.description,
+      pageCandidate = candidate,
+    )
+    val encrypted = repository.automationSecretStore.encrypt(json.encodeToString(captured).toByteArray(Charsets.UTF_8))
+    val eventId = repository.automationStore.capture(captured, encrypted) ?: return
+    enqueueLocal(eventId)
+    repository.notifyChanged()
+  }
+
   /** 真正处理一条通知：[capture] 的挂起版本，测试可以等它结束。 */
   suspend fun receive(notification: CapturedNotification) {
     val settings = repository.loadAutomationSettings()
@@ -58,7 +75,15 @@ class AutomationCoordinator(
       repository.notifyChanged()
       return ProcessingResult.Failure
     }
-    return when (val outcome = NotificationParserRegistry.parse(notification)) {
+    val settings = repository.loadAutomationSettings()
+    if (!settings.enabled || !settings.sourceEnabled(stored.sourcePackage) ||
+      (notification.pageCandidate != null && !settings.paymentPageEnabled)) {
+      repository.automationStore.markFailed(eventId, "automation_disabled", clearPayload = true)
+      repository.notifyChanged()
+      return ProcessingResult.Success
+    }
+    return when (val outcome = notification.pageCandidate?.let { LocalParseOutcome.Parsed(it) }
+      ?: NotificationParserRegistry.parse(notification)) {
       LocalParseOutcome.NotFinancial -> {
         repository.automationStore.markFailed(eventId, "not_financial", clearPayload = true)
         repository.notifyChanged()

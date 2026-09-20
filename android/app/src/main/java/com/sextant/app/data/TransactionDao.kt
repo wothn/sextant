@@ -59,12 +59,15 @@ internal interface TransactionDao {
   @Insert
   suspend fun insert(transaction: TransactionEntity)
 
+  @Query("UPDATE transactions SET description = :description, updatedAt = :updatedAt WHERE id = :id AND isUserEdited = 0 AND description = '' AND entryOrigin != 'manual'")
+  suspend fun fillAutomationDescription(id: String, description: String, updatedAt: Long)
+
   @Query(
     """
     UPDATE transactions SET type = :type, amountCents = :amountCents, categoryId = :categoryId,
       paymentMethodId = :paymentMethodId, description = :description, transactionDate = :transactionDate,
       updatedAt = :updatedAt,
-      isUserEdited = CASE WHEN entryOrigin = 'notification' THEN 1 ELSE isUserEdited END
+      isUserEdited = CASE WHEN entryOrigin IN ('notification', 'accessibility') THEN 1 ELSE isUserEdited END
     WHERE id = :id
     """,
   )

@@ -9,6 +9,7 @@ enum class TransactionType {
 enum class EntryOrigin {
   Manual,
   Notification,
+  Accessibility,
 }
 
 enum class AutomationKind {
@@ -81,6 +82,7 @@ data class AutomationSettings(
   val wechatEnabled: Boolean = true,
   val alipayEnabled: Boolean = true,
   val resultNotificationsEnabled: Boolean = true,
+  val paymentPageEnabled: Boolean = false,
 )
 
 data class Budget(

@@ -226,8 +226,8 @@ private fun String.toTransactionType(): TransactionType = when (this) {
   else -> TransactionType.Expense
 }
 
-private fun EntryOrigin.storageValue(): String = if (this == EntryOrigin.Notification) "notification" else "manual"
-private fun String.toEntryOrigin(): EntryOrigin = if (this == "notification") EntryOrigin.Notification else EntryOrigin.Manual
+private fun EntryOrigin.storageValue(): String = SextantTypeConverters().entryOriginToStorage(this)
+private fun String.toEntryOrigin(): EntryOrigin = SextantTypeConverters().entryOriginFromStorage(this)
 private fun AutomationKind.storageValue(): String = name.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()
 private fun String.toAutomationKind(): AutomationKind? = AutomationKind.entries.firstOrNull {
   it.name.equals(this, ignoreCase = true)
@@ -286,7 +286,7 @@ internal object BackupCodec {
       requireBackup(item.amountCents >= 0) { "交易金额无效" }
       requireBackup(item.categoryId == null || item.categoryId in categoryIds) { "交易分类引用无效" }
       requireBackup(item.paymentMethodId == null || item.paymentMethodId in paymentMethodIds) { "交易来源引用无效" }
-      requireBackup(item.entryOrigin == "manual" || item.entryOrigin == "notification") { "交易来源类型无效" }
+      requireBackup(item.entryOrigin in setOf("manual", "notification", "accessibility")) { "交易来源类型无效" }
       requireBackup(item.automationKind == null || item.automationKind in AUTOMATION_KINDS) { "自动交易类型无效" }
     }
     document.budgets.forEach { item ->

@@ -27,11 +27,16 @@ internal class SextantTypeConverters {
   fun entryOriginToStorage(value: EntryOrigin): String = when (value) {
     EntryOrigin.Manual -> "manual"
     EntryOrigin.Notification -> "notification"
+    EntryOrigin.Accessibility -> "accessibility"
   }
 
   @TypeConverter
   fun entryOriginFromStorage(value: String?): EntryOrigin =
-    if (value == "notification") EntryOrigin.Notification else EntryOrigin.Manual
+    when (value) {
+      "notification" -> EntryOrigin.Notification
+      "accessibility" -> EntryOrigin.Accessibility
+      else -> EntryOrigin.Manual
+    }
 
   @TypeConverter
   fun automationKindToStorage(value: AutomationKind): String = value.snakeCase()

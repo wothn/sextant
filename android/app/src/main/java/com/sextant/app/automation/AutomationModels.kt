@@ -22,6 +22,7 @@ data class CapturedNotification(
   val summaryText: String = "",
   val tickerText: String = "",
   val groupChildText: String = "",
+  val pageCandidate: ParsedTransactionCandidate? = null,
 ) {
   fun normalizedText(): String = buildList {
     add(title)
@@ -48,6 +49,7 @@ data class EncryptedValue(
   val iv: ByteArray,
 )
 
+@Serializable
 data class ParsedTransactionCandidate(
   val direction: TransactionType,
   val kind: AutomationKind,
@@ -61,6 +63,7 @@ data class ParsedTransactionCandidate(
   val amountEvidence: String,
   val directionEvidence: String,
   val parser: String,
+  val hasExactTime: Boolean = false,
 )
 
 sealed interface LocalParseOutcome {
