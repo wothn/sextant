@@ -60,6 +60,8 @@ import com.sextant.app.ui.util.monthLabel
 import com.sextant.app.ui.util.signedAmountPlain
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.compose.material.icons.outlined.CalendarMonth
+import com.sextant.app.ui.components.SextantIconButton
 
 private val ScreenPadding = PaddingValues(start = 20.dp, end = 20.dp)
 
@@ -69,6 +71,7 @@ fun HomeScreen(
   filter: LedgerFilter,
   onFilterChanged: (LedgerFilter) -> Unit,
   onTransactionClick: (TransactionListItem) -> Unit,
+  onOpenCalendar: () -> Unit,
 ) {
   var showFilters by remember { mutableStateOf(false) }
   val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
@@ -81,7 +84,12 @@ fun HomeScreen(
       title = "概览",
       scrollState = listState,
       modifier = Modifier.padding(horizontal = 20.dp),
-      actions = { FilterTrigger(filter) { showFilters = true } },
+      actions = {
+        SextantIconButton(onClick = onOpenCalendar) {
+          Icon(Icons.Outlined.CalendarMonth, contentDescription = "收支日历")
+        }
+        FilterTrigger(filter) { showFilters = true }
+      },
     )
     LazyColumn(
       state = listState,
@@ -304,7 +312,7 @@ private fun dailySummary(expense: Long, income: Long): String = buildList {
  * 而那条从 48dp 处起始的线在深色主题下几乎看不见，在浅色主题下又把列表切得很碎。
  */
 @Composable
-private fun LedgerTransactionRow(
+internal fun LedgerTransactionRow(
   item: TransactionListItem,
   categoryName: String,
   parentName: String?,

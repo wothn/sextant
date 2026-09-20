@@ -65,6 +65,7 @@ private fun HomeScreenPreview() {
         filter = previewFilter,
         onFilterChanged = {},
         onTransactionClick = {},
+        onOpenCalendar = {},
       )
     }
   }
@@ -117,6 +118,7 @@ private fun EmptyHomeScreenPreview() {
         filter = previewFilter,
         onFilterChanged = {},
         onTransactionClick = {},
+        onOpenCalendar = {},
       )
     }
   }

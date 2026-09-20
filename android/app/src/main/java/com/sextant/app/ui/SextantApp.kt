@@ -48,6 +48,8 @@ import com.sextant.app.ui.navigation.Tab
 import com.sextant.app.ui.navigation.rememberQuickEntryFabState
 import com.sextant.app.ui.screens.AnalyticsScreen
 import com.sextant.app.ui.screens.HomeScreen
+import com.sextant.app.ui.screens.LedgerCalendarScreen
+import androidx.activity.compose.BackHandler
 import com.sextant.app.ui.screens.PlansScreen
 import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
@@ -66,6 +68,9 @@ fun SextantApp(
   onEditRequestConsumed: () -> Unit = {},
 ) {
   var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+  var showCalendar by rememberSaveable { mutableStateOf(false) }
+  val calendarOpen = tab == Tab.Home && showCalendar
+  BackHandler(enabled = calendarOpen) { showCalendar = false }
   var showQuickEntry by rememberSaveable { mutableStateOf(false) }
   var editingId by rememberSaveable { mutableStateOf<String?>(null) }
   var editingTransaction by remember { mutableStateOf<TransactionListItem?>(null) }
@@ -90,7 +95,7 @@ fun SextantApp(
   val pageStates = rememberSaveableStateHolder()
   LaunchedEffect(request) { viewModel.show(request) }
   LaunchedEffect(ui.theme) { if (ui.data != null) onThemePreferenceChanged(ui.theme) }
-  LaunchedEffect(tab) { if (tab == Tab.Home) quickEntryFab.show() }
+  LaunchedEffect(tab, calendarOpen) { if (tab == Tab.Home && !calendarOpen) quickEntryFab.show() }
   LaunchedEffect(editingId) {
     editingTransaction = editingId?.let { repository.findTransaction(it) }
   }
@@ -99,6 +104,7 @@ fun SextantApp(
     repository.findTransaction(id)?.let { item ->
       filter = LedgerFilter.forMonth(item.transaction.transactionDate)
       tab = Tab.Home
+      showCalendar = false
       editingId = id
     }
     onEditRequestConsumed()
@@ -114,7 +120,7 @@ fun SextantApp(
 
   Scaffold(
     bottomBar = {
-      LedgerBottomBar(
+      if (!calendarOpen) LedgerBottomBar(
         selectedTab = tab,
         onTabSelected = { tab = it },
       )
@@ -136,13 +142,20 @@ fun SextantApp(
             else SextantTextButton(onClick = viewModel::refresh) { Text("读取失败，点击重试") }
           }
         } else {
-          pageStates.SaveableStateProvider(index) {
+          pageStates.SaveableStateProvider(if (calendarOpen) "calendar" else index) {
             when (Tab.entries[index]) {
-              Tab.Home -> HomeScreen(
+              Tab.Home -> if (calendarOpen) LedgerCalendarScreen(
+                state = state,
+                filter = filter,
+                onFilterChanged = { filter = it },
+                onBack = { showCalendar = false },
+                onTransactionClick = { editingId = it.transaction.id },
+              ) else HomeScreen(
                 state = state,
                 filter = filter,
                 onFilterChanged = { filter = it },
                 onTransactionClick = { editingId = it.transaction.id },
+                onOpenCalendar = { showCalendar = true },
               )
               Tab.Analytics -> AnalyticsScreen(
                 state = state,
@@ -167,7 +180,7 @@ fun SextantApp(
         // 记账入口只服务概览：这里才是「翻明细、看到想补记的一笔」的地方。
         // 分析、计划、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力；计划页的新增
         // 入口用区块标题右侧的按钮，和分类预算保持同一个模式。
-        visible = tab == Tab.Home && quickEntryFab.visible && ui.data != null && ui.request == request,
+        visible = tab == Tab.Home && !calendarOpen && quickEntryFab.visible && ui.data != null && ui.request == request,
         onClick = { showQuickEntry = true },
         icon = Icons.Outlined.Add,
         contentDescription = "记一笔",

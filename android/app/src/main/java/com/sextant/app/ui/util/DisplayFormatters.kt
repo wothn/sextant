@@ -152,3 +152,19 @@ fun LedgerFilter.rangeLabel(): String {
 
 fun LedgerFilter.isCurrentMonth(): Boolean = !isAllTime && YearMonth.from(rangeStart.toLocalDate()) == YearMonth.now() &&
   YearMonth.from((rangeEnd - 1).coerceAtLeast(rangeStart).toLocalDate()) == YearMonth.now()
+
+/** Compact calendar amounts; exact currency remains visible in the selected period totals. */
+fun calendarAmount(cents: Long): String = when {
+  cents >= 10_000_000_000L -> "%.1f亿".format(Locale.CHINA, cents / 10_000_000_000.0)
+  cents >= 1_000_000L -> "%.1f万".format(Locale.CHINA, cents / 1_000_000.0)
+  cents >= 100_000L -> "%.1f千".format(Locale.CHINA, cents / 100_000.0)
+  else -> java.math.BigDecimal.valueOf(cents, 2).stripTrailingZeros().toPlainString()
+}
+
+fun calendarDateLabel(date: LocalDate): String = "${date.year}年${date.monthValue}月${date.dayOfMonth}日"
+
+fun calendarPeriodLabel(date: LocalDate, showMonth: Boolean, firstYear: Int? = null): String = when {
+  firstYear != null -> "${firstYear}–${firstYear + 11}年"
+  showMonth -> "${date.year}年${date.monthValue}月"
+  else -> "${date.year}年"
+}
