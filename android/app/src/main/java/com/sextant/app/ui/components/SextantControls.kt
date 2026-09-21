@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -389,6 +390,10 @@ fun SextantSurface(
  * 选中态只有一种写法：AccentSoft 填充 + AccentStrong 内容，**不再画 1dp 描边**——
  * 那圈线在深色主题里几乎不可见，在浅色主题里又和卡片的边缘抢注意力，填充已经说清楚了。
  * 选中时圆角从 medium 长到 large，形状变化本身就是反馈。
+ *
+ * 圆角同时夹住按下反馈：`clickable` 的指示层画在自己的节点上，而 `Surface` 的 `clip(shape)`
+ * 排在它之后（更内层），只把背景和内容裁圆。所以这里要在 `clickable` 之前先 `clip` 一次，
+ * 否则日期的灰色水波会是一个方角矩形，和圆角格子对不上。
  */
 @Composable
 fun SextantSelectableSurface(
@@ -408,11 +413,13 @@ fun SextantSelectableSurface(
     targetValue = if (selected) SextantColors.AccentStrong else SextantColors.Text,
     animationSpec = SextantMotion.defaultEffects(), label = "selectableContent",
   )
+  val shape = morphCorner(selected, SextantRadius.Large, SextantRadius.Medium)
   Surface(
     modifier = modifier
+      .clip(shape)
       .semantics { this.selected = selected }
       .clickable(enabled = enabled, role = role, onClickLabel = onClickLabel, onClick = onClick),
-    shape = morphCorner(selected, SextantRadius.Large, SextantRadius.Medium),
+    shape = shape,
     color = container,
     contentColor = contentColor,
     border = null,

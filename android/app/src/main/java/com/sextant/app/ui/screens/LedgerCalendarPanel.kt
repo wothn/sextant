@@ -1,6 +1,7 @@
 package com.sextant.app.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
@@ -10,9 +11,13 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sextant.app.data.*
 import com.sextant.app.ui.components.*
 import com.sextant.app.ui.theme.SextantColors
@@ -119,12 +124,41 @@ private fun CalendarCell(label: String, description: String, summary: Summary?, 
     contentDescription = "$description，${if (summary == null) "无收支记录" else "收入 ${formatCurrency(summary.incomeCents)}，支出 ${formatCurrency(summary.expenseCents)}"}"
   }) {
     Column(Modifier.padding(horizontal = 2.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-      Text(if (selected) "✓ $label" else label, style = MaterialTheme.typography.labelMedium)
-      if (summary == null) Text("—", color = SextantColors.TextSubtle)
+      CalendarCellText(if (selected) "✓ $label" else label, MaterialTheme.typography.labelMedium)
+      if (summary == null) CalendarCellText("—", MaterialTheme.typography.labelSmall, SextantColors.TextSubtle)
       else {
-        Text("+${calendarAmount(summary.incomeCents)}", style = MaterialTheme.typography.labelSmall, color = SextantColors.Success)
-        Text("−${calendarAmount(summary.expenseCents)}", style = MaterialTheme.typography.labelSmall, color = SextantColors.Text)
+        CalendarCellText("+${calendarAmount(summary.incomeCents)}", MaterialTheme.typography.labelSmall, SextantColors.Success)
+        CalendarCellText("−${calendarAmount(summary.expenseCents)}", MaterialTheme.typography.labelSmall, SextantColors.Text)
       }
     }
   }
 }
+
+/**
+ * 格内文字一律单行。
+ *
+ * 日视图一格只有屏宽/7——窄机器上不到 40dp，`+999.99` 这种长度按 labelSmall 排下来就会折行，
+ * 既把金额劈成两行，又撑高整行、让七列对不齐。所以这里按宽度分步缩字号，宁可小一号也不换行；
+ * 缩到 [MIN_CELL_FONT_SIZE] 还放不下时按格边裁掉，不再溢出到相邻日期。
+ *
+ * 字号上限跟着传入的 style 走，主题调大排版时这里不会变成写死的常数。
+ */
+@Composable
+private fun CalendarCellText(text: String, style: TextStyle, color: Color = Color.Unspecified) {
+  val maxFontSize = style.fontSize.takeIf { it.isSp } ?: MIN_CELL_FONT_SIZE
+  Text(
+    text = text,
+    style = style,
+    color = color,
+    maxLines = 1,
+    softWrap = false,
+    overflow = TextOverflow.Clip,
+    autoSize = TextAutoSize.StepBased(
+      minFontSize = MIN_CELL_FONT_SIZE,
+      maxFontSize = maxFontSize,
+      stepSize = 0.5.sp,
+    ),
+  )
+}
+
+private val MIN_CELL_FONT_SIZE = 7.sp
