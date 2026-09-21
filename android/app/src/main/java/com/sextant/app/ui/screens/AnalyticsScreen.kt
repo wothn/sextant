@@ -57,6 +57,7 @@ import com.sextant.app.data.TransactionType
 import com.sextant.app.data.sortedForDetail
 import com.sextant.app.ui.components.CategoryIcon
 import com.sextant.app.ui.components.EmptyCard
+import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SectionTitle
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantHeading
@@ -122,7 +123,7 @@ private fun AnalyticsOverview(
     LazyColumn(
       state = listState,
       modifier = Modifier.fillMaxSize(),
-      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
       verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
       item { MonthComparison(state) }
@@ -194,7 +195,7 @@ internal fun CategoryDetailScreen(
     }
     LazyColumn(
       modifier = Modifier.fillMaxSize(),
-      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
       verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
       item { CategoryDetailSummary(category, monthStart, rows.size, monthTotalCents) }

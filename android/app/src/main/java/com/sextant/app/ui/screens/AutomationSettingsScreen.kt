@@ -3,6 +3,7 @@ package com.sextant.app.ui.screens
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantCard
+import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SextantIconButton
 import com.sextant.app.ui.components.SextantOutlinedButton
 import com.sextant.app.ui.components.SextantSwitch
@@ -112,7 +113,7 @@ fun AutomationSettingsScreen(
 
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(16.dp),
+    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     item {

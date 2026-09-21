@@ -4,6 +4,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.ui.components.SextantFlexibleHeader
+import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SextantLoadingIndicator
 import com.sextant.app.ui.components.SextantWavyProgressIndicator
 import com.sextant.app.ui.components.SextantRadioButton
@@ -201,7 +202,7 @@ private fun SettingsOverview(
     LazyColumn(
       state = listState,
       modifier = Modifier.fillMaxSize(),
-      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
       verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
       item {
@@ -283,7 +284,7 @@ private fun CategoryManagementScreen(
 ) {
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(16.dp),
+    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     item {
@@ -306,7 +307,7 @@ private fun PaymentMethodManagementScreen(
 ) {
   LazyColumn(
     modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(16.dp),
+    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     item {

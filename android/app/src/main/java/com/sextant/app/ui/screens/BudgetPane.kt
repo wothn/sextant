@@ -49,6 +49,7 @@ import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.components.BudgetScale
 import com.sextant.app.ui.components.FlowChips
 import androidx.compose.foundation.layout.size
+import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SextantHeading
 import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.theme.SextantColors
@@ -90,7 +91,7 @@ fun BudgetPane(
   LazyColumn(
     state = listState,
     modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
     verticalArrangement = Arrangement.spacedBy(18.dp),
   ) {
     item { BudgetOverview(state, onEdit = { editingTotal = true }) }

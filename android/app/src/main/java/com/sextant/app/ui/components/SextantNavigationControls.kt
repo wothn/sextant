@@ -26,6 +26,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,10 +89,11 @@ fun SextantFab(
 }
 
 /**
- * 铺了记账 FAB 的列表（目前只有概览）底部要预留的空白：56dp 按钮 + 16dp 下边距 + 16dp 呼吸。
+ * 铺了记账 FAB 的列表（目前只有概览）底部要再预留的空白：56dp 按钮 + 16dp 下边距 + 16dp 呼吸。
  *
- * 页面把它交给 `LazyColumn` 的 `contentPadding.bottom`，最后一行就不会停在 FAB 底下——
- * 明细的金额正在右边，也正是 FAB 待的位置。没有 FAB 的页面不需要预留。
+ * 起算点是**底栏上沿**，所以页面把它和 [LocalBottomBarInset] 一起加进 `contentPadding.bottom`：
+ * 再加上底栏那一份，最后一行就不会停在 FAB 底下——明细的金额正在右边，也正是 FAB 待的位置。
+ * 没有 FAB 的页面只加 [LocalBottomBarInset]。
  */
 val SextantFabClearance: Dp = 88.dp
 
@@ -133,6 +135,19 @@ fun SextantCollapsibleFab(
 // ---------------------------------------------------------------------------
 // 底部导航
 // ---------------------------------------------------------------------------
+
+/**
+ * 内容视口底部到底栏上沿的距离。
+ *
+ * 底栏是悬浮在内容之上的：内容从它下方流过，被盖住的只有条本身和两条留白，两侧和上方的
+ * 空隙都能看到明细在滚。代价是滚动内容要自己预留结尾——页面把这个值加到 `LazyColumn`
+ * 的 `contentPadding.bottom`（概览还要再加上 [SextantFabClearance]），最后一项才能完整
+ * 滚到栏上方，而不是停在栏底下。
+ *
+ * 值由 `SextantApp` 用 `Scaffold` 量到的底栏高度推出，所以字体放大、底栏变高时页面
+ * 的预留会跟着变；日历页没有底栏，那里是 0。
+ */
+val LocalBottomBarInset = compositionLocalOf { 0.dp }
 
 /** Sextant 的悬浮等宽底栏。外部负责安全区和留白，内部保留品牌指示条。 */
 @Composable

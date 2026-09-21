@@ -24,6 +24,7 @@ import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.components.BudgetScale
 import com.sextant.app.ui.components.EmptyCard
 import com.sextant.app.ui.components.LedgerFilterSheet
+import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SextantBadge
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantFabClearance
@@ -94,8 +95,9 @@ fun HomeScreen(
     LazyColumn(
       state = listState,
       modifier = Modifier.fillMaxSize(),
-      // 底部留出记账 FAB 的位置，最后一笔明细的金额不会停在它底下。
-      contentPadding = PaddingValues(bottom = SextantFabClearance),
+      // 底部留出记账 FAB 的位置，最后一笔明细的金额不会停在它底下；FAB 上面还有悬浮底栏，
+      // 所以还要加上 LocalBottomBarInset。
+      contentPadding = PaddingValues(bottom = LocalBottomBarInset.current + SextantFabClearance),
     ) {
       item {
         Box {

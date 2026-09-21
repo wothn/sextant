@@ -10,14 +10,18 @@ import com.sextant.app.ui.components.SextantTabContent
 import com.sextant.app.ui.components.SextantTextButton
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -43,6 +47,7 @@ import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.data.ThemePreference
 import com.sextant.app.ui.components.QuickEntryDialog
+import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.navigation.LedgerNavigationBar
 import com.sextant.app.ui.navigation.Tab
 import com.sextant.app.ui.navigation.rememberQuickEntryFabState
@@ -55,7 +60,10 @@ import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.util.LedgerFilterSaver
 
-private val BottomBarHorizontalMargin = 48.dp
+private val BottomBarHorizontalMargin = 24.dp
+
+/** 底栏外侧的呼吸：上下一圈留白，也是底栏与 FAB 之间的间距。 */
+private val BottomBarGap = 16.dp
 
 @Composable
 fun SextantApp(
@@ -127,66 +135,79 @@ fun SextantApp(
     },
     containerColor = SextantColors.Background,
   ) { padding ->
-    Box(
-      Modifier
-        .padding(padding)
-        .fillMaxSize()
-        // FAB 的滚动收起挂在内容区最外层：页面里的任何列表滚动都会经过这里，
-        // 只读方向、不消费位移，所以页面的滚动行为不受影响。
-        .nestedScroll(quickEntryFab.nestedScrollConnection),
-    ) {
-      SextantTabContent(selectedIndex = tab.ordinal) { index ->
-        if (ui.request != request || ui.data == null || index != tab.ordinal) {
-          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (ui.error == null || ui.request != request) SextantLoadingIndicator()
-            else SextantTextButton(onClick = viewModel::refresh) { Text("读取失败，点击重试") }
-          }
-        } else {
-          pageStates.SaveableStateProvider(if (calendarOpen) "calendar" else index) {
-            when (Tab.entries[index]) {
-              Tab.Home -> if (calendarOpen) LedgerCalendarScreen(
-                state = state,
-                filter = filter,
-                onFilterChanged = { filter = it },
-                onBack = { showCalendar = false },
-                onTransactionClick = { editingId = it.transaction.id },
-              ) else HomeScreen(
-                state = state,
-                filter = filter,
-                onFilterChanged = { filter = it },
-                onTransactionClick = { editingId = it.transaction.id },
-                onOpenCalendar = { showCalendar = true },
-              )
-              Tab.Analytics -> AnalyticsScreen(
-                state = state,
-                monthStart = filter.anchorMonthStart,
-                onTransactionClick = { editingId = it.transaction.id },
-              )
-              Tab.Discover -> PlansScreen(state, repository)
-              Tab.Settings -> SettingsScreen(
-                state = state,
-                repository = repository,
-                backupCoordinator = backupCoordinator,
-                themePreference = themePreference,
-                onThemePreferenceChanged = { preference ->
-                  saveAction.launch { repository.setThemePreference(preference) }
-                },
-              )
+    // 底栏照旧交给 Scaffold 去量高度，但内容不再吃它的下边距：底栏是悬浮的，被它盖住的
+    // 只有条本身，两侧和上方的空隙应该能看到明细在滚。于是这里只让开系统导航区，把量到的
+    // 底栏高度通过 LocalBottomBarInset 交给页面，由页面在列表结尾预留（见 design.md）。
+    val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val barInset = (padding.calculateBottomPadding() - navBarInset - BottomBarGap)
+      .coerceAtLeast(0.dp)
+    CompositionLocalProvider(LocalBottomBarInset provides barInset) {
+      Box(
+        Modifier
+          .padding(top = padding.calculateTopPadding(), bottom = navBarInset)
+          .fillMaxSize()
+          // FAB 的滚动收起挂在内容区最外层：页面里的任何列表滚动都会经过这里，
+          // 只读方向、不消费位移，所以页面的滚动行为不受影响。
+          .nestedScroll(quickEntryFab.nestedScrollConnection),
+      ) {
+        SextantTabContent(selectedIndex = tab.ordinal) { index ->
+          if (ui.request != request || ui.data == null || index != tab.ordinal) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+              if (ui.error == null || ui.request != request) SextantLoadingIndicator()
+              else SextantTextButton(onClick = viewModel::refresh) { Text("读取失败，点击重试") }
+            }
+          } else {
+            pageStates.SaveableStateProvider(if (calendarOpen) "calendar" else index) {
+              when (Tab.entries[index]) {
+                Tab.Home -> if (calendarOpen) LedgerCalendarScreen(
+                  state = state,
+                  filter = filter,
+                  onFilterChanged = { filter = it },
+                  onBack = { showCalendar = false },
+                  onTransactionClick = { editingId = it.transaction.id },
+                ) else HomeScreen(
+                  state = state,
+                  filter = filter,
+                  onFilterChanged = { filter = it },
+                  onTransactionClick = { editingId = it.transaction.id },
+                  onOpenCalendar = { showCalendar = true },
+                )
+                Tab.Analytics -> AnalyticsScreen(
+                  state = state,
+                  monthStart = filter.anchorMonthStart,
+                  onTransactionClick = { editingId = it.transaction.id },
+                )
+                Tab.Discover -> PlansScreen(state, repository)
+                Tab.Settings -> SettingsScreen(
+                  state = state,
+                  repository = repository,
+                  backupCoordinator = backupCoordinator,
+                  themePreference = themePreference,
+                  onThemePreferenceChanged = { preference ->
+                    saveAction.launch { repository.setThemePreference(preference) }
+                  },
+                )
+              }
             }
           }
         }
+        SextantCollapsibleFab(
+          // 记账入口只服务概览：这里才是「翻明细、看到想补记的一笔」的地方。
+          // 分析、计划、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力；计划页的新增
+          // 入口用区块标题右侧的按钮，和分类预算保持同一个模式。
+          visible = tab == Tab.Home && !calendarOpen && quickEntryFab.visible && ui.data != null && ui.request == request,
+          onClick = { showQuickEntry = true },
+          icon = Icons.Outlined.Add,
+          contentDescription = "记一笔",
+          modifier = Modifier.align(Alignment.BottomEnd)
+            .padding(
+              start = BottomBarHorizontalMargin,
+              end = BottomBarHorizontalMargin,
+              // 底栏上沿 + 一圈呼吸：按钮仍然贴底栏上方，且与底栏右边缘对齐。
+              bottom = LocalBottomBarInset.current + BottomBarGap,
+            ),
+        )
       }
-      SextantCollapsibleFab(
-        // 记账入口只服务概览：这里才是「翻明细、看到想补记的一笔」的地方。
-        // 分析、计划、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力；计划页的新增
-        // 入口用区块标题右侧的按钮，和分类预算保持同一个模式。
-        visible = tab == Tab.Home && !calendarOpen && quickEntryFab.visible && ui.data != null && ui.request == request,
-        onClick = { showQuickEntry = true },
-        icon = Icons.Outlined.Add,
-        contentDescription = "记一笔",
-        modifier = Modifier.align(Alignment.BottomEnd)
-          .padding(horizontal = BottomBarHorizontalMargin, vertical = 16.dp),
-      )
     }
   }
 
@@ -247,7 +268,7 @@ private fun LedgerBottomBar(
   onTabSelected: (Tab) -> Unit,
 ) {
   Box(Modifier.fillMaxWidth().navigationBarsPadding()
-    .padding(horizontal = BottomBarHorizontalMargin, vertical = 16.dp)) {
+    .padding(horizontal = BottomBarHorizontalMargin, vertical = BottomBarGap)) {
     LedgerNavigationBar(
       selectedTab = selectedTab,
       onTabSelected = onTabSelected,

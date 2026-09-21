@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.sextant.app.ui.components.rememberSaveAction
+import com.sextant.app.ui.components.LocalBottomBarInset
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -106,7 +107,7 @@ fun RecurringPane(
   LazyColumn(
     state = listState,
     modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
     verticalArrangement = Arrangement.spacedBy(18.dp),
   ) {
     item { RecurringOverview(state.recurringExpenses, today, state.monthlyBudgetCents) }
