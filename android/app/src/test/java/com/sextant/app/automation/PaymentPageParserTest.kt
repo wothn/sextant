@@ -27,6 +27,47 @@ class PaymentPageParserTest {
     assertEquals("街角咖啡", candidate.merchant)
   }
 
+  @Test fun wechatNativeSuccessReadsMerchantHeadlineWithoutPaymentFields() {
+    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, wechatNativeSuccess, now)!!
+    assertEquals(3000L, candidate.amountCents)
+    assertEquals("示例网络商店", candidate.merchant)
+    assertEquals("示例网络商店", candidate.description)
+    assertEquals("¥30.00", candidate.amountEvidence)
+    assertEquals("支付成功", candidate.directionEvidence)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertEquals(AutomationKind.Purchase, candidate.kind)
+    assertEquals("wechat-page-v1", candidate.parser)
+    assertEquals(now, candidate.occurredAt)
+    assertFalse(candidate.hasExactTime)
+    assertNull(candidate.providerReference)
+  }
+
+  @Test fun wechatNativeSuccessRequiresCompleteHeaderAndRejectsAmbiguousAmounts() {
+    for (page in listOf(
+      wechatNativeSuccess.filterNot { it == "完成" },
+      wechatNativeSuccess.filterNot { it == "示例网络商店" },
+      wechatNativeSuccess.filterNot { it == "支付成功" },
+      listOf("示例网络商店", "支付成功", "￥30.00", "完成"),
+      wechatNativeSuccess + "5.00元",
+      wechatNativeSuccess + "发送",
+      wechatNativeSuccess + "待付款",
+      wechatNativeSuccess + "退款成功",
+      wechatNativeSuccess + "转账",
+      wechatNativeSuccess + "USD",
+    )) assertNull(page.toString(), PaymentPageParser.parse(WECHAT_PACKAGE, page, now))
+    for (merchant in listOf("付款方式", "完成", "交易成功", "30.00", "转账-给张三", "退款给张三")) {
+      assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, wechatNativeSuccess.map {
+        if (it == "示例网络商店") merchant else it
+      }, now))
+    }
+    for (total in listOf("30.00", "￥-30.00", "+￥30.00", "￥0.00", "￥30.001")) {
+      assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, wechatNativeSuccess.map {
+        if (it == "￥30.00") total else it
+      }, now))
+    }
+    assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, wechatNativeSuccess, now))
+  }
+
   @Test fun alipayActualPaidOverridesOriginalAmount() {
     val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE,
       listOf("付款成功", "¥20.00", "实付金额：18.00元", "商户名称：便利店", "支付方式", "余额"), now)!!
@@ -202,6 +243,12 @@ class PaymentPageParserTest {
   }
 
   private val detail = listOf("账单详情", "-12.00", "交易成功", "商户全称", "街角咖啡", "付款时间：2026-09-18 08:30:00", "交易单号", "2026091800123456")
+
+  /** Real device content descriptions, including repeated promotional nodes. */
+  private val wechatNativeSuccess = listOf(
+    "支付成功", "示例网络商店", "￥30.00", "摇一摇有优惠", "摇一摇有优惠",
+    "点击领取优惠", "点击领取优惠", "领取", "为乡村孩子上优质体育课", "完成",
+  )
 
   private val alipayDiscountedSuccess = listOf(
     "支付成功￥77.20", "支付成功", "77.20", "￥79.20", "示例银行立减金", "-￥2.00",

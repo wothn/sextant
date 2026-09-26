@@ -34,8 +34,15 @@ object PaymentPageParser {
     val alipayTotal = alipayTotals.singleOrNull()
     val success = lines.take(16).firstOrNull { it in successTitles }
       ?: alipayTotal?.let { "支付成功" } ?: return null
+    // WeChat's native result page exposes only content descriptions: success,
+    // merchant, unsigned yuan total, then optional promotions and a Done button.
+    val wechatResultMerchant = if (sourcePackage == WECHAT_PACKAGE && !detail &&
+      lines[0] == "支付成功" && "完成" in lines &&
+      wechatResultAmount.matches(lines[2])) {
+      lines[1].takeIf { validMerchant(it) && excludedKinds.none(it::startsWith) }
+    } else null
     val hasPaymentField = lines.any { line -> paymentFields.any { line == it || line.startsWith("$it：") || line.startsWith("$it:") } }
-    if (!detail && !hasPaymentField) return null
+    if (!detail && !hasPaymentField && wechatResultMerchant == null) return null
 
     val labeledAmount = field(lines, listOf("实付金额", "实付款", "支付金额", "付款金额"))
     val explicitTotal = alipayTotal ?: detailTotal
@@ -62,6 +69,7 @@ object PaymentPageParser {
     val merchant = (if (isMaskedMerchant(declaredMerchant)) storeName ?: declaredMerchant else declaredMerchant)
       ?: lines.firstNotNullOfOrNull { payTo.matchEntire(it)?.groupValues?.get(1) }
       ?: lines.firstNotNullOfOrNull { paidToHeadline.matchEntire(it)?.groupValues?.get(1) }
+      ?: wechatResultMerchant?.takeIf { amountText == lines[2] }
       ?: if (detail) {
         // Both apps also render the merchant as the headline immediately above the signed amount.
         val index = lines.indexOf(expenseLine ?: amountText)
@@ -127,6 +135,7 @@ object PaymentPageParser {
   private val amount = Regex("([+-]?)\\s*¥?\\s*([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*元?")
   private val alipaySuccessAmount = Regex("支付成功\\s*(¥\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*元?")
   private val alipayExpenseAmount = Regex("支出\\s*(¥?\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?\\s*元)")
+  private val wechatResultAmount = Regex("¥\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?\\s*元?")
   private val payTo = Regex("向\\s*(.{2,80}?)\\s*付款")
 
   /**
