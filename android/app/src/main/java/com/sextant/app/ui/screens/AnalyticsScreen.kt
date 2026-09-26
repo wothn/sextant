@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
@@ -28,6 +29,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,10 +42,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +61,7 @@ import com.sextant.app.data.TransactionSortOrder
 import com.sextant.app.data.TransactionType
 import com.sextant.app.data.sortedForDetail
 import com.sextant.app.ui.components.CategoryIcon
+import com.sextant.app.ui.components.ColorDot
 import com.sextant.app.ui.components.EmptyCard
 import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SectionTitle
@@ -65,12 +71,12 @@ import com.sextant.app.ui.components.SextantMetric
 import com.sextant.app.ui.components.SextantIconButton
 import com.sextant.app.ui.components.SextantSegmentedButtonGroup
 import com.sextant.app.ui.components.SextantSurface
-import com.sextant.app.ui.components.SextantTextButton
 import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantBarShape
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.displayDescription
+import com.sextant.app.ui.util.calendarAmount
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
@@ -129,7 +135,7 @@ private fun AnalyticsOverview(
     ) {
       item { MonthComparison(state) }
       item {
-        AnalyticsSection("每日支出", "查看这个月的消费节奏") {
+        AnalyticsSection("每日支出") {
           if (state.dailySpending.none { it.amountCents > 0 }) {
             EmptyCard("暂无趋势", "录入支出后，这里会显示每日消费变化。")
           } else {
@@ -138,7 +144,7 @@ private fun AnalyticsOverview(
         }
       }
       item {
-        AnalyticsSection("支出结构", "子分类已并入上级，点开可以看当月明细") {
+        AnalyticsSection("支出结构", "按一级分类汇总") {
           if (state.categoryBreakdown.isEmpty()) {
             EmptyCard("暂无分析", "录入支出后会展示分类占比。")
           } else {
@@ -348,25 +354,51 @@ private fun SpendingChart(points: List<DailySpending>) {
   val maxAmount = points.maxOfOrNull { it.amountCents }?.coerceAtLeast(1) ?: 1
   val peak = points.maxByOrNull { it.amountCents }
   var selectedPoint by remember(points) { mutableStateOf(peak) }
+  val selectedIndex = points.indexOf(selectedPoint)
+  val axisStyle = MaterialTheme.typography.labelSmall
+  val axisLabels = listOf(compactAmount(maxAmount), compactAmount(maxAmount / 2), "¥0")
+  val textMeasurer = rememberTextMeasurer()
+  val axisWidth = with(LocalDensity.current) {
+    maxOf(58.dp, axisLabels.maxOf { textMeasurer.measure(it, style = axisStyle).size.width }.toDp() + 4.dp)
+  }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+      Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalArrangement = Arrangement.spacedBy(4.dp),
+      itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
       SextantMetric(
-        label = "${selectedPoint?.dayOfMonth ?: peak?.dayOfMonth}日支出",
+        label = buildString {
+          append("${selectedPoint?.dayOfMonth ?: peak?.dayOfMonth}日支出")
+          peak?.let { append(" · 峰值${it.dayOfMonth}日") }
+        },
         value = formatCurrency(selectedPoint?.amountCents ?: 0),
       )
-      peak?.let {
-        Text("峰值 ${it.dayOfMonth}日", color = SextantColors.AccentStrong, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+      Row {
+        SextantIconButton(
+          enabled = selectedIndex > 0,
+          onClick = { selectedPoint = points[selectedIndex - 1] },
+        ) {
+          Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "前一天", modifier = Modifier.size(20.dp))
+        }
+        SextantIconButton(
+          enabled = selectedIndex >= 0 && selectedIndex < points.lastIndex,
+          onClick = { selectedPoint = points[selectedIndex + 1] },
+        ) {
+          Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = "后一天", modifier = Modifier.size(20.dp))
+        }
       }
     }
     Row(Modifier.fillMaxWidth().height(138.dp)) {
       Column(
-        modifier = Modifier.width(58.dp).height(132.dp),
+        modifier = Modifier.width(axisWidth).height(132.dp),
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.End,
       ) {
-        Text(compactAmount(maxAmount), color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
-        Text(compactAmount(maxAmount / 2), color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
-        Text("¥0", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelSmall)
+        axisLabels.forEach { label ->
+          Text(label, color = SextantColors.TextSubtle, style = axisStyle, maxLines = 1, softWrap = false)
+        }
       }
       Spacer(Modifier.width(8.dp))
       Box(Modifier.weight(1f).height(132.dp)) {
@@ -399,12 +431,7 @@ private fun SpendingChart(points: List<DailySpending>) {
         }
       }
     }
-    val selectedIndex = points.indexOf(selectedPoint)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      SextantTextButton(enabled = selectedIndex > 0, onClick = { selectedPoint = points[selectedIndex - 1] }) { Text("前一天") }
-      SextantTextButton(enabled = selectedIndex >= 0 && selectedIndex < points.lastIndex, onClick = { selectedPoint = points[selectedIndex + 1] }) { Text("后一天") }
-    }
-    Row(Modifier.fillMaxWidth().padding(start = 66.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(Modifier.fillMaxWidth().padding(start = axisWidth + 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
       Text("1日", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
       Text("${(points.size + 1) / 2}日", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
       Text("${points.size}日", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
@@ -424,7 +451,7 @@ private fun CategoryStructure(
     leading.forEach { add(CategorySlice(it.categoryName, it.amountCents, argbColor(it.color))) }
     if (otherAmount > 0) add(CategorySlice("其他", otherAmount, SextantColors.TextSubtle))
   }
-  Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     CategoryDonut(slices, total)
     items.take(5).forEach { item ->
       val ratio = if (total <= 0) 0f else item.amountCents.toFloat() / total
@@ -434,32 +461,73 @@ private fun CategoryStructure(
         modifier = Modifier
           .fillMaxWidth()
           .clickable(onClickLabel = "查看${item.categoryName}的当月明细") { onCategoryClick(item) }
-          .padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+          .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(8.dp).height(8.dp).clip(CircleShape).background(color))
-            Spacer(Modifier.width(9.dp))
-            Text(item.categoryName, fontWeight = FontWeight.SemiBold)
-          }
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("${formatCurrency(item.amountCents)}  ·  ${(ratio * 100).toInt()}%", fontWeight = FontWeight.SemiBold)
-            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = SextantColors.TextMuted, modifier = Modifier.size(18.dp))
-          }
+        CategoryAmountHeading(item.categoryName, formatCurrency(item.amountCents), color)
+        Row(
+          Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+          verticalAlignment = Alignment.Top,
+        ) {
+          Text(
+            change?.let { "较上月${if (it >= 0) "增加" else "减少"} ${(abs(it) * 100).toInt()}%" } ?: "上月无同类支出",
+            modifier = Modifier.weight(1f),
+            color = when {
+              change == null -> SextantColors.TextSubtle
+              change > 0 -> SextantColors.Danger
+              else -> SextantColors.Success
+            },
+            style = MaterialTheme.typography.bodySmall,
+          )
+          Text(
+            "占比 ${(ratio * 100).toInt()}%",
+            color = SextantColors.TextSubtle,
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.End,
+          )
         }
-        Box(Modifier.fillMaxWidth().height(7.dp).clip(CircleShape).background(SextantColors.SurfaceContainerHighest)) {
-          Box(Modifier.fillMaxWidth(ratio.coerceIn(0f, 1f)).height(7.dp).clip(CircleShape).background(color))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(SextantColors.SurfaceContainerHighest)) {
+          Box(Modifier.fillMaxWidth(ratio.coerceIn(0f, 1f)).height(4.dp).clip(CircleShape).background(color))
         }
+      }
+    }
+  }
+}
+
+/** 常规宽度下名称与金额分列；长金额单独占一行，避免把名称挤没。 */
+@Composable
+private fun CategoryAmountHeading(name: String, amount: String, color: Color) {
+  val amountStyle = MaterialTheme.typography.titleMedium
+  val nameStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+  val textMeasurer = rememberTextMeasurer()
+  val amountWidth = textMeasurer.measure(amount, style = amountStyle).size.width
+  val nameWidth = textMeasurer.measure(name.take(4), style = nameStyle).size.width
+  val density = LocalDensity.current
+  BoxWithConstraints(Modifier.fillMaxWidth()) {
+    // 四个分类字加色点、箭头和三处间距；文字预留随字体缩放，短名称按实际宽度保留。
+    val stacked = amountWidth + nameWidth + with(density) { 60.dp.toPx() } > with(density) { maxWidth.toPx() }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        ColorDot(color)
         Text(
-          change?.let { "较上月${if (it >= 0) "增加" else "减少"} ${(abs(it) * 100).toInt()}%" } ?: "上月无同类支出",
-          color = when {
-            change == null -> SextantColors.TextSubtle
-            change > 0 -> SextantColors.Danger
-            else -> SextantColors.Success
-          },
-          style = MaterialTheme.typography.bodySmall,
+          name,
+          modifier = Modifier.weight(1f),
+          style = nameStyle,
+          maxLines = if (stacked) 2 else 1,
+          overflow = TextOverflow.Ellipsis,
         )
+        if (!stacked) {
+          Text(amount, style = amountStyle, textAlign = TextAlign.End)
+        }
+        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = SextantColors.TextSubtle, modifier = Modifier.size(16.dp))
+      }
+      if (stacked) {
+        Text(amount, modifier = Modifier.fillMaxWidth(), style = amountStyle, textAlign = TextAlign.End)
       }
     }
   }
@@ -535,19 +603,13 @@ private fun CategoryDonut(slices: List<CategorySlice>, total: Long) {
 
 private data class CategorySlice(val label: String, val amountCents: Long, val color: Color)
 
-private fun compactAmount(amountCents: Long): String {
-  val yuan = amountCents / 100.0
-  return when {
-    yuan >= 10_000 -> "¥${"%.1f".format(yuan / 10_000)}万"
-    yuan >= 1_000 -> "¥${"%.1f".format(yuan / 1_000)}k"
-    else -> "¥${yuan.toInt()}"
-  }
-}
+/** 图表与日历共用带中文单位的简写，精确金额仍由汇总和分类行提供。 */
+private fun compactAmount(amountCents: Long): String = "¥${calendarAmount(amountCents)}"
 
 @Composable
 private fun BudgetForecast(state: AppState) {
   val budget = state.monthlyBudgetCents
-  AnalyticsSection("预算预测", "按当前消费速度估算月底结果") {
+  AnalyticsSection("预算预测", "按当前消费速度估算") {
     if (budget == null) {
       EmptyCard("尚未设置总预算", "设置月度总预算后可查看月底支出预测。")
     } else {
@@ -587,11 +649,13 @@ private fun BudgetForecast(state: AppState) {
 }
 
 @Composable
-private fun AnalyticsSection(title: String, subtitle: String, content: @Composable () -> Unit) {
+private fun AnalyticsSection(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
       SextantHeading(title)
-      Text(subtitle, color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
+      if (subtitle != null) {
+        Text(subtitle, color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
+      }
     }
     content()
   }
