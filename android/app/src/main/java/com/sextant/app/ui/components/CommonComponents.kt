@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.Category
 import com.sextant.app.data.PaymentMethod
@@ -63,8 +65,7 @@ fun SectionTitle(text: String) {
 /**
  * 页面内区块标题（明细 / 分类预算 / 筛选流水 / 面板标题）。
  *
- * 字重来自主题的 titleLarge（expressive 档位已经是 SemiBold），调用处不再叠加
- * `fontWeight`——之前每个调用点各写一遍，字重迟早会分叉。
+ * 字重来自主题的 titleLarge，调用处不再叠加 fontWeight。
  */
 @Composable
 fun SextantHeading(text: String, modifier: Modifier = Modifier) {
@@ -76,11 +77,32 @@ fun SextantHeading(text: String, modifier: Modifier = Modifier) {
   )
 }
 
+/** 汇总指标：标签与数值共用排版层级，核心金额由调用方选择 headlineLarge。 */
+@Composable
+fun SextantMetric(
+  label: String,
+  value: String,
+  modifier: Modifier = Modifier,
+  valueColor: Color = SextantColors.Text,
+  valueStyle: TextStyle = MaterialTheme.typography.titleLarge,
+  primary: Boolean = false,
+) {
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Text(
+      label,
+      color = SextantColors.TextSubtle,
+      style = if (primary) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium,
+    )
+    Text(value, style = valueStyle, color = valueColor)
+  }
+}
+
 /** 小计数徽标，用在筛选入口这类「有条件的数量」提示上。 */
 @Composable
 fun SextantBadge(count: Int, modifier: Modifier = Modifier) {
   Box(
-    modifier = modifier.size(18.dp).clip(SextantFullShape).background(SextantColors.Accent),
+    modifier = modifier.sizeIn(minWidth = 18.dp, minHeight = 18.dp)
+      .clip(SextantFullShape).background(SextantColors.Accent).padding(horizontal = 4.dp),
     contentAlignment = Alignment.Center,
   ) {
     Text(

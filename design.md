@@ -42,6 +42,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 
 - 核心金额使用强调后的 `headlineLarge`，页面标题使用 `headlineMedium`，区块标题使用 `titleLarge`；基础 title、label 和正文保留常规字重，页面标题或关键状态需要强调时使用 `sextantEmphasized()`，不将整个排版阶梯整体加重。
 - 金额沿用主题的等宽数字特性和共享格式化函数。长金额、大字体或窄屏下保证关键数据完整；辅助说明可换行或适度省略。
+- 概览与分析的汇总指标复用 `SextantMetric`：核心金额使用 `headlineLarge`，次级指标使用 `titleLarge`，标签与数值间保持 4dp；不要用默认字号加粗来代替金额层级。概览的月汇总常规宽度保持两列，长金额或大字体放不下时整组指标换到下一行，优先为金额提供完整行宽。
 - 按钮、chip 和导航指示条默认沿用共享组件的胶囊形状；卡片、面板和输入框按各自用途使用主题形状。
 - 形变表达按下、选中或展开等状态变化，不做循环装饰动画。圆角插值复用 `morphCorner`，不要将固定半径视为任意尺寸下的胶囊。
 - 按下反馈要跟着控件的圆角走：可选控件的状态层必须被控件形状裁切，圆角格子上不出现方角水波。`SextantSelectableSurface` 在 `clickable` 之前先 `clip` 一次来保证这一点。
@@ -56,6 +57,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 
 - 概览、分析、计划、设置复用 `SextantFlexibleHeader`，标题置于滚动内容之外并随滚动收起，不在列表中重复标题。「计划」页的标题固定为「计划」，副标题随当前一级视图变化。
 - 主页面以 20dp 水平边距为基准；同层级间距保持一致，优先使用 4、8、12、16、20、24dp。
+- 概览汇总组内间距为 20dp，汇总下方保留 24dp；日期组头与明细保持 8dp，明细主次文字保持 4dp。相邻的日历与筛选工具入口复用 `SextantTonalIconButton`，未生效时采用相同的淡底和图标尺寸，筛选生效后再用强调色与数量徽标区分。
 - 明细通过日期、留白和分类图标分组；卡片用于独立信息或表单分组。明细行分类名占左侧剩余宽度、金额贴行右缘对齐，命名过长时省略分类名而不是把金额挤离右缘。日期头保持短：最近三天用「今天 / 昨天 / 前天」，其余用「2月14日 周六」，只有跨年才补年份。分组在数据层按本地时区当天零点完成，文案由 `DisplayFormatters.kt` 渲染时生成，列表 key 使用日期值而不是展示文案。
 - 点击区域至少以 48dp 为目标，紧凑控件也要保留足够触摸范围。尊重系统返回、键盘、安全区域和字体缩放。
 
@@ -117,7 +119,7 @@ Sextant 是日常使用的原生 Android 个人财务应用，金额、记录和
 | `ui/components/SaveAction.kt` | 保存 ViewModel、互斥、等待和错误反馈，提交完成后由当前组合执行关闭 |
 | `ui/components/Autosave.kt` | 无保存按钮的开关类设置的合并写入与失败反馈 |
 | `ui/LedgerViewModel.kt` | 页面投影加载、版本订阅、取消过期查询和读取错误 |
-| `ui/components/CommonComponents.kt` | 区块标题、空状态、徽标和分类 chip |
+| `ui/components/CommonComponents.kt` | 区块标题、汇总指标排版、空状态、自适应数量徽标和分类 chip |
 | `ui/components/CategoryIcons.kt`、`CategoryBrowser.kt` | 分类图标和选择行为 |
 | `ui/components/LedgerIdentity.kt` | 品牌标记与预算刻度 |
 | `ui/components/SextantTransitions.kt` | 列表入场与页面切换 |

@@ -61,6 +61,7 @@ import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SectionTitle
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantHeading
+import com.sextant.app.ui.components.SextantMetric
 import com.sextant.app.ui.components.SextantIconButton
 import com.sextant.app.ui.components.SextantSegmentedButtonGroup
 import com.sextant.app.ui.components.SextantSurface
@@ -124,7 +125,7 @@ private fun AnalyticsOverview(
       state = listState,
       modifier = Modifier.fillMaxSize(),
       contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
-      verticalArrangement = Arrangement.spacedBy(22.dp),
+      verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
       item { MonthComparison(state) }
       item {
@@ -312,9 +313,13 @@ private fun MonthComparison(state: AppState) {
   val current = state.monthSummary.expenseCents
   val previous = state.previousMonthSummary.expenseCents
   val change = if (previous <= 0) null else (current - previous).toDouble() / previous
-  Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-    Text("本月支出", color = SextantColors.TextMuted, fontWeight = FontWeight.SemiBold)
-    Text(formatCurrency(current), style = MaterialTheme.typography.headlineLarge)
+  Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    SextantMetric(
+      label = "本月支出",
+      value = formatCurrency(current),
+      primary = true,
+      valueStyle = MaterialTheme.typography.headlineLarge,
+    )
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       ComparisonMetric("上月支出", formatCurrency(previous))
       ComparisonMetric(
@@ -334,10 +339,7 @@ private fun MonthComparison(state: AppState) {
 
 @Composable
 private fun ComparisonMetric(label: String, value: String, color: Color = SextantColors.Text) {
-  Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-    Text(label, color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
-    Text(value, color = color, fontWeight = FontWeight.Bold)
-  }
+  SextantMetric(label = label, value = value, valueColor = color)
 }
 
 @Composable
@@ -348,10 +350,10 @@ private fun SpendingChart(points: List<DailySpending>) {
   var selectedPoint by remember(points) { mutableStateOf(peak) }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("${selectedPoint?.dayOfMonth ?: peak?.dayOfMonth}日支出", color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
-        Text(formatCurrency(selectedPoint?.amountCents ?: 0), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-      }
+      SextantMetric(
+        label = "${selectedPoint?.dayOfMonth ?: peak?.dayOfMonth}日支出",
+        value = formatCurrency(selectedPoint?.amountCents ?: 0),
+      )
       peak?.let {
         Text("峰值 ${it.dayOfMonth}日", color = SextantColors.AccentStrong, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
       }

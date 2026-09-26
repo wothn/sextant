@@ -265,6 +265,26 @@ fun SextantIconButton(
       contentColor = tint, disabledContentColor = SextantColors.TextSubtle), content = content)
 }
 
+/** 并列的工具入口共用淡底、24dp 图标与 48dp 点击区域；生效条件使用强调色。 */
+@Composable
+fun SextantTonalIconButton(
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  highlighted: Boolean = false,
+  content: @Composable () -> Unit,
+) {
+  FilledTonalIconButton(
+    onClick = onClick,
+    modifier = modifier.size(48.dp),
+    shape = SextantFullShape,
+    colors = IconButtonDefaults.filledTonalIconButtonColors(
+      containerColor = if (highlighted) SextantColors.AccentSoft else SextantColors.SurfaceContainer,
+      contentColor = if (highlighted) SextantColors.AccentStrong else SextantColors.TextMuted,
+    ),
+    content = content,
+  )
+}
+
 /**
  * 相连按钮组（M3 Expressive 的 [ButtonGroup]）。
  *
@@ -450,7 +470,7 @@ fun SextantDetailTile(
   onClick: () -> Unit,
 ) {
   SextantSurface(
-    modifier = modifier.clickable(onClick = onClick),
+    modifier = modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onClick),
     color = SextantColors.SurfaceContainer,
     shape = MaterialTheme.shapes.medium,
   ) {

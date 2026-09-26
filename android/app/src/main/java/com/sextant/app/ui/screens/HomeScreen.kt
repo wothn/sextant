@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -29,7 +31,7 @@ import com.sextant.app.ui.components.SextantBadge
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantFabClearance
 import com.sextant.app.ui.components.SextantHeading
-import com.sextant.app.ui.components.SextantSurface
+import com.sextant.app.ui.components.SextantMetric
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.LedgerFilter
@@ -51,7 +54,6 @@ import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.EntryOrigin
 import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.theme.SextantColors
-import com.sextant.app.ui.theme.SextantFullShape
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.dayGroupLabel
@@ -62,7 +64,8 @@ import com.sextant.app.ui.util.signedAmountPlain
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.material.icons.outlined.CalendarMonth
-import com.sextant.app.ui.components.SextantIconButton
+import com.sextant.app.ui.components.SextantTonalIconButton
+import com.sextant.app.ui.theme.SextantFullShape
 
 private val ScreenPadding = PaddingValues(start = 20.dp, end = 20.dp)
 
@@ -86,9 +89,10 @@ fun HomeScreen(
       scrollState = listState,
       modifier = Modifier.padding(horizontal = 20.dp),
       actions = {
-        SextantIconButton(onClick = onOpenCalendar) {
-          Icon(Icons.Outlined.CalendarMonth, contentDescription = "收支日历")
+        SextantTonalIconButton(onClick = onOpenCalendar) {
+          Icon(Icons.Outlined.CalendarMonth, contentDescription = "收支日历", modifier = Modifier.size(24.dp))
         }
+        Spacer(Modifier.width(8.dp))
         FilterTrigger(filter) { showFilters = true }
       },
     )
@@ -165,21 +169,15 @@ private fun EmptyLedgerCard(filter: LedgerFilter) {
 private fun FilterTrigger(filter: LedgerFilter, onClick: () -> Unit) {
   val highlighted = filter.hasConditions || !filter.isAllTime
   Box(contentAlignment = Alignment.TopEnd) {
-    SextantSurface(
-      modifier = Modifier
-        .size(48.dp)
-        .clickable(onClickLabel = "打开筛选", onClick = onClick),
-      color = if (highlighted) SextantColors.AccentSoft else SextantColors.SurfaceContainer,
-      shape = SextantFullShape,
+    SextantTonalIconButton(
+      onClick = onClick,
+      highlighted = highlighted,
     ) {
-      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Icon(
-          Icons.Outlined.Tune,
-          contentDescription = if (filter.hasConditions) "筛选，已启用 ${filter.conditionCount} 项条件" else "筛选",
-          tint = if (highlighted) SextantColors.AccentStrong else SextantColors.TextMuted,
-          modifier = Modifier.size(20.dp),
-        )
-      }
+      Icon(
+        Icons.Outlined.Tune,
+        contentDescription = if (filter.hasConditions) "筛选，已启用 ${filter.conditionCount} 项条件" else "筛选",
+        modifier = Modifier.size(24.dp),
+      )
     }
     if (filter.conditionCount > 0) {
       Box(Modifier.padding(top = 1.dp, end = 1.dp)) { SextantBadge(filter.conditionCount) }
@@ -191,25 +189,28 @@ private fun FilterTrigger(filter: LedgerFilter, onClick: () -> Unit) {
 private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
   val currentMonth = filter.isCurrentMonth()
   Column(
-    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 20.dp),
-    verticalArrangement = Arrangement.spacedBy(18.dp),
+    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 24.dp),
+    verticalArrangement = Arrangement.spacedBy(20.dp),
   ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text("今日支出", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelLarge)
-      // 金额一律走 formatCurrency：以前这里是手写的 "¥" 前缀，而同一屏的月汇总和预算
-      // 又不带符号，同一个预算数字在预算页是「¥196.80 / ¥300.00」、首页却一个 ¥ 都没有。
-      Text(
-        formatCurrency(state.todaySummary.expenseCents),
-        color = SextantColors.Text,
-        style = MaterialTheme.typography.headlineLarge,
-      )
-    }
+    SextantMetric(
+      label = "今日支出",
+      value = formatCurrency(state.todaySummary.expenseCents),
+      primary = true,
+      valueStyle = MaterialTheme.typography.headlineLarge,
+    )
     // 汇总口径固定为「当前查看月份」，不跟随明细的筛选范围放大成区间或累计总额：
     // 概览只回答「这个月花了多少、收了多少」，全量数据留给分析页。
     val monthScope = monthScopeLabel(filter, currentMonth)
-    Row(Modifier.fillMaxWidth()) {
-      OverviewMetric("${monthScope}支出", state.monthSummary.expenseCents, Modifier.weight(1f))
-      OverviewMetric("${monthScope}收入", state.monthSummary.incomeCents, Modifier.weight(1f))
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+      val metricModifier = Modifier.widthIn(min = (maxWidth - 16.dp) / 2, max = maxWidth)
+      FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        OverviewMetric("${monthScope}支出", state.monthSummary.expenseCents, metricModifier)
+        OverviewMetric("${monthScope}收入", state.monthSummary.incomeCents, metricModifier)
+      }
     }
     state.monthlyBudgetCents?.let { total ->
       MonthlyBudgetProgress(
@@ -230,14 +231,7 @@ private fun monthScopeLabel(filter: LedgerFilter, isCurrentMonthView: Boolean): 
 
 @Composable
 private fun OverviewMetric(label: String, value: Long, modifier: Modifier = Modifier) {
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-    Text(label, color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
-    Text(
-      formatCurrency(value),
-      style = MaterialTheme.typography.titleLarge,
-      color = SextantColors.Text,
-    )
-  }
+  SextantMetric(label = label, value = formatCurrency(value), modifier = modifier)
 }
 
 @Composable
@@ -265,7 +259,7 @@ private fun MonthlyBudgetProgress(label: String, spent: Long, total: Long) {
 @Composable
 private fun RecentLedgerHeader(count: Int) {
   Row(
-    Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp),
+    Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -282,8 +276,8 @@ private fun DailyLedgerHeader(group: DailyTransactionGroup) {
     .sumOf { it.transaction.amountCents }
 
   FlowRow(
-    Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp),
-    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
     verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     Text(
@@ -325,10 +319,10 @@ internal fun LedgerTransactionRow(
     verticalAlignment = Alignment.CenterVertically,
   ) {
     CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor))
-    Spacer(Modifier.width(14.dp))
+    Spacer(Modifier.width(12.dp))
     Column(
       modifier = Modifier.weight(1f),
-      verticalArrangement = Arrangement.spacedBy(2.dp),
+      verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
       // 金额固定贴在行右缘：一列数字左端对齐才能逐行扫读。
       // 分类名让出空间并在过长时省略，避免金额跟着名字长短左右浮动。
@@ -363,6 +357,7 @@ internal fun LedgerTransactionRow(
           text = signedAmountPlain(item),
           color = SextantColors.Text,
           style = MaterialTheme.typography.titleMedium,
+          textAlign = TextAlign.End,
           softWrap = true,
         )
       }
