@@ -14,6 +14,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,8 +24,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,6 +38,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.sextant.app.ui.components.SextantDetailTile
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -68,6 +73,8 @@ fun AutomationSettingsScreen(
   onNavigateBack: () -> Unit,
 ) {
   val context = LocalContext.current
+  var merchantRulesOpen by rememberSaveable { mutableStateOf(false) }
+  val listState = rememberLazyListState()
   var draft by remember(state.automationSettings) { mutableStateOf(state.automationSettings) }
   var message by remember { mutableStateOf<String?>(null) }
   val scope = rememberCoroutineScope()
@@ -111,7 +118,14 @@ fun AutomationSettingsScreen(
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 
+  BackHandler(enabled = merchantRulesOpen) { merchantRulesOpen = false }
+  if (merchantRulesOpen) {
+    MerchantCategoryRulesScreen(state, repository, onNavigateBack = { merchantRulesOpen = false })
+    return
+  }
+
   LazyColumn(
+    state = listState,
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -222,7 +236,15 @@ fun AutomationSettingsScreen(
       }
     }
     message?.let { value -> item { Text(value, color = SextantColors.TextMuted) } }
-    item { com.sextant.app.ui.components.MerchantCategoryRulesCard(state, repository) }
+    item {
+      SextantDetailTile(
+        label = "商户分类",
+        value = if (state.merchantCategoryRules.isEmpty()) "管理商户的自动分类" else "已记住 ${state.merchantCategoryRules.size} 个商户",
+        icon = Icons.Outlined.Storefront,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { merchantRulesOpen = true },
+      )
+    }
     item { Text("最近处理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
     if (state.automationEvents.isEmpty()) {
       item { Text("暂无自动记账事件。", color = SextantColors.TextMuted) }
