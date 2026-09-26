@@ -14,12 +14,37 @@ object PaymentPageParser {
     val lines = text.flatMap { it.lines() }.map { it.trim().replace('￥', '¥') }.filter(String::isNotEmpty)
     if (lines.size !in 3..200) return null
     if (lines.any { it in rejectedPages }) return null
-    val detail = lines.take(6).any { it in detailTitles }
-    val success = lines.take(16).firstOrNull { it in successTitles } ?: return null
+    // Alipay's WebView content precedes the native toolbar in accessibility order.
+    val detail = (if (sourcePackage == ALIPAY_PACKAGE) lines else lines.take(6)).any { it in detailTitles }
+    val expenseLines = if (sourcePackage == ALIPAY_PACKAGE && detail) {
+      lines.filter { alipayExpenseAmount.matches(it) }.distinct()
+    } else emptyList()
+    if (expenseLines.size > 1) return null
+    val expenseLine = expenseLines.singleOrNull()
+    // An income or malformed spoken total must not fall back to a discount's negative amount.
+    if (sourcePackage == ALIPAY_PACKAGE && detail && expenseLine == null &&
+      lines.take(12).any { it.startsWith("支出") || it.startsWith("收入") }) return null
+    val detailTotal = expenseLine?.let { alipayExpenseAmount.matchEntire(it)!!.groupValues[1] }
+    // Alipay exposes the actual total in a parent content description, while child nodes
+    // also contain the original price and bank discount. Do not infer it from their order.
+    val alipayTotals = if (sourcePackage == ALIPAY_PACKAGE && !detail) {
+      lines.take(16).mapNotNull { alipaySuccessAmount.matchEntire(it)?.groupValues?.get(1) }.distinct()
+    } else emptyList()
+    if (alipayTotals.size > 1) return null
+    val alipayTotal = alipayTotals.singleOrNull()
+    val success = lines.take(16).firstOrNull { it in successTitles }
+      ?: alipayTotal?.let { "支付成功" } ?: return null
     val hasPaymentField = lines.any { line -> paymentFields.any { line == it || line.startsWith("$it：") || line.startsWith("$it:") } }
     if (!detail && !hasPaymentField) return null
 
-    val amountText = field(lines, listOf("实付金额", "实付款", "支付金额", "付款金额"))
+    val labeledAmount = field(lines, listOf("实付金额", "实付款", "支付金额", "付款金额"))
+    val explicitTotal = alipayTotal ?: detailTotal
+    if (explicitTotal != null && labeledAmount != null) {
+      val labeledMatch = amount.matchEntire(labeledAmount) ?: return null
+      val explicitMatch = amount.matchEntire(explicitTotal) ?: return null
+      if (parseAmountCents(labeledMatch.groupValues[2]) != parseAmountCents(explicitMatch.groupValues[2])) return null
+    }
+    val amountText = explicitTotal ?: labeledAmount
       ?: lines.take(12).filter { amount.matches(it) && it.any { char -> char in "¥元.+-" } }.distinct().singleOrNull()
       ?: return null
     val amountMatch = amount.matchEntire(amountText) ?: return null
@@ -39,10 +64,13 @@ object PaymentPageParser {
       ?: lines.firstNotNullOfOrNull { paidToHeadline.matchEntire(it)?.groupValues?.get(1) }
       ?: if (detail) {
         // Both apps also render the merchant as the headline immediately above the signed amount.
-        val index = lines.indexOf(amountText)
-        lines.getOrNull(index - 1)?.takeIf { amountMatch.groupValues[1] == "-" }
+        val index = lines.indexOf(expenseLine ?: amountText)
+        lines.getOrNull(index - 1)?.takeIf { expenseLine != null || amountMatch.groupValues[1] == "-" }
       } else null
-    if (merchant == null || !validMerchant(merchant)) return null
+    if (merchant != null && !validMerchant(merchant)) return null
+    // Only this explicit Alipay success total permits an absent merchant. Keep the
+    // description empty so notifications can match and later enrich the transaction.
+    if (merchant == null && alipayTotal == null) return null
 
     val timeText = field(lines, listOf("付款时间", "支付时间", "交易时间", "创建时间", "转账时间"))
     val transactionTime = timeText?.let(::parseTime)
@@ -58,9 +86,9 @@ object PaymentPageParser {
       amountCents = cents,
       occurredAt = occurredAt,
       merchant = merchant,
-      description = merchant,
+      description = merchant.orEmpty(),
       providerReference = reference,
-      amountEvidence = amountText,
+      amountEvidence = expenseLine ?: amountText,
       directionEvidence = success,
       parser = if (sourcePackage == WECHAT_PACKAGE) "wechat-page-v1" else "alipay-page-v1",
       hasExactTime = transactionTime != null,
@@ -97,6 +125,8 @@ object PaymentPageParser {
   }
 
   private val amount = Regex("([+-]?)\\s*¥?\\s*([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*元?")
+  private val alipaySuccessAmount = Regex("支付成功\\s*(¥\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*元?")
+  private val alipayExpenseAmount = Regex("支出\\s*(¥?\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?\\s*元)")
   private val payTo = Regex("向\\s*(.{2,80}?)\\s*付款")
 
   /**

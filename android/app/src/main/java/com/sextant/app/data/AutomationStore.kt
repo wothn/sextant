@@ -127,14 +127,16 @@ internal class AutomationStore(private val database: SextantDatabase) {
       events.findNearby(sourcePackage, candidate.occurredAt - 90_000, candidate.occurredAt + 90_000, summary, eventId)
         .filter { previous ->
           val previousPage = previous.notificationKey.startsWith("payment-page:")
-          // Same-channel notifications can be two legitimate purchases. Page repeats require a matching merchant.
+          // Same-channel notifications can be two legitimate purchases. Include pages
+          // with an unknown merchant so the ambiguity guard below prevents duplicate bills.
           val row = previous.transactionId?.let { database.transactionDao().findById(it) }
           val compatibleParty = row == null || row.description.isBlank() || candidate.description.isBlank() ||
             row.description == candidate.description || row.isUserEdited
           val compatibleReference = previous.providerReference == null || candidate.providerReference == null ||
             previous.providerReference == candidate.providerReference
           compatibleReference && compatibleParty && (previousPage != isPage ||
-            (isPage && row != null && row.description == candidate.description))
+            (isPage && row != null && (row.description == candidate.description ||
+              row.description.isBlank() || candidate.description.isBlank())))
         }
     }
     if (matches.size > 1) {

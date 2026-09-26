@@ -5,6 +5,8 @@ import android.database.Cursor
 import androidx.sqlite.db.SimpleSQLiteQuery
 import kotlinx.coroutines.runBlocking
 import com.sextant.app.automation.CapturedNotification
+import com.sextant.app.automation.ALIPAY_PACKAGE
+import com.sextant.app.automation.PaymentPageParser
 import com.sextant.app.automation.EncryptedValue
 import com.sextant.app.automation.ParsedTransactionCandidate
 import com.sextant.app.automation.WECHAT_PACKAGE
@@ -127,6 +129,55 @@ class AutomationStoreTest {
     assertEquals(1L, database.count("transactions"))
     assertEquals(AutomationEventStatus.Duplicate, store.getEvent(event)!!.status)
   }
+
+  @Test
+  fun alipayMerchantlessSuccessMergesNotificationInEitherOrder() = runBlocking {
+    for (pageFirst in listOf(true, false)) {
+      val time = if (pageFirst) 1_000L else 1_000_000L
+      val page = alipayMerchantlessPage(time)
+      val notice = candidate().copy(amountCents = 7720, occurredAt = time, merchant = "便利店", description = "便利店")
+      val notification = notification("alipay-$time").copy(sourcePackage = ALIPAY_PACKAGE, postedAt = time)
+      val pageCapture = pageNotification("alipay-$time", page).copy(sourcePackage = ALIPAY_PACKAGE)
+      val first = if (pageFirst) page else notice
+      val second = if (pageFirst) notice else page
+      val firstEvent = store.capture(if (pageFirst) pageCapture else notification, encrypted())!!
+      val posted = store.postCandidate(firstEvent, ALIPAY_PACKAGE, first)!!
+      if (pageFirst) {
+        val row = database.transactionDao().findById(posted.id)!!
+        assertEquals(7720L, row.amountCents)
+        assertEquals("", row.description)
+        assertNull(row.merchantName)
+        assertEquals(EntryOrigin.Accessibility, row.entryOrigin)
+      }
+      val secondEvent = store.capture(if (pageFirst) notification else pageCapture, encrypted())!!
+      store.postCandidate(secondEvent, ALIPAY_PACKAGE, second)
+      val row = database.transactionDao().findById(posted.id)!!
+      assertEquals("便利店", row.description)
+      assertEquals("便利店", row.merchantName)
+      assertEquals(AutomationEventStatus.Duplicate, store.getEvent(secondEvent)!!.status)
+    }
+    assertEquals(2L, database.count("transactions"))
+  }
+
+  @Test
+  fun merchantlessPageRepeatsAndNearbyDetailsDoNotCreateDuplicateBills() = runBlocking {
+    val page = alipayMerchantlessPage(1_000)
+    val first = store.capture(pageNotification("alipay-first", page).copy(sourcePackage = ALIPAY_PACKAGE), encrypted())!!
+    store.postCandidate(first, ALIPAY_PACKAGE, page)
+    for ((key, next) in listOf(
+      "repeat" to page.copy(occurredAt = 2_000),
+      "detail" to page.copy(occurredAt = 900, hasExactTime = true, merchant = "便利店", description = "便利店", providerReference = "alipay123456"),
+    )) {
+      val event = store.capture(pageNotification(key, next).copy(sourcePackage = ALIPAY_PACKAGE), encrypted())!!
+      assertNull(store.postCandidate(event, ALIPAY_PACKAGE, next))
+      assertEquals(AutomationEventStatus.Failed, store.getEvent(event)!!.status)
+      assertEquals("payment_match_ambiguous", store.listRecentEvents().first { it.id == event }.failureCode)
+    }
+    assertEquals(1L, database.count("transactions"))
+  }
+
+  private fun alipayMerchantlessPage(time: Long) = PaymentPageParser.parse(ALIPAY_PACKAGE,
+    listOf("支付成功￥77.20", "支付成功", "77.20", "￥79.20", "示例银行立减金", "-￥2.00", "付款方式", "示例银行储蓄卡(0000)"), time)!!
 
   @Test
   fun repeatedPageCaptureUsesStableReferenceOrSessionInsteadOfScanTime() = runBlocking {

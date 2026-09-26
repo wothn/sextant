@@ -35,6 +35,78 @@ class PaymentPageParserTest {
     assertEquals("alipay-page-v1", candidate.parser)
   }
 
+  /** Real device accessibility nodes; identifying values are replaced with examples. */
+  @Test fun alipayDiscountedSuccessReadsActualTotalWithoutMerchant() {
+    val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE, alipayDiscountedSuccess, now)!!
+    assertEquals(7720L, candidate.amountCents)
+    assertEquals("¥77.20", candidate.amountEvidence)
+    assertEquals("支付成功", candidate.directionEvidence)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertEquals(AutomationKind.Purchase, candidate.kind)
+    assertNull(candidate.merchant)
+    assertEquals("", candidate.description)
+    assertNull(candidate.providerReference)
+    assertEquals(now, candidate.occurredAt)
+    assertFalse(candidate.hasExactTime)
+  }
+
+  @Test fun alipaySuccessTotalWorksWithoutSeparateSuccessTitleAndWithMerchant() {
+    val page = alipayDiscountedSuccess.filterNot { it == "支付成功" } + listOf("商户名称", "便利店")
+    val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE, page, now)!!
+    assertEquals(7720L, candidate.amountCents)
+    assertEquals("便利店", candidate.merchant)
+    assertEquals("便利店", candidate.description)
+  }
+
+  @Test fun alipaySuccessTotalRejectsConflictingOrIncompleteEvidence() {
+    assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, alipayDiscountedSuccess + "支付成功￥79.20", now))
+    assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, alipayDiscountedSuccess + "实付金额：79.20元", now))
+    assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, alipayDiscountedSuccess.filterNot { it == "付款方式" }, now))
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, alipayDiscountedSuccess, now))
+    for (value in listOf("支付成功￥0.00", "支付成功￥-77.20", "支付成功￥77.201", "支付成功77.20", "支付成功￥77.20领券")) {
+      assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, alipayDiscountedSuccess.map {
+        if (it == "支付成功￥77.20") value else it
+      }, now))
+    }
+    for (kind in listOf("待付款", "转账", "退款成功", "充值", "USD")) {
+      assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, alipayDiscountedSuccess + kind, now))
+    }
+  }
+
+  @Test fun alipayWebDetailReadsExpenseMerchantAndHistoricalTimeWithToolbarLast() {
+    val observedAt = LocalDateTime.of(2026, 9, 26, 15, 52).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE, alipayWebDetail, observedAt)!!
+    assertEquals(7720L, candidate.amountCents)
+    assertEquals("支出77.2元", candidate.amountEvidence)
+    assertEquals("Steam", candidate.merchant)
+    assertEquals("Steam", candidate.description)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertTrue(candidate.hasExactTime)
+    assertEquals(LocalDateTime.of(2026, 9, 26, 15, 12, 4).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(), candidate.occurredAt)
+    assertNull(candidate.providerReference)
+    assertEquals("alipay-page-v1", candidate.parser)
+  }
+
+  @Test fun alipayWebDetailRejectsIncompleteConflictingAndNonExpensePages() {
+    val observedAt = LocalDateTime.of(2026, 9, 26, 16, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    for (page in listOf(
+      alipayWebDetail.filterNot { it == "账单详情" },
+      alipayWebDetail.filterNot { it == "支付时间" || it == "2026-09-26 15:12:04" },
+      alipayWebDetail.filterNot { it == "Steam" },
+      alipayWebDetail + "支出79.2元",
+      alipayWebDetail + "实付金额：79.20元",
+      alipayWebDetail.map { it.replace("支出77.2元", "收入77.2元") },
+      alipayWebDetail.map { it.replace("支出77.2元", "支出77.201元") },
+      alipayWebDetail.map { it.replace("支出77.2元", "支出0元") },
+      alipayWebDetail.map { it.replace("2026-09-26", "2026-02-30") },
+      alipayWebDetail + "转账",
+      alipayWebDetail + "退款成功",
+    )) assertNull(page.toString(), PaymentPageParser.parse(ALIPAY_PACKAGE, page, observedAt))
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, alipayWebDetail, observedAt))
+    val withReference = PaymentPageParser.parse(ALIPAY_PACKAGE, alipayWebDetail + listOf("交易号", "2026092612345678"), observedAt)!!
+    assertEquals("2026092612345678", withReference.providerReference)
+  }
+
   @Test fun historicalDetailUsesPaymentTimeAndReferenceForBothApps() {
     for (source in listOf(WECHAT_PACKAGE, ALIPAY_PACKAGE)) {
       val candidate = PaymentPageParser.parse(source, detail, now)!!
@@ -130,6 +202,22 @@ class PaymentPageParserTest {
   }
 
   private val detail = listOf("账单详情", "-12.00", "交易成功", "商户全称", "街角咖啡", "付款时间：2026-09-18 08:30:00", "交易单号", "2026091800123456")
+
+  private val alipayDiscountedSuccess = listOf(
+    "支付成功￥77.20", "支付成功", "77.20", "￥79.20", "示例银行立减金", "-￥2.00",
+    "付款方式", "示例银行储蓄卡(0000)", "去看看", "完成", "回首页", "回首页",
+  )
+
+  /** Real accessibility order, including duplicate WebView values and the toolbar at the end. */
+  private val alipayWebDetail = listOf(
+    "Steam", "支出77.2元", "交易成功", "示例银行立减金", "-2.00 ",
+    "支付时间", "2026-09-26 15:12:04", "2026-09-26 15:12:04",
+    "付款方式", "示例银行储蓄卡(0000) ", "商品说明", "Steam Purchase", "Steam Purchase",
+    "支付奖励", "立即领取3积分", "更多", "账单管理", "已解锁\"休闲娱乐\"贴纸，去兑换好礼",
+    "账单分类", "文化休闲", "标签", "请选择", "为您推荐", "买软件", "游戏充值", "买包",
+    "计入收支", "开关", "备注", "添加", "查看往来记录", "AA收款", "往来流水证明",
+    "对此订单有疑问", "返回", "账单详情", "全部账单",
+  )
 
   private val wechatScanPayDetail = listOf(
     "扫二维码付款-给某某小吃店",
