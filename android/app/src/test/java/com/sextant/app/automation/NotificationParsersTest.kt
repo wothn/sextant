@@ -52,6 +52,55 @@ class NotificationParsersTest {
     assertEquals(800L, result.candidate.amountCents)
   }
 
+  /**
+   * 免密/先享后付类扣款的措辞是「已扣费」，和「已支付」同构，走同一条支出规则。
+   * 微信的扣费通知里没有商户，所以只要求金额与方向正确。
+   */
+  @Test
+  fun parsesWechatDeductionNotificationAsExpense() {
+    val notification = notification(WECHAT_PACKAGE, "微信支付", "已扣费¥3.00")
+
+    assertTrue(NotificationParserRegistry.isPlausibleFinancial(notification))
+    val result = NotificationParserRegistry.parse(notification) as LocalParseOutcome.Parsed
+    assertEquals(TransactionType.Expense, result.candidate.direction)
+    assertEquals(AutomationKind.Purchase, result.candidate.kind)
+    assertEquals(300L, result.candidate.amountCents)
+    assertEquals("已扣费", result.candidate.directionEvidence)
+  }
+
+  @Test
+  fun parsesAlipayDeductionNotificationAsExpense() {
+    val result = NotificationParserRegistry.parse(
+      notification(ALIPAY_PACKAGE, "支付宝", "已扣费 6.50 元"),
+    ) as LocalParseOutcome.Parsed
+
+    assertEquals(TransactionType.Expense, result.candidate.direction)
+    assertEquals(650L, result.candidate.amountCents)
+  }
+
+  /** 「已扣费」是新增的支付信号词，不能把带扣费字样的营销通知顺手放进来。 */
+  @Test
+  fun rejectsPromotionalNotificationMentioningDeduction() {
+    assertTrue(
+      NotificationParserRegistry.parse(
+        notification(ALIPAY_PACKAGE, "支付宝", "开通自动扣费可领优惠券，点击领取"),
+      ) is LocalParseOutcome.NotFinancial,
+    )
+  }
+
+  /**
+   * 只认和「已支付」同构的「已扣费」。裸词「扣费」不算支付信号：把它加进信号词表只会让
+   * 「扣费成功…」这种规则表覆盖不到的正文被收进来，最后落成 direction_missing 的残缺事件。
+   */
+  @Test
+  fun bareDeductionWordingIsNotTreatedAsPaymentSignal() {
+    assertTrue(
+      NotificationParserRegistry.parse(
+        notification(WECHAT_PACKAGE, "微信支付", "扣费成功12.00元"),
+      ) is LocalParseOutcome.NotFinancial,
+    )
+  }
+
   @Test
   fun parsesWechatIncomingPaymentAndTransferCounterparty() {
     val paidToUser = NotificationParserRegistry.parse(
