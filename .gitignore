@@ -27,6 +27,8 @@ skills-lock.json
 
 # local env files
 .env*.local
+# Gradle / Android Studio 写的机器本地配置（SDK 路径等），每台机器都不一样，不进版本库
+local.properties
 
 # generated native folders
 /ios
