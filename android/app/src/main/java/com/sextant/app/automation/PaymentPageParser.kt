@@ -34,10 +34,12 @@ object PaymentPageParser {
     val alipayTotal = alipayTotals.singleOrNull()
     val success = lines.take(16).firstOrNull { it in successTitles }
       ?: alipayTotal?.let { "支付成功" } ?: return null
-    // WeChat's native result page exposes only content descriptions: success,
-    // merchant, unsigned yuan total, then optional promotions and a Done button.
+    // WeChat's native and mini-program result pages expose only content descriptions: success,
+    // merchant, unsigned yuan total, then optional promotions and a closing action. The native
+    // page closes with 完成, the mini-program page with 返回商家; accepting only 完成 rejected the
+    // whole page and dropped its merchant and amount along with it.
     val wechatResultMerchant = if (sourcePackage == WECHAT_PACKAGE && !detail &&
-      lines[0] == "支付成功" && "完成" in lines &&
+      lines[0] == "支付成功" && lines.any { it in wechatResultActions } &&
       wechatResultAmount.matches(lines[2])) {
       lines[1].takeIf { validMerchant(it) && excludedKinds.none(it::startsWith) }
     } else null
@@ -120,9 +122,13 @@ object PaymentPageParser {
   /** 微信把个人卖家的商户全称脱敏成 `商户_真名`；这不是顾客在店里看到的名字。 */
   private fun isMaskedMerchant(value: String?): Boolean = value?.startsWith("商户_") == true
 
+  /** 微信结果页的结束动作：原生页是「完成」，小程序支付结果页是「返回商家」。 */
+  private val wechatResultActions = setOf("完成", "返回商家")
+
   private fun validMerchant(value: String): Boolean = value.length in 2..80 &&
     value !in allLabels && value !in successTitles && value !in detailTitles &&
-    value !in setOf("微信支付", "支付宝", "完成", "返回", "更多", "支付方式", "付款方式") &&
+    value !in wechatResultActions &&
+    value !in setOf("微信支付", "支付宝", "返回", "更多", "支付方式", "付款方式") &&
     !amount.matches(value) && !value.matches(Regex("[\\d.,¥+ -]+"))
 
   private fun parseTime(value: String): Long? = timeFormats.firstNotNullOfOrNull { pattern ->

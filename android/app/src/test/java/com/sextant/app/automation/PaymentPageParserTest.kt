@@ -68,6 +68,41 @@ class PaymentPageParserTest {
     assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, wechatNativeSuccess, now))
   }
 
+  /**
+   * 真机抓下来的微信小程序支付结果页形状（商户与交易数据均使用虚构示例值）。窗口是 WxaLiteAppTransparentLiteUI，
+   * 整页只暴露四个 content description：成功、商户、无符号元金额、结束动作。小程序页的结束按钮是
+   * 「返回商家」而不是原生结果页的「完成」，只认「完成」会把整页判成非支付页，商户和金额一起丢掉。
+   */
+  @Test fun wechatMiniProgramSuccessReadsMerchantWithReturnToMerchantButton() {
+    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramSuccess, now)!!
+    assertEquals(7689L, candidate.amountCents)
+    assertEquals("淘宝平台商户", candidate.merchant)
+    assertEquals("淘宝平台商户", candidate.description)
+    assertEquals("¥76.89", candidate.amountEvidence)
+    assertEquals("支付成功", candidate.directionEvidence)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertEquals(AutomationKind.Purchase, candidate.kind)
+    assertEquals("wechat-page-v1", candidate.parser)
+    assertEquals(now, candidate.occurredAt)
+    assertFalse(candidate.hasExactTime)
+    assertNull(candidate.providerReference)
+  }
+
+  @Test fun wechatResultPageStillRequiresTerminalActionAndMerchant() {
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramSuccess.filterNot { it == "返回商家" }, now))
+    // 结束动作占着商户位置时，不能把按钮文字当成商户名。
+    for (action in listOf("完成", "返回商家")) {
+      assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramSuccess.map {
+        if (it == "淘宝平台商户") action else it
+      }, now))
+    }
+    for (total in listOf("76.89", "￥-76.89", "+￥76.89", "￥0.00", "￥76.891")) {
+      assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramSuccess.map {
+        if (it == "￥76.89") total else it
+      }, now))
+    }
+  }
+
   @Test fun alipayActualPaidOverridesOriginalAmount() {
     val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE,
       listOf("付款成功", "¥20.00", "实付金额：18.00元", "商户名称：便利店", "支付方式", "余额"), now)!!
@@ -249,6 +284,9 @@ class PaymentPageParserTest {
     "支付成功", "示例网络商店", "￥30.00", "摇一摇有优惠", "摇一摇有优惠",
     "点击领取优惠", "点击领取优惠", "领取", "为乡村孩子上优质体育课", "完成",
   )
+
+  /** Real device content descriptions of a mini-program payment result page, in accessibility order. */
+  private val wechatMiniProgramSuccess = listOf("支付成功", "淘宝平台商户", "￥76.89", "返回商家")
 
   private val alipayDiscountedSuccess = listOf(
     "支付成功￥77.20", "支付成功", "77.20", "￥79.20", "示例银行立减金", "-￥2.00",
