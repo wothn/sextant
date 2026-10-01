@@ -16,12 +16,13 @@ object PaymentPageParser {
     if (lines.any { it in rejectedPages }) return null
     // Alipay's WebView content precedes the native toolbar, so there the title sits anywhere on the
     // page. WeChat's native detail page keeps the title in the toolbar at the very top, while the
-    // payment card embedded in a mini-program puts it on the row right above the amount. A title
-    // that only appears elsewhere belongs to another layout — Alipay's WebView page, for instance —
-    // and must not switch this adapter into detail mode.
+    // payment card embedded in a mini-program puts it on the row right above the amount. WeChat's
+    // WebView page exposes no title text at all — there the card's own field names are the evidence.
+    // A title that only appears elsewhere belongs to another layout — Alipay's WebView page, for
+    // instance — and must not switch this adapter into detail mode.
     val detailTitleIndex = lines.indexOfFirst { it in detailTitles }
     val detail = when {
-      detailTitleIndex < 0 -> false
+      detailTitleIndex < 0 -> sourcePackage == WECHAT_PACKAGE && lines.any { it in wechatDetailFields }
       sourcePackage == ALIPAY_PACKAGE -> true
       detailTitleIndex < 6 -> true
       else -> lines.getOrNull(detailTitleIndex + 1)?.let { amount.matches(it) } == true
@@ -76,7 +77,7 @@ object PaymentPageParser {
     // 「商品」和金额上方那行标题里。招牌名才是顾客认得的、通知里会写的那个名字，补记时要靠它和
     // 原来那条通知对上，所以脱敏的商户全称让位给招牌名；商户全称是正常名字时不换；没有商户全称
     // 字段时也不拿「商品」硬凑。
-    val declaredMerchant = field(lines, listOf("商户全称", "收款方全称", "商户名称", "收款方", "商户", "收款人"))
+    val declaredMerchant = field(lines, listOf("商户全称", "收款方全称", "商户名称", "商户简称", "收款方", "商户", "收款人"))
     val storeName = field(lines, listOf("商品"))
     val merchant = (if (isMaskedMerchant(declaredMerchant)) storeName ?: declaredMerchant else declaredMerchant)
       ?: lines.firstNotNullOfOrNull { payTo.matchEntire(it)?.groupValues?.get(1) }
@@ -84,11 +85,12 @@ object PaymentPageParser {
       ?: wechatResultMerchant?.takeIf { amountText == lines[2] }
       ?: if (detail) {
         // 原生详情页把商户写成金额上方的那行标题；微信在小程序里的支付卡片则写在金额下面。
-        // 两个位置都看，但每一行都要先过 validMerchant，标题和字段名不会被当成商户。
+        // 两个位置都看，但每一行都要先过 validMerchant，标题和字段名不会被当成商户；
+        // 「转账-给张三」这类转账标题同样不是商户。
         val index = lines.indexOf(expenseLine ?: amountText)
         val signedExpense = expenseLine != null || amountMatch.groupValues[1] == "-"
         listOfNotNull(lines.getOrNull(index - 1), lines.getOrNull(index + 1))
-          .firstOrNull { signedExpense && validMerchant(it) }
+          .firstOrNull { signedExpense && validMerchant(it) && excludedKinds.none(it::startsWith) }
       } else null
     if (merchant != null && !validMerchant(merchant)) return null
     // Only this explicit Alipay success total permits an absent merchant. Keep the
@@ -138,6 +140,9 @@ object PaymentPageParser {
   /** 微信结果页的结束动作：原生页是「完成」，小程序支付结果页是「返回商家」。 */
   private val wechatResultActions = setOf("完成", "返回商家")
 
+  /** 微信详情卡独有的字段名：WebView 页和小程序卡片常常不暴露标题，靠这些字段认出详情页。 */
+  private val wechatDetailFields = setOf("当前状态", "收单机构", "商户简称", "商户单号")
+
   private fun validMerchant(value: String): Boolean = value.length in 2..80 &&
     value !in allLabels && value !in successTitles && value !in detailTitles &&
     value !in wechatResultActions &&
@@ -173,7 +178,7 @@ object PaymentPageParser {
     "商户", "商品", "实付金额", "实付款", "支付金额", "付款金额", "付款时间", "支付时间", "交易时间", "创建时间",
     "转账时间", "交易单号", "交易号", "订单号", "转账单号", "商品说明",
     // 详情卡里紧挨着金额的字段名和分组标题；它们不是商户，也不能当作别的字段的值。
-    "当前状态", "收单机构", "商户单号", "交易服务", "收款方备注",
+    "当前状态", "收单机构", "商户简称", "商户单号", "交易服务", "收款方备注",
   )).toSet()
   private val timeFormats = listOf("uuuu-MM-dd HH:mm:ss", "uuuu/MM/dd HH:mm:ss", "uuuu年M月d日 HH:mm:ss")
 }

@@ -137,6 +137,35 @@ class PaymentPageParserTest {
       wechatMiniProgramDetail.filterNot { it == "支付时间" || it == "2026年10月01日 23:49:23" }, observedAt))
   }
 
+  /**
+   * 真机抓下来的微信 WebView 交易详情页（MMWebViewUI）：整页没有「交易详情」这类标题文本，
+   * 工具栏只暴露「全部账单」，商户名写在金额上面、字段名是「商户简称」。原来既认不出这是详情页
+   *（没有标题可认），也不认识「商户简称」这个字段，于是商户取不到、整笔支付被丢掉。
+   */
+  @Test fun wechatWebDetailWithoutTitleReadsMerchantAndExactTime() {
+    val observedAt = LocalDateTime.of(2026, 10, 2, 0, 10).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, wechatWebDetail, observedAt)!!
+    assertEquals(7689L, candidate.amountCents)
+    assertEquals("淘宝平台商户", candidate.merchant)
+    assertEquals("淘宝平台商户", candidate.description)
+    assertEquals("4500000000000000000000000001", candidate.providerReference)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertEquals(AutomationKind.Purchase, candidate.kind)
+    assertTrue(candidate.hasExactTime)
+    assertEquals(
+      LocalDateTime.of(2026, 10, 2, 0, 3, 34).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+      candidate.occurredAt,
+    )
+    assertEquals("wechat-page-v1", candidate.parser)
+  }
+
+  /** 没有标题也要按详情页对待：取不到完整交易时间就不能拿看页面的时刻去记历史账单。 */
+  @Test fun wechatWebDetailWithoutTitleStillRequiresCompleteTime() {
+    val observedAt = LocalDateTime.of(2026, 10, 2, 0, 10).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE,
+      wechatWebDetail.filterNot { it == "支付时间" || it == "2026年10月2日 00:03:34" }, observedAt))
+  }
+
   @Test fun alipayActualPaidOverridesOriginalAmount() {
     val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE,
       listOf("付款成功", "¥20.00", "实付金额：18.00元", "商户名称：便利店", "支付方式", "余额"), now)!!
@@ -321,6 +350,20 @@ class PaymentPageParserTest {
 
   /** Real device content descriptions of a mini-program payment result page, in accessibility order. */
   private val wechatMiniProgramSuccess = listOf("支付成功", "淘宝平台商户", "￥76.89", "返回商家")
+
+  /** Real device nodes of the WeChat WebView transaction detail page, in accessibility order. */
+  private val wechatWebDetail = listOf(
+    "淘宝平台商户", "-76.89",
+    "当前状态", "支付成功",
+    "支付时间", "2026年10月2日 00:03:34",
+    "商户简称", "淘宝平台商户",
+    "收单机构", "财付通支付科技有限公司",
+    "支付方式", "示例银行信用卡(0000)",
+    "交易单号", "4500000000000000000000000001",
+    "商户单号", "11000000000000000000000000001",
+    "账单服务", "对订单有疑惑", "发起群收款", "在此商户的交易", "申请电子凭证", "本服务由财付通提供",
+    "全部账单",
+  )
 
   /** Real device nodes of the payment card inside the Pinduoduo mini-program, in accessibility order. */
   private val wechatMiniProgramDetail = listOf(
