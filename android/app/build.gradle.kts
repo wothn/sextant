@@ -35,7 +35,7 @@ fun versionCodeFrom(name: String): Int {
  * 保持为「最后一个已发布版本」：派生出的 versionCode 就总是比下一个发布版本小 1，本地包装
  * 在设备上不会挡住随后的正式更新。
  */
-val localVersionName = "0.4.8"
+val localVersionName = "0.4.9"
 val resolvedVersionName = providers.environmentVariable("VERSION_NAME").orNull ?: localVersionName
 
 // VERSION_CODE 只留作逃生口（例如修复性重发同一版本号时需要手动抬高）。CI 不再传它。
