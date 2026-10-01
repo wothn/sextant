@@ -14,8 +14,18 @@ object PaymentPageParser {
     val lines = text.flatMap { it.lines() }.map { it.trim().replace('￥', '¥') }.filter(String::isNotEmpty)
     if (lines.size !in 3..200) return null
     if (lines.any { it in rejectedPages }) return null
-    // Alipay's WebView content precedes the native toolbar in accessibility order.
-    val detail = (if (sourcePackage == ALIPAY_PACKAGE) lines else lines.take(6)).any { it in detailTitles }
+    // Alipay's WebView content precedes the native toolbar, so there the title sits anywhere on the
+    // page. WeChat's native detail page keeps the title in the toolbar at the very top, while the
+    // payment card embedded in a mini-program puts it on the row right above the amount. A title
+    // that only appears elsewhere belongs to another layout — Alipay's WebView page, for instance —
+    // and must not switch this adapter into detail mode.
+    val detailTitleIndex = lines.indexOfFirst { it in detailTitles }
+    val detail = when {
+      detailTitleIndex < 0 -> false
+      sourcePackage == ALIPAY_PACKAGE -> true
+      detailTitleIndex < 6 -> true
+      else -> lines.getOrNull(detailTitleIndex + 1)?.let { amount.matches(it) } == true
+    }
     val expenseLines = if (sourcePackage == ALIPAY_PACKAGE && detail) {
       lines.filter { alipayExpenseAmount.matches(it) }.distinct()
     } else emptyList()
@@ -73,9 +83,12 @@ object PaymentPageParser {
       ?: lines.firstNotNullOfOrNull { paidToHeadline.matchEntire(it)?.groupValues?.get(1) }
       ?: wechatResultMerchant?.takeIf { amountText == lines[2] }
       ?: if (detail) {
-        // Both apps also render the merchant as the headline immediately above the signed amount.
+        // 原生详情页把商户写成金额上方的那行标题；微信在小程序里的支付卡片则写在金额下面。
+        // 两个位置都看，但每一行都要先过 validMerchant，标题和字段名不会被当成商户。
         val index = lines.indexOf(expenseLine ?: amountText)
-        lines.getOrNull(index - 1)?.takeIf { expenseLine != null || amountMatch.groupValues[1] == "-" }
+        val signedExpense = expenseLine != null || amountMatch.groupValues[1] == "-"
+        listOfNotNull(lines.getOrNull(index - 1), lines.getOrNull(index + 1))
+          .firstOrNull { signedExpense && validMerchant(it) }
       } else null
     if (merchant != null && !validMerchant(merchant)) return null
     // Only this explicit Alipay success total permits an absent merchant. Keep the
@@ -159,6 +172,8 @@ object PaymentPageParser {
   private val allLabels = (paymentFields + listOf(
     "商户", "商品", "实付金额", "实付款", "支付金额", "付款金额", "付款时间", "支付时间", "交易时间", "创建时间",
     "转账时间", "交易单号", "交易号", "订单号", "转账单号", "商品说明",
+    // 详情卡里紧挨着金额的字段名和分组标题；它们不是商户，也不能当作别的字段的值。
+    "当前状态", "收单机构", "商户单号", "交易服务", "收款方备注",
   )).toSet()
   private val timeFormats = listOf("uuuu-MM-dd HH:mm:ss", "uuuu/MM/dd HH:mm:ss", "uuuu年M月d日 HH:mm:ss")
 }

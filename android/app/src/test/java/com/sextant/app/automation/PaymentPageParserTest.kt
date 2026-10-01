@@ -103,6 +103,40 @@ class PaymentPageParserTest {
     }
   }
 
+  /**
+   * 真机抓下来的微信小程序（拼多多）里的交易详情卡：小程序自己的头部节点（返回、拼多多、设置、
+   * 喜欢、小程序…）排在卡片标题「交易详情」前面，商户名写在金额下面而不是上面的标题里。
+   * 原来只在前 6 行找详情标题、只认金额上一行当商户，于是整页被丢掉，金额和商户都没了。
+   * dump 里 bounds=[0,0][0,0] 的摇一摇弹窗节点用户看不见，无障碍采集不会带上（样例里已去掉）。
+   */
+  @Test fun wechatMiniProgramDetailReadsMerchantBelowAmountAndExactTime() {
+    val observedAt = LocalDateTime.of(2026, 10, 2, 0, 5).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramDetail, observedAt)!!
+    assertEquals(7530L, candidate.amountCents)
+    assertEquals("拼多多", candidate.merchant)
+    assertEquals("拼多多", candidate.description)
+    assertEquals("4500000000000000000000000002", candidate.providerReference)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertEquals(AutomationKind.Purchase, candidate.kind)
+    assertTrue(candidate.hasExactTime)
+    assertEquals(
+      LocalDateTime.of(2026, 10, 1, 23, 49, 23).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+      candidate.occurredAt,
+    )
+    assertEquals("wechat-page-v1", candidate.parser)
+  }
+
+  @Test fun wechatMiniProgramDetailRejectsLabelsAndMissingTime() {
+    // 金额下面只剩字段名时，不能把「当前状态」当成商户名记下来。
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramDetail.map {
+      if (it == "拼多多") "当前状态" else it
+    }, LocalDateTime.of(2026, 10, 2, 0, 5).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()))
+    // 详情页必须给出完整交易时间，否则只能拿看页面的时刻去猜。
+    val observedAt = LocalDateTime.of(2026, 10, 2, 0, 5).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE,
+      wechatMiniProgramDetail.filterNot { it == "支付时间" || it == "2026年10月01日 23:49:23" }, observedAt))
+  }
+
   @Test fun alipayActualPaidOverridesOriginalAmount() {
     val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE,
       listOf("付款成功", "¥20.00", "实付金额：18.00元", "商户名称：便利店", "支付方式", "余额"), now)!!
@@ -287,6 +321,21 @@ class PaymentPageParserTest {
 
   /** Real device content descriptions of a mini-program payment result page, in accessibility order. */
   private val wechatMiniProgramSuccess = listOf("支付成功", "淘宝平台商户", "￥76.89", "返回商家")
+
+  /** Real device nodes of the payment card inside the Pinduoduo mini-program, in accessibility order. */
+  private val wechatMiniProgramDetail = listOf(
+    "返回", "拼多多", "设置", "拼多多", "喜欢", "等491万+人喜欢",
+    "小程序", "拼着买才便宜", "服务", "交易详情",
+    "-75.30", "拼多多",
+    "当前状态", "支付成功",
+    "支付时间", "2026年10月01日 23:49:23",
+    "商品", "商户单号XP0000000000000000000000000001",
+    "收单机构", "财付通支付科技有限公司",
+    "支付方式", "示例银行信用卡(0000)",
+    "交易单号", "4500000000000000000000000002",
+    "商户单号", "XP0000000000000000000000000001",
+    "交易服务", "对订单有疑惑", "发起群收款", "在此商户的交易", "申请电子凭证", "本服务由财付通提供",
+  )
 
   private val alipayDiscountedSuccess = listOf(
     "支付成功￥77.20", "支付成功", "77.20", "￥79.20", "示例银行立减金", "-￥2.00",
