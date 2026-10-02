@@ -2,6 +2,7 @@ package com.sextant.app.automation
 
 import android.Manifest
 import android.app.Application
+import android.app.Notification
 import android.app.NotificationManager
 import com.sextant.app.R
 import com.sextant.app.data.PostedTransaction
@@ -9,6 +10,7 @@ import com.sextant.app.data.TransactionType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -82,6 +84,18 @@ class AutomationNotifierTest {
       listOf("撤销", "编辑"),
       notification.actions.map { it.title.toString() },
     )
+  }
+
+  @Test
+  fun postedNotificationShowsTheRecordingTime() {
+    val transaction = posted()
+    AutomationNotifier(application).showPosted(transaction)
+
+    val notification = shadowOf(application.getSystemService(NotificationManager::class.java))
+      .allNotifications.single()
+
+    assertEquals(transaction.updatedAt, notification.`when`)
+    assertTrue(notification.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
   }
 
   private fun posted() = PostedTransaction(

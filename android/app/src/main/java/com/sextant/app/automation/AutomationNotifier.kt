@@ -50,6 +50,8 @@ internal class AutomationNotifier(private val context: Context) {
       // 应用包去解析。以前这里借的是 android.R.drawable.ic_menu_save——一个属于 android
       // 包、且早已废弃的软盘图标，解析失败时系统只记一行日志然后画一个空白图标。
       .setSmallIcon(R.drawable.ic_notification)
+      .setWhen(transaction.updatedAt)
+      .setShowWhen(true)
       .setContentTitle("已自动记录$direction ${formatAmount(transaction.amountCents)}")
       // 正文只有摘要：自动入账不再猜分类，也就没有分类名可展示。
       .setContentText(transaction.description.takeIf { it.isNotBlank() })
