@@ -39,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
@@ -51,6 +50,12 @@ import com.sextant.app.ui.components.FlowChips
 import androidx.compose.foundation.layout.size
 import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SextantHeading
+import com.sextant.app.ui.components.CategoryIcon
+import com.sextant.app.ui.components.EmptyCard
+import com.sextant.app.ui.components.SextantMetric
+import com.sextant.app.ui.components.SextantSurface
+import com.sextant.app.ui.components.SextantTextButton
+import com.sextant.app.ui.theme.sextantEmphasized
 import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
@@ -92,7 +97,7 @@ fun BudgetPane(
     state = listState,
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
-    verticalArrangement = Arrangement.spacedBy(18.dp),
+    verticalArrangement = Arrangement.spacedBy(24.dp),
   ) {
     item { BudgetOverview(state, onEdit = { editingTotal = true }) }
     item {
@@ -110,7 +115,7 @@ fun BudgetPane(
     }
     if (state.budgets.isEmpty()) {
       item {
-        Text("还没有分类预算。可以先为餐饮、购物等波动较大的支出设置额度。", color = SextantColors.TextMuted)
+        EmptyCard("还没有分类预算", "为餐饮、购物等消费分配额度，看看每一类还可以花多少。")
       }
     } else {
       items(state.budgets) { CategoryBudgetRow(it) }
@@ -190,36 +195,41 @@ private fun BudgetOverview(state: AppState, onEdit: () -> Unit) {
   val calendar = Calendar.getInstance()
   val daysRemaining = max(1, calendar.getActualMaximum(Calendar.DAY_OF_MONTH) - calendar.get(Calendar.DAY_OF_MONTH) + 1)
 
-  Column(Modifier.fillMaxWidth().animateContentSize(animationSpec = SextantMotion.defaultSpatial()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(if (total == null) "尚未设置总预算" else if (spent > total) "本月已超支" else "本月剩余", color = SextantColors.TextMuted, fontWeight = FontWeight.SemiBold)
-        Text(if (total == null) "—" else formatCurrency(if (spent > total) spent - total else remaining), style = MaterialTheme.typography.headlineLarge)
+  SextantSurface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+    Column(Modifier.fillMaxWidth().padding(20.dp).animateContentSize(animationSpec = SextantMotion.defaultSpatial()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+      FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("本月预算", color = SextantColors.TextMuted, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 12.dp))
+        SextantTextButton(onClick = onEdit) {
+          Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp))
+          Spacer(Modifier.width(8.dp))
+          Text(if (total == null) "设置预算" else "调整预算")
+        }
       }
-      SextantTonalButton(onClick = onEdit) {
-        Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(if (total == null) "设置" else "调整")
+      SextantMetric(
+        label = if (total == null) "尚未设置总预算" else if (spent > total) "本月已超支" else "本月剩余",
+        value = if (total == null) "—" else formatCurrency(if (spent > total) spent - total else remaining),
+        primary = true,
+        valueStyle = MaterialTheme.typography.headlineLarge.sextantEmphasized(),
+        valueColor = when {
+          total == null -> SextantColors.TextSubtle
+          spent > total -> SextantColors.Danger
+          else -> SextantColors.Text
+        },
+      )
+      if (total != null) {
+        BudgetScale(percent, when {
+          spent > total -> SextantColors.Danger
+          percent >= 0.8f -> SextantColors.Warning
+          else -> SextantColors.Accent
+        }, notchColor = SextantColors.SurfaceContainerLow)
       }
+      FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SextantMetric("已支出", formatCurrency(spent))
+        SextantMetric("总预算", total?.let(::formatCurrency) ?: "未设置")
+        SextantMetric("日均可用", if (total == null) "—" else formatCurrency(remaining / daysRemaining))
+      }
+      Text("本月还剩 $daysRemaining 天（含今天）", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
     }
-    BudgetScale(percent, when {
-      percent >= 1f -> SextantColors.Danger
-      percent >= 0.8f -> SextantColors.Warning
-      else -> SextantColors.Accent
-    })
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      BudgetMetric("已支出", formatCurrency(spent))
-      BudgetMetric("总预算", total?.let(::formatCurrency) ?: "未设置")
-      BudgetMetric("日均可用", if (total == null) "—" else formatCurrency(remaining / daysRemaining))
-    }
-  }
-}
-
-@Composable
-private fun BudgetMetric(label: String, value: String) {
-  Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-    Text(label, style = MaterialTheme.typography.labelMedium, color = SextantColors.TextSubtle)
-    Text(value, fontWeight = FontWeight.Bold)
   }
 }
 
@@ -230,7 +240,7 @@ private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (St
     verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     SextantHeading(title)
-    Text("额度会用于首页进度和月底预测", color = SextantColors.TextSubtle)
+    Text("额度用于概览进度和本月日均可用金额", color = SextantColors.TextMuted)
     SextantTextField(
       value = amountText,
       onValueChange = onAmountChanged,
@@ -252,17 +262,24 @@ private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (St
 @Composable
 private fun CategoryBudgetRow(item: BudgetProgress) {
   val percent = if (item.amountCents <= 0) 0f else (item.spentCents.toFloat() / item.amountCents).coerceIn(0f, 1f)
-  val color = if (percent >= 1f) SextantColors.Danger else if (percent >= 0.8f) SextantColors.Warning else argbColor(item.color)
-  Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(item.categoryName, fontWeight = FontWeight.SemiBold)
-      Text("${formatCurrency(item.spentCents)} / ${formatCurrency(item.amountCents)}", color = SextantColors.TextMuted)
+  val overspent = item.spentCents > item.amountCents
+  val color = if (overspent) SextantColors.Danger else if (percent >= 0.8f) SextantColors.Warning else argbColor(item.color)
+  Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        CategoryIcon(categoryIcon(item.categoryName), argbColor(item.color), size = 40.dp, iconSize = 22.dp)
+        Text(item.categoryName, style = MaterialTheme.typography.titleLarge)
+      }
+      Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(if (overspent) "已超出" else "还可使用", style = MaterialTheme.typography.labelMedium, color = if (overspent) SextantColors.Danger else SextantColors.TextMuted)
+        Text(formatCurrency(kotlin.math.abs(item.amountCents - item.spentCents)), style = MaterialTheme.typography.titleLarge.sextantEmphasized(), color = if (overspent) SextantColors.Danger else SextantColors.Text)
+      }
     }
     BudgetScale(percent, color)
     Text(
-      if (item.spentCents > item.amountCents) "已超出 ${formatCurrency(item.spentCents - item.amountCents)}" else "还可使用 ${formatCurrency(item.amountCents - item.spentCents)}",
-      color = color,
-      style = MaterialTheme.typography.bodySmall,
+      "已用 ${formatCurrency(item.spentCents)} / 额度 ${formatCurrency(item.amountCents)}",
+      color = SextantColors.TextMuted,
+      style = MaterialTheme.typography.bodyMedium,
     )
   }
 }

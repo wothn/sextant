@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,9 +35,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
@@ -52,6 +54,9 @@ import com.sextant.app.data.toStartOfDayMillis
 import com.sextant.app.ui.components.RecurringExpenseEditor
 import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.ui.components.SextantHeading
+import com.sextant.app.ui.components.EmptyCard
+import com.sextant.app.ui.components.SextantMetric
+import com.sextant.app.ui.theme.sextantEmphasized
 import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.ui.components.SextantTextButton
 import com.sextant.app.ui.components.SextantTonalButton
@@ -103,12 +108,17 @@ fun RecurringPane(
         .thenBy { it.second ?: LocalDate.MAX }
         .thenBy { it.first.name },
     )
+  val groups = listOf(
+    "待扣费" to ordered.filter { it.second != null },
+    "已暂停" to ordered.filter { it.second == null && it.first.stateAt(today) == RecurringState.Paused },
+    "已结束" to ordered.filter { it.second == null && it.first.stateAt(today) != RecurringState.Paused },
+  ).filter { it.second.isNotEmpty() }
 
   LazyColumn(
     state = listState,
     modifier = Modifier.fillMaxSize(),
     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
-    verticalArrangement = Arrangement.spacedBy(18.dp),
+    verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     item { RecurringOverview(state.recurringExpenses, today, state.monthlyBudgetCents) }
     item {
@@ -130,11 +140,19 @@ fun RecurringPane(
     }
     if (ordered.isEmpty()) {
       item {
-        Text("还没有周期支出。房租、宽带、会员这类按固定节奏发生的支出记在这里，就能看到每月到底要花多少。", color = SextantColors.TextMuted)
+        EmptyCard("还没有周期支出", "添加房租、宽带或会员，提前看看接下来要扣多少。")
       }
     } else {
-      items(ordered, key = { it.first.id }) { (expense, nextCharge) ->
-        RecurringRow(expense, nextCharge, today) { editingId = expense.id }
+      groups.forEach { (title, rows) ->
+        item(key = "group:$title") {
+          Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text("${rows.size} 笔", style = MaterialTheme.typography.bodyMedium, color = SextantColors.TextMuted)
+          }
+        }
+        items(rows, key = { it.first.id }) { (expense, nextCharge) ->
+          RecurringRow(expense, nextCharge, today) { editingId = expense.id }
+        }
       }
     }
   }
@@ -172,7 +190,7 @@ fun RecurringPane(
 }
 
 /**
- * 顶部汇总：折算成每月的固定支出、占本月预算的比例，以及未来 30 天的扣费刻度。
+ * 顶部汇总：未来 30 天待扣费合计与刻度，辅以每月折算及本月预算占比。
  *
  * 「每月固定支出」是计划值的折算，和真实流水无关，所以文案里必须写明是折算。
  * 占比的分母用月预算，不用本月已支出：固定支出是按整月承诺的，拿它去比「月初到今天
@@ -191,43 +209,34 @@ private fun RecurringOverview(expenses: List<RecurringExpense>, today: LocalDate
   val nextCharge = upcoming.minByOrNull { it.first }
   val budgetShare = monthlyBudgetCents?.takeIf { it > 0L }?.let { monthlyTotal * 100 / it }
 
-  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      Text("折算每月固定支出", color = SextantColors.TextMuted, fontWeight = FontWeight.SemiBold)
+  SextantSurface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+      SextantMetric(
+        label = "未来 30 天待扣费",
+        value = if (expenses.isEmpty()) "—" else formatCurrency(upcomingTotal),
+        primary = true,
+        valueStyle = MaterialTheme.typography.headlineLarge.sextantEmphasized(),
+        valueColor = if (expenses.isEmpty()) SextantColors.TextSubtle else SextantColors.Text,
+      )
+      FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SextantMetric("折算每月固定支出", if (counting.isEmpty()) "—" else formatCurrency(monthlyTotal))
+        SextantMetric("在扣费", "${counting.size} 笔")
+        SextantMetric("占本月预算", if (counting.isEmpty() || budgetShare == null) "—" else "$budgetShare%",
+          valueColor = if ((budgetShare ?: 0L) > 100L) SextantColors.Danger else SextantColors.Text)
+      }
+      if (amountByDay.isNotEmpty()) {
+        UpcomingScale(amountByDay, peak)
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          Text("今天", color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+          Text(futureDayLabel(today.plusDays(UPCOMING_DAYS - 1).toStartOfDayMillis(), today), color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+        }
+      }
       Text(
-        if (counting.isEmpty()) "—" else formatCurrency(monthlyTotal),
-        style = MaterialTheme.typography.headlineLarge,
-        // 占位符不是数据，用次级色，免得一条粗横杠被读成一个数字。
-        color = if (counting.isEmpty()) SextantColors.TextSubtle else SextantColors.Text,
+        if (upcoming.isEmpty()) "未来 30 天暂无扣费安排" else "共 ${upcoming.size} 笔扣费" +
+          (nextCharge?.let { (day, expense) -> " · 最近：${futureDayLabel(day.toStartOfDayMillis(), today)} ${expense.name} ${formatCurrency(expense.amountCents)}" } ?: ""),
+        color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium,
       )
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-      SummaryMetric("在扣费", if (counting.isEmpty()) "—" else "${counting.size} 笔")
-      SummaryMetric("未来 30 天", if (upcoming.isEmpty()) "—" else formatCurrency(upcomingTotal))
-      SummaryMetric(
-        "占本月预算",
-        if (counting.isEmpty() || budgetShare == null) "—" else "$budgetShare%",
-        // 固定支出已经吃掉整个预算时用警示色，和预算进度的超支表达保持一致。
-        color = if ((budgetShare ?: 0L) > 100L) SextantColors.Danger else SextantColors.Text,
-      )
-    }
-    if (amountByDay.isNotEmpty()) {
-      UpcomingScale(amountByDay, peak)
-      Text(
-        "未来 30 天有 ${upcoming.size} 笔扣费" +
-          (nextCharge?.let { (day, expense) -> "，最近一笔：${futureDayLabel(day.toStartOfDayMillis(), today)} ${expense.name}" } ?: ""),
-        color = SextantColors.TextSubtle,
-        style = MaterialTheme.typography.bodySmall,
-      )
-    }
-  }
-}
-
-@Composable
-private fun SummaryMetric(label: String, value: String, color: Color = SextantColors.Text) {
-  Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-    Text(label, style = MaterialTheme.typography.labelMedium, color = SextantColors.TextSubtle)
-    Text(value, fontWeight = FontWeight.Bold, color = color)
   }
 }
 
@@ -281,28 +290,31 @@ private fun RecurringRow(
   onClick: () -> Unit,
 ) {
   val dueSoon = nextCharge != null && ChronoUnit.DAYS.between(today, nextCharge) <= DUE_SOON_DAYS
-  SextantSurface(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), color = SextantColors.SurfaceContainerLow) {
-    Row(
-      Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(expense.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+  val amountStyle = MaterialTheme.typography.titleLarge.sextantEmphasized()
+  val amount = formatCurrency(expense.amountCents)
+  val amountWidth = rememberTextMeasurer().measure(amount, style = amountStyle).size.width
+  val density = LocalDensity.current
+  BoxWithConstraints(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable(onClickLabel = "编辑周期支出", onClick = onClick).padding(vertical = 12.dp)) {
+    val columnWidth = (maxWidth - 16.dp) / 2
+    val stacked = amountWidth > with(density) { columnWidth.toPx() }
+    val columnModifier = if (stacked) Modifier.fillMaxWidth() else Modifier.width(columnWidth)
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Column(columnModifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(expense.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(
           listOf(expense.cycle.label(expense.customDays), cycleStatus(expense, today))
             .filter { it.isNotBlank() }
             .joinToString(" · "),
-          color = SextantColors.TextSubtle,
-          style = MaterialTheme.typography.bodySmall,
+          color = SextantColors.TextMuted,
+          style = MaterialTheme.typography.bodyMedium,
         )
       }
-      Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(formatCurrency(expense.amountCents), fontWeight = FontWeight.SemiBold)
+      Column(columnModifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(amount, style = amountStyle)
         Text(
           chargeLabel(expense, nextCharge, today),
-          color = if (dueSoon) SextantColors.Warning else SextantColors.TextSubtle,
-          style = MaterialTheme.typography.bodySmall,
+          color = if (dueSoon) SextantColors.Warning else SextantColors.TextMuted,
+          style = MaterialTheme.typography.bodyMedium,
         )
       }
     }
