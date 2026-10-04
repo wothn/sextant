@@ -2,6 +2,9 @@ package com.sextant.app.ui
 
 import com.sextant.app.ui.components.AutosaveController
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -53,6 +56,7 @@ class AutosaveTest {
 
     assertNotNull("写入失败必须继续抛出，由调用方决定怎么处理", thrown)
     assertEquals("保存失败，请重试。", controller.failure)
+    assertFalse(controller.saving)
     assertEquals("enabled=true", controller.takePending())
 
     repo.failure = null
@@ -64,19 +68,29 @@ class AutosaveTest {
   }
 
   @Test
-  fun aWriteInFlightIsNeverOverlapped() = runBlocking {
+  fun savingAndPendingRemainSetUntilTheWriteCompletes() = runBlocking {
     val repo = FakeSettings()
     val controller = AutosaveController()
-    var inFlightWhenWritten = false
-
-    controller.save("enabled=true") { value ->
-      // 合并逻辑用这个标志挡住第二次写入；写入期间它必须成立，写完之后必须复位。
-      inFlightWhenWritten = controller.saving
-      repo.update(value as String)
+    val commit = CompletableDeferred<Unit>()
+    val write = launch(start = CoroutineStart.UNDISPATCHED) {
+      controller.save("enabled=true") { value ->
+        commit.await()
+        repo.update(value as String)
+      }
     }
 
-    assertTrue("写入期间必须处于重入锁内", inFlightWhenWritten)
-    assertFalse(controller.saving)
+    try {
+      assertTrue(controller.saving)
+      assertEquals("enabled=true", controller.takePending())
+      assertEquals(0, repo.writes)
+      assertNull(repo.stored)
+      commit.complete(Unit)
+      write.join()
+      assertEquals(1, repo.writes)
+      assertEquals("enabled=true", repo.stored)
+      assertFalse(controller.saving)
+      assertNull(controller.pending)
+    } finally { write.cancel() }
   }
 
   @Test
@@ -89,6 +103,7 @@ class AutosaveTest {
     }.exceptionOrNull()
 
     assertTrue(thrown is CancellationException)
+    assertFalse(controller.saving)
     assertNull(controller.failure)
     // 草稿留着：回到这一页时它还是「没写进去的改动」。
     assertEquals("enabled=true", controller.takePending())

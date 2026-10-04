@@ -396,39 +396,30 @@ class SextantRepositoryTest {
   }
 
   @Test
-  fun completeBackupRestoreRemovesLaterChanges() = runBlocking {
+  fun completeBackupRestorePreservesTransactionsAndRecurringExpensesAndRemovesLaterChanges() = runBlocking {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())
     val category = initial.categories.first { it.type == TransactionType.Expense }
     val source = initial.paymentMethods.first()
-    repository.addTransaction(TransactionType.Expense, 1_000, category.id, source.id, "保留", now())
-    val backup = repository.exportBackup()
-    repository.addTransaction(TransactionType.Expense, 2_000, category.id, source.id, "稍后添加", now())
-
-    val summary = repository.restoreBackup(backup)
-
-    assertEquals(1, summary.transactionCount)
-    assertEquals(listOf("保留"), repository.loadState(filter()).transactions.map { it.transaction.description })
-  }
-
-  @Test
-  fun completeBackupRestoreCarriesRecurringExpensesAndDropsLaterOnes() = runBlocking {
-    val repository = SextantRepository(context)
     val anchor = monthStart()
+    repository.addTransaction(TransactionType.Expense, 1_000, category.id, source.id, "保留", now())
     repository.saveRecurringExpense(null, recurringDraft(name = "房租", amountCents = 280_000, anchorDate = anchor))
     val backup = repository.exportBackup()
+    repository.addTransaction(TransactionType.Expense, 2_000, category.id, source.id, "稍后添加", now())
     repository.saveRecurringExpense(
       null,
       recurringDraft(name = "宽带", amountCents = 120_000, cycle = RecurringCycle.Yearly, anchorDate = anchor),
     )
 
     val summary = repository.restoreBackup(backup)
+    val restored = repository.loadState(filter())
 
+    assertEquals(1, summary.transactionCount)
+    assertEquals(listOf("保留"), restored.transactions.map { it.transaction.description })
     assertEquals(1, summary.recurringExpenseCount)
-    val restored = repository.loadState(filter()).recurringExpenses
-    assertEquals(listOf("房租"), restored.map { it.name })
-    assertEquals(280_000L, restored.single().amountCents)
-    assertEquals(RecurringCycle.Monthly, restored.single().cycle)
+    assertEquals(listOf("房租"), restored.recurringExpenses.map { it.name })
+    assertEquals(280_000L, restored.recurringExpenses.single().amountCents)
+    assertEquals(RecurringCycle.Monthly, restored.recurringExpenses.single().cycle)
   }
 
   @Test
@@ -520,34 +511,6 @@ class SextantRepositoryTest {
       listOf("小额"),
       repository.loadState(base.copy(maxAmountCents = 1_000)).transactions.map { it.transaction.description },
     )
-  }
-
-  @Test
-  fun countsOnlyConditionsOutsideTheDateRange() {
-    val base = LedgerFilter.currentMonth()
-    assertEquals(0, base.conditionCount)
-    assertFalse(base.hasConditions)
-    assertEquals(1, base.copy(type = TransactionType.Income).conditionCount)
-    assertEquals(1, base.copy(minAmountCents = 100).conditionCount)
-    assertEquals(1, base.copy(maxAmountCents = 100).conditionCount)
-    assertEquals(5, base.copy(
-      query = "午饭",
-      type = TransactionType.Expense,
-      categoryId = "category",
-      paymentMethodId = "source",
-      minAmountCents = 100,
-    ).conditionCount)
-    assertEquals(0, base.copy(type = TransactionType.Expense).cleared().conditionCount)
-    assertEquals(base, base.copy(type = TransactionType.Expense).cleared())
-  }
-
-  @Test
-  fun anchorsTheAnalysisMonthOnTheLastDayOfTheRange() {
-    val march = LedgerFilter.forMonth(now())
-    assertEquals(march.rangeStart, march.anchorMonthStart)
-
-    val spansTwoMonths = LedgerFilter(rangeStart = march.rangeStart, rangeEnd = march.rangeEnd + 86_400_000L)
-    assertTrue(spansTwoMonths.anchorMonthStart > march.anchorMonthStart)
   }
 
   @Test

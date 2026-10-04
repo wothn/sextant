@@ -28,18 +28,7 @@ class PaymentPageParserTest {
   }
 
   @Test fun wechatNativeSuccessReadsMerchantHeadlineWithoutPaymentFields() {
-    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, wechatNativeSuccess, now)!!
-    assertEquals(3000L, candidate.amountCents)
-    assertEquals("示例网络商店", candidate.merchant)
-    assertEquals("示例网络商店", candidate.description)
-    assertEquals("¥30.00", candidate.amountEvidence)
-    assertEquals("支付成功", candidate.directionEvidence)
-    assertEquals(TransactionType.Expense, candidate.direction)
-    assertEquals(AutomationKind.Purchase, candidate.kind)
-    assertEquals("wechat-page-v1", candidate.parser)
-    assertEquals(now, candidate.occurredAt)
-    assertFalse(candidate.hasExactTime)
-    assertNull(candidate.providerReference)
+    assertWechatSuccess(wechatNativeSuccess, 3000L, "示例网络商店", "¥30.00")
   }
 
   @Test fun wechatNativeSuccessRequiresCompleteHeaderAndRejectsAmbiguousAmounts() {
@@ -74,18 +63,7 @@ class PaymentPageParserTest {
    * 「返回商家」而不是原生结果页的「完成」，只认「完成」会把整页判成非支付页，商户和金额一起丢掉。
    */
   @Test fun wechatMiniProgramSuccessReadsMerchantWithReturnToMerchantButton() {
-    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramSuccess, now)!!
-    assertEquals(7689L, candidate.amountCents)
-    assertEquals("淘宝平台商户", candidate.merchant)
-    assertEquals("淘宝平台商户", candidate.description)
-    assertEquals("¥76.89", candidate.amountEvidence)
-    assertEquals("支付成功", candidate.directionEvidence)
-    assertEquals(TransactionType.Expense, candidate.direction)
-    assertEquals(AutomationKind.Purchase, candidate.kind)
-    assertEquals("wechat-page-v1", candidate.parser)
-    assertEquals(now, candidate.occurredAt)
-    assertFalse(candidate.hasExactTime)
-    assertNull(candidate.providerReference)
+    assertWechatSuccess(wechatMiniProgramSuccess, 7689L, "淘宝平台商户", "¥76.89")
   }
 
   @Test fun wechatResultPageStillRequiresTerminalActionAndMerchant() {
@@ -338,6 +316,21 @@ class PaymentPageParserTest {
     assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, detail.map { it.replace("2026-09-18", "2026-02-30") }, now))
     assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, detail.map { it.replace("2026-09-18", "2027-09-18") }, now))
     assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, detail.map { it.replace("-12.00", "+12.00") }, now))
+  }
+
+  private fun assertWechatSuccess(page: List<String>, amountCents: Long, merchant: String, amountEvidence: String) {
+    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, page, now)!!
+    assertEquals(amountCents, candidate.amountCents)
+    assertEquals(merchant, candidate.merchant)
+    assertEquals(merchant, candidate.description)
+    assertEquals(amountEvidence, candidate.amountEvidence)
+    assertEquals("支付成功", candidate.directionEvidence)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertEquals(AutomationKind.Purchase, candidate.kind)
+    assertEquals("wechat-page-v1", candidate.parser)
+    assertEquals(now, candidate.occurredAt)
+    assertFalse(candidate.hasExactTime)
+    assertNull(candidate.providerReference)
   }
 
   private val detail = listOf("账单详情", "-12.00", "交易成功", "商户全称", "街角咖啡", "付款时间：2026-09-18 08:30:00", "交易单号", "2026091800123456")

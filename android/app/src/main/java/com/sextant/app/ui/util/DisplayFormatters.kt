@@ -163,20 +163,6 @@ fun calendarAmount(cents: Long): String = when {
 
 fun calendarDateLabel(date: LocalDate): String = "${date.year}年${date.monthValue}月${date.dayOfMonth}日"
 
-/** 分析只描述已记录金额，不把月中与整月的比较当作消费趋势结论。 */
-fun analyticsExpenseLabel(monthStart: Long, today: LocalDate = LocalDate.now()): String =
-  if (YearMonth.from(monthStart.toLocalDate()) == YearMonth.from(today)) "本月已记录支出"
-  else "${monthLabel(monthStart)}已记录支出"
-
-fun analyticsComparisonNote(monthStart: Long, today: LocalDate = LocalDate.now()): String {
-  val month = YearMonth.from(monthStart.toLocalDate())
-  return when {
-    month == YearMonth.from(today) -> "本月尚未结束，对比的是上月整月已记录支出。"
-    month > YearMonth.from(today) -> "仅统计已录入记录，未来日期不代表已发生支出。"
-    else -> "与上月整月已记录支出比较。"
-  }
-}
-
 fun spendingShareLabel(amountCents: Long, totalCents: Long): String {
   if (totalCents <= 0) return "—"
   val percent = amountCents.toDouble() / totalCents * 100
