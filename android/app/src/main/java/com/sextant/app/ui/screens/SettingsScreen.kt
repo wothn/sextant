@@ -7,7 +7,7 @@ import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.SextantLoadingIndicator
 import com.sextant.app.ui.components.SextantWavyProgressIndicator
-import com.sextant.app.ui.components.SextantRadioButton
+import com.sextant.app.ui.components.SextantSegmentedButtonGroup
 import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.ui.components.SextantTextButton
 
@@ -15,10 +15,9 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -64,6 +63,7 @@ import com.sextant.app.data.ThemePreference
 import com.sextant.app.ui.components.CategoryManagement
 import com.sextant.app.ui.components.PaymentMethodManagement
 import com.sextant.app.ui.theme.SextantColors
+import com.sextant.app.ui.theme.sextantEmphasized
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -82,7 +82,6 @@ fun SettingsScreen(
   var destination by rememberSaveable { mutableStateOf(SettingsDestination.Overview) }
   val pages = rememberSaveableStateHolder()
   var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
-  var showThemeDialog by remember { mutableStateOf(false) }
   // 备份的进行状态与结果放在应用级的协调者里，而不是这里的组合状态：读写文件、替换账本都
   // 比这一屏界面活得久，旋转时不该被取消，也不该丢掉「导出完成」这类提示。
   val backupState by backupCoordinator.state.collectAsState()
@@ -104,11 +103,12 @@ fun SettingsScreen(
     pages.SaveableStateProvider(visibleDestination) {
       when (visibleDestination) {
         SettingsDestination.Overview -> SettingsOverview(
+          state = state,
           onAutomationClick = { destination = SettingsDestination.Automation },
           onCategoryManagementClick = { destination = SettingsDestination.CategoryManagement },
           onPaymentMethodManagementClick = { destination = SettingsDestination.PaymentMethodManagement },
           themePreference = themePreference,
-          onThemeClick = { showThemeDialog = true },
+          onThemePreferenceChanged = onThemePreferenceChanged,
           isBusy = backupState.isBusy,
           onBackupExport = { backupExportLauncher.launch(backupFileName()) },
           onBackupImport = { backupImportLauncher.launch(arrayOf("application/json", "text/plain")) },
@@ -164,36 +164,16 @@ fun SettingsScreen(
     )
   }
 
-  if (showThemeDialog) {
-    SextantAlertDialog(
-      onDismissRequest = { showThemeDialog = false },
-      confirmButton = {
-        SextantTextButton(onClick = { showThemeDialog = false }) { Text("完成") }
-      },
-      title = { Text("主题") },
-      text = {
-        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-          Text("选择应用的显示方式", color = SextantColors.TextMuted)
-          listOf(ThemePreference.Light, ThemePreference.Dark, ThemePreference.System).forEach { item ->
-            ThemePreferenceOption(
-              preference = item,
-              selected = item == themePreference,
-              onClick = { onThemePreferenceChanged(item) },
-            )
-          }
-        }
-      },
-    )
-  }
 }
 
 @Composable
 private fun SettingsOverview(
+  state: AppState,
   onAutomationClick: () -> Unit,
   onCategoryManagementClick: () -> Unit,
   onPaymentMethodManagementClick: () -> Unit,
   themePreference: ThemePreference,
-  onThemeClick: () -> Unit,
+  onThemePreferenceChanged: (ThemePreference) -> Unit,
   isBusy: Boolean,
   onBackupExport: () -> Unit,
   onBackupImport: () -> Unit,
@@ -213,22 +193,19 @@ private fun SettingsOverview(
       verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
       item {
+        AutomationOverview(state = state, onClick = onAutomationClick)
+      }
+      item {
         SettingsSection("账本") {
           SettingsEntry(
-            title = "自动记账",
-            description = "识别微信、支付宝的支付通知与页面",
-            icon = Icons.Outlined.AutoAwesome,
-            onClick = onAutomationClick,
-          )
-          SettingsEntry(
             title = "分类管理",
-            description = "管理收入、支出分类与子分类",
+            description = "${state.categories.size} 个分类，含子分类",
             icon = Icons.Outlined.Category,
             onClick = onCategoryManagementClick,
           )
           SettingsEntry(
             title = "来源管理",
-            description = "管理现金、银行卡和支付平台",
+            description = "${state.paymentMethods.count { it.isActive }} 个在用来源",
             icon = Icons.Outlined.Payments,
             onClick = onPaymentMethodManagementClick,
           )
@@ -236,7 +213,23 @@ private fun SettingsOverview(
       }
       item {
         SettingsSection("外观") {
-          ThemeSettingsEntry(preference = themePreference, onClick = onThemeClick)
+          Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              SettingsIcon(Icons.Outlined.Palette)
+              Spacer(Modifier.width(12.dp))
+              Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("显示主题", style = MaterialTheme.typography.titleMedium)
+                Text(themePreference.description(), color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+              }
+            }
+            SextantSegmentedButtonGroup(
+              options = listOf(ThemePreference.Light, ThemePreference.Dark, ThemePreference.System),
+              selected = themePreference,
+              onSelect = onThemePreferenceChanged,
+              label = { it.label() },
+              modifier = Modifier.fillMaxWidth(),
+            )
+          }
         }
       }
       item {
@@ -246,8 +239,8 @@ private fun SettingsOverview(
             SextantWavyProgressIndicator(modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
           }
           SettingsEntry(
-            title = "导出完整备份",
-            description = "将分类、流水、预算、周期支出和设置保存为 JSON 文件",
+            title = "导出备份",
+            description = "保存完整账本与设置",
             icon = Icons.Outlined.ArrowDownward,
             enabled = !isBusy,
             trailing = if (isBusy) { { SextantLoadingIndicator(size = 22.dp) } } else null,
@@ -256,7 +249,7 @@ private fun SettingsOverview(
           )
           SettingsEntry(
             title = "从备份恢复",
-            description = "用备份文件覆盖当前账本，恢复前会再次确认",
+            description = "覆盖当前账本，恢复前需确认",
             icon = Icons.Outlined.ArrowUpward,
             enabled = !isBusy,
             trailingLabel = "导入",
@@ -274,9 +267,9 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
     Text(
       title,
       color = SextantColors.TextSubtle,
-      style = MaterialTheme.typography.labelLarge,
+      style = MaterialTheme.typography.titleSmall,
     )
-    SextantSurface(modifier = Modifier.fillMaxWidth()) {
+    SextantSurface(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
       Column(content = content)
     }
   }
@@ -329,24 +322,43 @@ private fun PaymentMethodManagementScreen(
 }
 
 @Composable
-private fun ThemeSettingsEntry(
-  preference: ThemePreference,
+private fun AutomationOverview(
+  state: AppState,
   onClick: () -> Unit,
 ) {
-  Row(
-    modifier = Modifier
-      .fillMaxWidth()
-      .clickable(onClick = onClick)
-      .padding(horizontal = 18.dp, vertical = 18.dp),
-    verticalAlignment = Alignment.CenterVertically,
+  val settings = state.automationSettings
+  val sources = listOfNotNull(
+    "微信".takeIf { settings.wechatEnabled },
+    "支付宝".takeIf { settings.alipayEnabled },
+  ).joinToString("、")
+  SextantSurface(
+    modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large)
+      .clickable(role = Role.Button, onClick = onClick),
+    shape = MaterialTheme.shapes.large,
   ) {
-    SettingsIcon(Icons.Outlined.Palette)
-    Spacer(Modifier.width(14.dp))
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-      Text("主题", style = MaterialTheme.typography.titleMedium)
-      Text(preference.label(), color = SextantColors.AccentStrong, style = MaterialTheme.typography.bodySmall)
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        SettingsIcon(Icons.Outlined.AutoAwesome, highlighted = true)
+        Spacer(Modifier.width(12.dp))
+        Text("自动记账", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = SextantColors.TextMuted)
+      }
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          if (settings.enabled) "记账开关已开启" else "记账开关未开启",
+          style = MaterialTheme.typography.headlineSmall.sextantEmphasized(),
+        )
+        Text(
+          when {
+            !settings.enabled -> "识别支付通知与页面，减少手动录入"
+            sources.isEmpty() -> "尚未启用支付应用，进入配置"
+            else -> "$sources · 授权与运行状态请进入查看"
+          },
+          color = SextantColors.TextMuted,
+          style = MaterialTheme.typography.bodyMedium,
+        )
+      }
     }
-    Icon(Icons.Outlined.ChevronRight, contentDescription = "选择主题", tint = SextantColors.TextMuted)
   }
 }
 
@@ -365,18 +377,19 @@ private fun SettingsEntry(
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .clickable(enabled = enabled, onClick = onClick)
-      .padding(horizontal = 18.dp, vertical = 18.dp),
+      .clip(MaterialTheme.shapes.large)
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+      .padding(horizontal = 20.dp, vertical = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     SettingsIcon(icon, enabled = enabled)
     Spacer(Modifier.width(14.dp))
     Column(
       modifier = Modifier.weight(1f),
-      verticalArrangement = Arrangement.spacedBy(3.dp),
+      verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
       Text(title, color = titleColor, style = MaterialTheme.typography.titleMedium)
-      Text(description, color = descriptionColor, style = MaterialTheme.typography.bodySmall)
+      Text(description, color = descriptionColor, style = MaterialTheme.typography.bodyMedium)
     }
     Spacer(Modifier.width(12.dp))
     when {
@@ -392,43 +405,22 @@ private fun SettingsEntry(
 }
 
 @Composable
-private fun SettingsIcon(icon: ImageVector, enabled: Boolean = true) {
+private fun SettingsIcon(icon: ImageVector, enabled: Boolean = true, highlighted: Boolean = false) {
   SextantSurface(
     modifier = Modifier.size(44.dp),
-    color = if (enabled) SextantColors.AccentSoft else SextantColors.SurfaceContainer,
+    color = if (enabled && highlighted) SextantColors.AccentSoft else SextantColors.SurfaceContainer,
     shape = MaterialTheme.shapes.large,
   ) {
     Icon(
       imageVector = icon,
       contentDescription = null,
-      tint = if (enabled) SextantColors.AccentStrong else SextantColors.TextSubtle,
+      tint = when {
+        !enabled -> SextantColors.TextSubtle
+        highlighted -> SextantColors.AccentStrong
+        else -> SextantColors.TextMuted
+      },
       modifier = Modifier.padding(9.dp),
     )
-  }
-}
-
-@Composable
-private fun ThemePreferenceOption(
-  preference: ThemePreference,
-  selected: Boolean,
-  onClick: () -> Unit,
-) {
-  Row(
-    modifier = Modifier
-      .fillMaxWidth()
-      .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-      .padding(vertical = 8.dp),
-    verticalAlignment = Alignment.CenterVertically,
-  ) {
-    SextantRadioButton(
-      selected = selected,
-      onClick = null,
-    )
-    Spacer(Modifier.width(8.dp))
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text(preference.label(), style = MaterialTheme.typography.bodyLarge)
-      Text(preference.description(), color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
-    }
   }
 }
 
@@ -440,9 +432,9 @@ private enum class SettingsDestination {
 }
 
 private fun ThemePreference.label(): String = when (this) {
-  ThemePreference.Light -> "浅色模式"
-  ThemePreference.Dark -> "深色模式"
-  ThemePreference.System -> "跟随系统"
+  ThemePreference.Light -> "浅色"
+  ThemePreference.Dark -> "深色"
+  ThemePreference.System -> "系统"
 }
 
 private fun ThemePreference.description(): String = when (this) {
