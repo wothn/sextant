@@ -30,7 +30,6 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +93,9 @@ fun RecurringExpenseEditor(
   // 分类面板浏览到的父分类。打开面板时回到一级，重新进来不会停在上次钻进去的那一层。
   var browsingParentId by rememberSaveable { mutableStateOf<String?>(null) }
   var dateTarget by rememberSaveable { mutableStateOf<DateTarget?>(null) }
+  val formScroll = rememberScrollState()
+  val categoryScroll = rememberScrollState()
+  val sourceScroll = rememberScrollState()
 
   val expenseCategories = state.categories.filter { it.type == TransactionType.Expense }
   val selectedCategory = expenseCategories.firstOrNull { it.id == categoryId }
@@ -151,12 +153,20 @@ fun RecurringExpenseEditor(
           )
         }
       }
-      key(panel) {
+      SextantPageContent(
+        targetState = panel,
+        depth = { if (it == RecurringPanel.Form) 0 else 1 },
+        modifier = Modifier.weight(1f, fill = panel != RecurringPanel.Form),
+      ) { visiblePanel ->
         Column(
-          Modifier.weight(1f, fill = panel != RecurringPanel.Form).verticalScroll(rememberScrollState()),
+          Modifier.fillMaxWidth().verticalScroll(when (visiblePanel) {
+            RecurringPanel.Form -> formScroll
+            RecurringPanel.Category -> categoryScroll
+            RecurringPanel.Source -> sourceScroll
+          }),
           verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-          when (panel) {
+          when (visiblePanel) {
             RecurringPanel.Form -> {
               SextantTextField(
                 value = name,
