@@ -2,18 +2,23 @@ package com.sextant.app.ui.components
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,7 +41,7 @@ import com.sextant.app.ui.util.label
 fun CategoryManagement(
   categories: List<Category>,
   repository: SextantRepository,
-  onNavigateBack: (() -> Unit)? = null,
+  onNavigateBack: () -> Unit,
 ) {
   var editingCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
   val editingCategory = categories.firstOrNull { it.id == editingCategoryId }
@@ -58,43 +63,57 @@ fun CategoryManagement(
     editingCategoryId = null
   }
 
-  Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-      Row(
+  BackHandler(enabled = browsingParent != null) { browsingParentId = null }
+  val pages = rememberSaveableStateHolder()
+  Column(Modifier.fillMaxSize()) {
+    SextantManagementHeader(
+      title = browsingParent?.name ?: "分类管理",
+      backDescription = if (browsingParent != null) "返回全部分类" else "返回设置",
+      onNavigateBack = { if (browsingParent != null) browsingParentId = null else onNavigateBack() },
+      actionLabel = if (browsingParent != null) "新增子分类" else "新增分类",
+      onAction = { if (browsingParent != null) parentForNewChildId = browsingParent.id else showAddRoot = true },
+    )
+    pages.SaveableStateProvider(browsingParentId ?: "root") {
+      val listState = rememberLazyListState()
+      LazyColumn(
+        state = listState,
         modifier = Modifier.weight(1f),
-        verticalAlignment = Alignment.CenterVertically,
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 28.dp + LocalBottomBarInset.current),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
       ) {
-        if (onNavigateBack != null) {
-          SextantIconButton(onClick = { if (browsingParent != null) browsingParentId = null else onNavigateBack() }) {
-            Icon(
-              Icons.AutoMirrored.Outlined.ArrowBack,
-              contentDescription = if (browsingParent != null) "返回全部分类" else "返回设置",
-            )
+        if (categories.isEmpty()) {
+          item { EmptyCard("暂无分类", "新增收入或支出分类后，就可以在记账时选择。") }
+        } else {
+          val groups = if (browsingParent != null) listOf(browsingParent.type) else listOf(TransactionType.Expense, TransactionType.Income)
+          groups.forEach { type ->
+            val group = categories.filter { it.type == type }
+            val count = group.count { it.parentCategoryId == browsingParent?.id }
+            if (count > 0) {
+              item(key = "categories:${browsingParent?.id}:$type") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Text("${if (browsingParent != null) "子分类" else type.label + "分类"} · $count 个",
+                    color = SextantColors.TextMuted, style = MaterialTheme.typography.labelLarge)
+                  SextantSurface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+                    CategoryBrowser(
+                      categories = group, parentId = browsingParentId,
+                      onParentChange = { browsingParentId = it },
+                      actions = { category ->
+                        CategoryActions(category, categories,
+                          onAddChild = { parentForNewChildId = category.id },
+                          onEdit = { editingCategoryId = category.id },
+                          onArchive = { saveAction.launch { repository.archiveCategory(category.id) } })
+                      },
+                    )
+                  }
+                }
+              }
+            }
           }
         }
-        SectionTitle(browsingParent?.name ?: "分类管理")
       }
-      SextantTextButton(onClick = { showAddRoot = true }) { Text("新增分类") }
-    }
-    if (categories.isEmpty()) {
-      EmptyCard("暂无分类", "新增收入或支出分类后，就可以在记账时选择。")
-    } else {
-      CategoryBrowser(
-        categories = categories,
-        parentId = browsingParentId,
-        onParentChange = { browsingParentId = it },
-        actions = { category ->
-          CategoryActions(
-            category = category,
-            categories = categories,
-            onAddChild = { parentForNewChildId = category.id },
-            onEdit = { editingCategoryId = category.id },
-            onArchive = { saveAction.launch { repository.archiveCategory(category.id) } },
-          )
-        },
-      )
     }
   }
+
   if (showAddRoot) {
     CategoryDialog(
       categories = categories,

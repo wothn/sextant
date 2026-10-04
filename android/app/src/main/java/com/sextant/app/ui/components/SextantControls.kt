@@ -511,7 +511,7 @@ fun sextantFilterChipColors() = FilterChipDefaults.filterChipColors(
  * 筛选 chip：胶囊形状，未选中 SurfaceContainer 淡底，选中 AccentSoft 底，都不描边。
  *
  * 未选中不能用纯白 Surface 底：浅色主题下白底比页面背景更亮，会让「没选」看起来像「选了」。
- * 选中时保留前导图标并补一个勾——只靠颜色区分选中对色觉障碍不友好。
+ * 默认选中时保留前导图标并补一个勾；具名颜色选择器可关闭勾选标记。
  */
 @Composable
 fun SextantFilterChip(
@@ -520,10 +520,11 @@ fun SextantFilterChip(
   leadingIcon: (@Composable () -> Unit)? = null,
   trailingIcon: (@Composable () -> Unit)? = null,
   colors: SelectableChipColors = sextantFilterChipColors(),
+  showSelectionCheck: Boolean = true,
 ) {
   FilterChip(selected = selected, onClick = onClick, label = label, modifier = modifier,
     enabled = enabled,
-    leadingIcon = if (selected) {
+    leadingIcon = if (selected && showSelectionCheck) {
       {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
           leadingIcon?.invoke()

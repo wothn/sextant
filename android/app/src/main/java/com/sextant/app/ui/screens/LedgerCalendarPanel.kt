@@ -124,7 +124,7 @@ private fun CalendarCell(label: String, description: String, summary: Summary?, 
     contentDescription = "$description，${if (summary == null) "无收支记录" else "收入 ${formatCurrency(summary.incomeCents)}，支出 ${formatCurrency(summary.expenseCents)}"}"
   }) {
     Column(Modifier.padding(horizontal = 2.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-      CalendarCellText(if (selected) "✓ $label" else label, MaterialTheme.typography.labelMedium)
+      CalendarCellText(label, MaterialTheme.typography.labelMedium)
       if (summary == null) CalendarCellText("—", MaterialTheme.typography.labelSmall, SextantColors.TextSubtle)
       else {
         CalendarCellText("+${calendarAmount(summary.incomeCents)}", MaterialTheme.typography.labelSmall, SextantColors.Success)

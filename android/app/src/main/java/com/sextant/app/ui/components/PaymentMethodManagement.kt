@@ -2,6 +2,15 @@ package com.sextant.app.ui.components
 
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.layout.Arrangement
@@ -12,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -21,10 +29,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.PaymentMethod
 import com.sextant.app.data.SextantRepository
@@ -50,45 +56,38 @@ fun PaymentMethodManagement(
     pendingDeleteId = null
   }
 
-  Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically,
+  val listState = rememberLazyListState()
+  Column(Modifier.fillMaxSize()) {
+    SextantManagementHeader("来源管理", "返回设置", onNavigateBack, "新增来源", { showAdd = true })
+    LazyColumn(
+      state = listState, modifier = Modifier.weight(1f),
+      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 28.dp + LocalBottomBarInset.current),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-        SextantIconButton(onClick = onNavigateBack) {
-          Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回设置")
-        }
-        SectionTitle("来源管理")
+      item {
+        Text("停用后不再出现在记账和筛选中，历史流水保留来源名称。",
+          color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium,
+          modifier = Modifier.padding(bottom = 12.dp))
       }
-      SextantTextButton(onClick = { showAdd = true }) { Text("新增来源") }
-    }
-
-    Text(
-      "停用后不会出现在记账和筛选中，历史流水仍会保留来源名称。",
-      color = SextantColors.TextMuted,
-      style = MaterialTheme.typography.bodyMedium,
-    )
-
-    if (methods.isEmpty()) {
-      EmptyCard("暂无来源", "新增现金、银行卡或支付平台等消费来源。")
-    } else {
-      methods.forEach { method ->
-        PaymentMethodRow(
-          method = method,
-          onEdit = { editingId = method.id },
-          onActiveChanged = { active ->
-            saveAction.launch {
-              repository.setPaymentMethodActive(method.id, active)
+      if (methods.isEmpty()) {
+        item { EmptyCard("暂无来源", "新增现金、银行卡或支付平台等消费来源。") }
+      } else {
+        listOf(true, false).forEach { active ->
+          val group = methods.filter { it.isActive == active }
+          if (group.isNotEmpty()) {
+            item(key = "group:$active") {
+              Text("${if (active) "使用中" else "已停用"} · ${group.size} 个",
+                color = SextantColors.TextMuted, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(top = if (active) 0.dp else 16.dp, bottom = 4.dp))
             }
-          },
-          onDelete = if (!method.isBuiltIn && method.transactionCount == 0L) {
-            { pendingDeleteId = method.id }
-          } else {
-            null
-          },
-        )
+            items(group, key = { it.id }) { method ->
+              PaymentMethodRow(method,
+                onEdit = { editingId = method.id },
+                onActiveChanged = { value -> saveAction.launch { repository.setPaymentMethodActive(method.id, value) } },
+                onDelete = if (!method.isBuiltIn && method.transactionCount == 0L) ({ pendingDeleteId = method.id }) else null)
+            }
+          }
+        }
       }
     }
   }
@@ -144,39 +143,39 @@ private fun PaymentMethodRow(
   onDelete: (() -> Unit)?,
 ) {
   var showActions by rememberSaveable { mutableStateOf(false) }
-  SextantCard() {
-    Row(
-      modifier = Modifier.fillMaxWidth().padding(14.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      CategoryIcon(Icons.Outlined.AccountBalanceWallet, argbColor(method.color))
-      Spacer(Modifier.width(12.dp))
-      Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(method.name, fontWeight = FontWeight.SemiBold)
-        Text(
-          buildList {
-            add(if (method.isActive) "使用中" else "已停用")
-            if (method.transactionCount > 0) add("${method.transactionCount} 笔流水")
-          }.joinToString(" · "),
-          color = SextantColors.TextMuted,
-          style = MaterialTheme.typography.bodySmall,
-        )
-      }
-      SextantSwitch(
-        checked = method.isActive,
-        onCheckedChange = onActiveChanged,
-        modifier = Modifier.semantics { contentDescription = if (method.isActive) "停用${method.name}" else "启用${method.name}" },
+  Row(
+    modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
+      .clickable(onClickLabel = "编辑${method.name}", onClick = onEdit)
+      .padding(vertical = 12.dp),
+    verticalAlignment = Alignment.CenterVertically,
+  ) {
+    CategoryIcon(Icons.Outlined.AccountBalanceWallet, argbColor(method.color))
+    Spacer(Modifier.width(12.dp))
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      Text(method.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+      Text(
+        buildList {
+          add(if (method.isActive) "使用中" else "已停用")
+          if (method.transactionCount > 0) add("${method.transactionCount} 笔流水")
+        }.joinToString(" · "),
+        color = SextantColors.TextMuted,
+        style = MaterialTheme.typography.bodyMedium,
       )
-      Box {
-        SextantIconButton(onClick = { showActions = true }) {
-          Icon(Icons.Outlined.MoreVert, contentDescription = "管理${method.name}")
-        }
-        SextantDropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
-          SextantDropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
-          if (onDelete != null) {
-            SextantDropdownMenuItem(text = { Text("删除", color = SextantColors.Danger) },
-              onClick = { showActions = false; onDelete() })
-          }
+    }
+    SextantSwitch(
+      checked = method.isActive,
+      onCheckedChange = onActiveChanged,
+      modifier = Modifier.semantics { contentDescription = if (method.isActive) "停用${method.name}" else "启用${method.name}" },
+    )
+    Box {
+      SextantIconButton(onClick = { showActions = true }) {
+        Icon(Icons.Outlined.MoreVert, contentDescription = "管理${method.name}")
+      }
+      SextantDropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+        SextantDropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
+        if (onDelete != null) {
+          SextantDropdownMenuItem(text = { Text("删除", color = SextantColors.Danger) },
+            onClick = { showActions = false; onDelete() })
         }
       }
     }

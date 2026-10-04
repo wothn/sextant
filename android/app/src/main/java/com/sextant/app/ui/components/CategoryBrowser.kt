@@ -1,7 +1,9 @@
 package com.sextant.app.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
@@ -16,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.sextant.app.data.TransactionType
 import com.sextant.app.data.Category
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
@@ -56,7 +59,8 @@ fun CategoryBrowser(
   // 没有选中动作，父分类名由页面标题栏承担，这里再画一行就是同一个位置说两遍。
   val showsLevelRow = onSelect != null && (parent != null || allowAll)
   BackHandler(enabled = parent != null) { onParentChange(null) }
-  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+  val managing = actions != null && onSelect == null
+  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(if (managing) 0.dp else 8.dp)) {
     if (showsLevelRow) {
       CategoryListRow(
         name = parent?.name ?: "全部分类",
@@ -75,10 +79,16 @@ fun CategoryBrowser(
         val children = categories.count { it.parentCategoryId == category.id }
         val selectable = onSelect != null
         CategoryListRow(
+          managing = managing,
           name = category.name,
           color = argbColor(category.color),
-          detail = listOfNotNull(category.type.label, if (children > 0) "$children 个子分类" else null,
-            if (actions != null) { if (category.includeInSpending) "计入支出" else "不计支出" } else null).joinToString(" · "),
+          detail = listOfNotNull(
+            category.type.label.takeUnless { managing },
+            if (children > 0) "$children 个子分类" else null,
+            if (actions != null && category.type == TransactionType.Expense) {
+              if (category.includeInSpending) "计入支出" else "不计支出"
+            } else null,
+          ).takeIf { it.isNotEmpty() }?.joinToString(" · "),
           selected = selectable && selectedId == category.id,
           onClick = when {
             selectable -> { { onSelect(category) } }
@@ -137,6 +147,7 @@ private fun CategoryDrillInButton(category: Category, interactive: Boolean, onCl
  */
 @Composable
 private fun CategoryListRow(
+  managing: Boolean = false,
   name: String,
   color: Color,
   detail: String? = null,
@@ -146,24 +157,31 @@ private fun CategoryListRow(
   onClickLabel: String? = null,
   trailing: (@Composable () -> Unit)? = null,
 ) {
-  SextantSelectableSurface(
-    selected = selected,
-    onClick = onClick ?: {},
-    enabled = onClick != null,
-    role = Role.RadioButton,
-    onClickLabel = onClickLabel,
-    modifier = Modifier.fillMaxWidth(),
-  ) {
-    Row(Modifier.heightIn(min = 64.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+  val content: @Composable () -> Unit = {
+    Row(Modifier.heightIn(min = 64.dp).padding(horizontal = if (managing) 16.dp else 12.dp, vertical = if (managing) 12.dp else 10.dp),
       verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       leading?.invoke()
       CategoryIcon(categoryIcon(name), color)
-      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (managing) 4.dp else 2.dp)) {
+        Text(name, style = if (managing) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (detail != null) Text(detail, style = if (managing) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
       }
       if (selected) Icon(Icons.Outlined.Check, "已选", tint = SextantColors.AccentStrong, modifier = Modifier.size(20.dp))
       trailing?.invoke()
     }
+  }
+  if (managing) {
+    val clickModifier = if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier
+    Box(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).then(clickModifier)) { content() }
+  } else {
+    SextantSelectableSurface(
+      selected = selected,
+      onClick = onClick ?: {},
+      enabled = onClick != null,
+      role = Role.RadioButton,
+      onClickLabel = onClickLabel,
+      modifier = Modifier.fillMaxWidth(),
+      content = content,
+    )
   }
 }

@@ -1,5 +1,8 @@
 package com.sextant.app.ui.components
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +25,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.Category
 import com.sextant.app.data.PaymentMethod
@@ -115,8 +119,8 @@ fun SextantBadge(count: Int, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ColorDot(color: Color) {
-  Canvas(Modifier.size(8.dp)) {
+fun ColorDot(color: Color, size: Dp = 8.dp) {
+  Canvas(Modifier.size(size)) {
     drawCircle(color)
   }
 }
@@ -157,6 +161,7 @@ fun <T> FlowChips(
         onClick = { onSelect(item) },
         label = { Text(label(item), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         leadingIcon = { FlowChipLeading(itemColor, icon?.invoke(item)) },
+        showSelectionCheck = icon != null,
       )
     }
   }
@@ -165,7 +170,7 @@ fun <T> FlowChips(
 @Composable
 private fun FlowChipLeading(color: Color, icon: ImageVector?) {
   if (icon == null) {
-    ColorDot(color)
+    ColorDot(color, size = 16.dp)
   } else {
     CategoryIcon(icon, color, size = 20.dp, iconSize = 12.dp)
   }
@@ -173,3 +178,28 @@ private fun FlowChipLeading(color: Color, icon: ImageVector?) {
 
 /** 胶囊形状。chip、已选条件标签这类小标签共用。 */
 val SextantChipShape: Shape = SextantFullShape
+
+/** 管理子页的固定标题栏，标题可随字体缩放换行。 */
+@Composable
+fun SextantManagementHeader(
+  title: String,
+  backDescription: String,
+  onNavigateBack: () -> Unit,
+  actionLabel: String,
+  onAction: () -> Unit,
+) {
+  Row(
+    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    SextantIconButton(onClick = onNavigateBack) {
+      Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = backDescription)
+    }
+    SextantMark()
+    Text(title, modifier = Modifier.weight(1f),
+      style = MaterialTheme.typography.headlineMedium.sextantEmphasized(),
+      maxLines = 2, overflow = TextOverflow.Ellipsis)
+    SextantTextButton(onClick = onAction) { Text(actionLabel) }
+  }
+}

@@ -282,43 +282,16 @@ private fun CategoryManagementScreen(
 
   onNavigateBack: () -> Unit,
 ) {
-  LazyColumn(
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    item {
-      CategoryManagement(
-        categories = state.categories,
-        repository = repository,
-
-        onNavigateBack = onNavigateBack,
-      )
-    }
-  }
+  CategoryManagement(state.categories, repository, onNavigateBack)
 }
 
 @Composable
 private fun PaymentMethodManagementScreen(
   state: AppState,
   repository: SextantRepository,
-
   onNavigateBack: () -> Unit,
 ) {
-  LazyColumn(
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    item {
-      PaymentMethodManagement(
-        methods = state.allPaymentMethods,
-        repository = repository,
-
-        onNavigateBack = onNavigateBack,
-      )
-    }
-  }
+  PaymentMethodManagement(state.allPaymentMethods, repository, onNavigateBack)
 }
 
 @Composable
