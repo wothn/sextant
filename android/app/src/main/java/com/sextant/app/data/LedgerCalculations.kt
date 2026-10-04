@@ -1,8 +1,15 @@
 package com.sextant.app.data
 
 import java.util.Calendar
+import java.time.LocalDate
 
 internal object LedgerCalculations {
+  /** 与每日支出图同口径，按本地日期筛选可核对的原始流水。 */
+  fun spendingOnDay(items: List<TransactionListItem>, day: LocalDate): List<TransactionListItem> = items.filter {
+    it.transaction.type == TransactionType.Expense && it.includeInSpending &&
+      it.transaction.transactionDate.toLocalDate() == day
+  }
+
   fun summarize(items: List<TransactionListItem>): Summary {
     val income = items
       .filter { it.transaction.type == TransactionType.Income }

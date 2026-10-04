@@ -14,6 +14,13 @@ import androidx.compose.ui.tooling.preview.Devices
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
+import com.sextant.app.data.AnalysisWindow
+import com.sextant.app.data.AnalysisPeriod
+import com.sextant.app.data.AnalysisMetric
+import com.sextant.app.data.LedgerCalculations
+import com.sextant.app.data.AnalysisReport
+import com.sextant.app.data.expenseTrend
+import com.sextant.app.data.toLocalDate
 import com.sextant.app.data.BudgetProgress
 import com.sextant.app.data.Category
 import com.sextant.app.data.CategoryBreakdown
@@ -77,8 +84,13 @@ private fun AnalyticsScreenPreview() {
   SextantTheme(themePreference = ThemePreference.System) {
     PreviewAppShell(selectedTab = Tab.Analytics) {
       AnalyticsScreen(
-        state = populatedPreviewState,
-        monthStart = previewFilter.rangeStart,
+        state = populatedPreviewState.copy(analysisReport = AnalysisReport(populatedPreviewState.monthSummary,
+          populatedPreviewState.previousMonthSummary,
+          expenseTrend(populatedPreviewState.analysisTransactions, AnalysisWindow(AnalysisPeriod.Month, previewFilter.rangeStart.toLocalDate())),
+          incomeTrend = expenseTrend(populatedPreviewState.analysisTransactions, AnalysisWindow(AnalysisPeriod.Month, previewFilter.rangeStart.toLocalDate()), AnalysisMetric.Income),
+          incomeBreakdown = LedgerCalculations.breakdown(populatedPreviewState.analysisTransactions.filter(AnalysisMetric.Income::includes), populatedPreviewState.categories))),
+        window = AnalysisWindow(AnalysisPeriod.Month, previewFilter.rangeStart.toLocalDate()),
+        onWindowChanged = {},
         onTransactionClick = {},
       )
     }
@@ -92,10 +104,10 @@ private fun CategoryDetailScreenPreview() {
     PreviewAppShell(selectedTab = Tab.Analytics) {
       CategoryDetailScreen(
         category = populatedPreviewState.categoryBreakdown.first(),
-        monthStart = previewFilter.rangeStart,
+        scopeLabel = "预览月份",
         transactions = populatedPreviewState.analysisTransactions,
         categories = populatedPreviewState.categories,
-        monthTotalCents = populatedPreviewState.monthSummary.expenseCents,
+        periodTotalCents = populatedPreviewState.monthSummary.expenseCents,
         onBack = {},
         onTransactionClick = {},
       )

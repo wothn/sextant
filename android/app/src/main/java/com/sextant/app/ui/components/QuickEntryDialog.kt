@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,6 +28,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -53,6 +56,8 @@ fun QuickEntryDialog(
   state: AppState,
   editing: TransactionListItem? = null,
   initialPaymentMethodId: String? = null,
+  saving: Boolean = false,
+  saveError: String? = null,
   onDismiss: () -> Unit,
   onDelete: (() -> Unit)? = null,
   onSubmit: (TransactionType, Long, String?, String?, String, Long, Boolean) -> Unit,
@@ -82,15 +87,26 @@ fun QuickEntryDialog(
     if (inactive != null) add(inactive)
   }
   val selectedMethod = paymentMethodOptions.firstOrNull { it.id == paymentMethodId }
+  val currentSaving by rememberUpdatedState(saving)
+  val formScroll = rememberScrollState()
+  val categoryScroll = rememberScrollState()
+  val sourceScroll = rememberScrollState()
+  val returnOneLevel = {
+    if (panel == EntryPanel.Category && browsingParentId != null) browsingParentId = null
+    else panel = EntryPanel.Form
+  }
 
   SextantBottomSheet(
-    onDismissRequest = onDismiss,
-    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    onDismissRequest = { if (!saving) onDismiss() },
+    sheetState = rememberModalBottomSheetState(
+      skipPartiallyExpanded = true,
+      confirmValueChange = { it != SheetValue.Hidden || !currentSaving },
+    ),
     // Keep boundary flings inside selection lists instead of moving the sheet.
-    sheetGesturesEnabled = panel == EntryPanel.Form,
+    sheetGesturesEnabled = panel == EntryPanel.Form && !saving,
   ) {
     val focus = LocalFocusManager.current
-    BackHandler(enabled = panel != EntryPanel.Form) { panel = EntryPanel.Form }
+    BackHandler(enabled = panel != EntryPanel.Form || saving) { if (!saving) returnOneLevel() }
     val panelHeight = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
     Column(
       Modifier.fillMaxWidth()
@@ -100,9 +116,7 @@ fun QuickEntryDialog(
       Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (panel != EntryPanel.Form) {
           val inCategoryChildren = panel == EntryPanel.Category && browsingParentId != null
-          SextantIconButton(onClick = {
-            if (inCategoryChildren) browsingParentId = null else panel = EntryPanel.Form
-          }) {
+          SextantIconButton(onClick = returnOneLevel, enabled = !saving) {
             Icon(Icons.AutoMirrored.Outlined.ArrowBack,
               contentDescription = if (inCategoryChildren) "返回全部分类" else "返回记账")
           }
@@ -116,27 +130,37 @@ fun QuickEntryDialog(
           modifier = Modifier.weight(1f),
         )
         if (panel == EntryPanel.Form && onDelete != null) {
-          SextantTextButton(onClick = onDelete) { Text("删除", color = SextantColors.Danger) }
+          SextantTextButton(onClick = onDelete, enabled = !saving) { Text("删除", color = SextantColors.Danger) }
         }
-        SextantIconButton(onClick = { if (panel == EntryPanel.Form) onDismiss() else panel = EntryPanel.Form }) {
+        SextantIconButton(onClick = { if (panel == EntryPanel.Form) onDismiss() else panel = EntryPanel.Form }, enabled = !saving) {
           Icon(Icons.Outlined.Close, contentDescription = if (panel == EntryPanel.Form) "关闭记账" else "关闭选择",
             modifier = Modifier.size(20.dp))
         }
       }
       // Only the body scrolls. The action stays within reach when the IME or a large font reduces space.
-      key(panel) {
+      SextantPageContent(
+        targetState = panel,
+        depth = { if (it == EntryPanel.Form) 0 else 1 },
+        modifier = Modifier.weight(1f, fill = panel != EntryPanel.Form),
+      ) { visiblePanel ->
         Column(
-          Modifier.weight(1f, fill = panel != EntryPanel.Form).verticalScroll(rememberScrollState()),
+          Modifier.fillMaxWidth().verticalScroll(when (visiblePanel) {
+            EntryPanel.Form -> formScroll
+            EntryPanel.Category -> categoryScroll
+            EntryPanel.Source -> sourceScroll
+          }),
           verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-          when (panel) {
+          when (visiblePanel) {
             EntryPanel.Form -> {
               SextantSegmentedButtonGroup(
                 options = TransactionType.entries,
                 selected = type,
                 onSelect = { option ->
-                  type = option
-                  categoryId = state.categories.firstOrNull { it.type == option && it.parentCategoryId == null }?.id
+                  if (!saving) {
+                    type = option
+                    categoryId = state.categories.firstOrNull { it.type == option && it.parentCategoryId == null }?.id
+                  }
                 },
                 label = { it.label },
                 modifier = Modifier.fillMaxWidth(),
@@ -147,6 +171,7 @@ fun QuickEntryDialog(
                   Text("¥", fontSize = 28.sp, color = SextantColors.TextMuted, fontWeight = FontWeight.Medium)
                   BasicTextField(
                     value = amountText,
+                    readOnly = saving,
                     onValueChange = { amountText = it; amountError = false },
                     modifier = Modifier.weight(1f).heightIn(min = 60.dp).semantics { contentDescription = "金额" },
                     textStyle = MaterialTheme.typography.displaySmall.copy(fontSize = 42.sp,
@@ -170,12 +195,14 @@ fun QuickEntryDialog(
               Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SextantDetailTile("分类", selectedCategory?.displayName(state.categories) ?: "选择分类",
                   categoryIcon(selectedCategory?.name.orEmpty()), Modifier.weight(1f)) {
+                  if (saving) return@SextantDetailTile
                   focus.clearFocus()
                   browsingParentId = null
                   panel = EntryPanel.Category
                 }
                 SextantDetailTile("来源", selectedMethod?.name ?: "选择来源", Icons.Outlined.AccountBalanceWallet,
                   Modifier.weight(1f)) {
+                  if (saving) return@SextantDetailTile
                   focus.clearFocus()
                   panel = EntryPanel.Source
                 }
@@ -184,10 +211,10 @@ fun QuickEntryDialog(
                 Text("已识别商户：$merchantName", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
                 if (canRememberMerchant) {
                   Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
-                    value = rememberMerchant, role = Role.Switch, onValueChange = { rememberMerchant = it },
+                    value = rememberMerchant, enabled = !saving, role = Role.Switch, onValueChange = { rememberMerchant = it },
                   ), verticalAlignment = Alignment.CenterVertically) {
                     Text("以后该商户也使用此分类", modifier = Modifier.weight(1f))
-                    SextantSwitch(checked = rememberMerchant, onCheckedChange = null)
+                    SextantSwitch(checked = rememberMerchant, onCheckedChange = null, enabled = !saving)
                   }
                   Text("保存时记住，仅用于今后的消费记录。", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
                 }
@@ -199,6 +226,7 @@ fun QuickEntryDialog(
                     Icon(Icons.Outlined.EditNote, contentDescription = null, tint = SextantColors.TextSubtle, modifier = Modifier.size(21.dp))
                     BasicTextField(
                       value = description, onValueChange = { description = it }, singleLine = true,
+                      readOnly = saving,
                       textStyle = MaterialTheme.typography.bodyMedium.copy(color = SextantColors.Text),
                       cursorBrush = SolidColor(SextantColors.Accent),
                       modifier = Modifier.weight(1f).padding(vertical = 16.dp).semantics { contentDescription = "备注（可选）" },
@@ -214,11 +242,11 @@ fun QuickEntryDialog(
                   SextantDivider(color = SextantColors.SurfaceContainerHighest)
                   Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.CalendarToday, contentDescription = null, tint = SextantColors.TextSubtle, modifier = Modifier.size(20.dp))
-                    SextantTextButton(onClick = { focus.clearFocus(); showDatePicker = true }, modifier = Modifier.weight(1f)) {
+                    SextantTextButton(onClick = { focus.clearFocus(); showDatePicker = true }, enabled = !saving, modifier = Modifier.weight(1f)) {
                       Text(SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(transactionDate), color = SextantColors.TextMuted,
                         style = MaterialTheme.typography.bodyMedium)
                     }
-                    SextantTextButton(onClick = { focus.clearFocus(); showTimePicker = true }) {
+                    SextantTextButton(onClick = { focus.clearFocus(); showTimePicker = true }, enabled = !saving) {
                       Text(SimpleDateFormat("HH:mm", Locale.CHINA).format(transactionDate), color = SextantColors.TextMuted,
                         style = MaterialTheme.typography.bodyMedium)
                     }
@@ -261,19 +289,32 @@ fun QuickEntryDialog(
           Spacer(Modifier.height(4.dp))
         }
       }
+      saveError?.let { message ->
+        Text(message, color = SextantColors.Danger, style = MaterialTheme.typography.bodyMedium,
+          modifier = Modifier.fillMaxWidth().padding(top = 12.dp).semantics { liveRegion = LiveRegionMode.Polite })
+      }
       SextantButton(onClick = {
           if (panel != EntryPanel.Form) {
             panel = EntryPanel.Form
           } else {
             val cents = parseAmountCents(amountText)
             amountError = cents == null
-            if (cents != null) onSubmit(type, cents, categoryId, paymentMethodId, description.trim(), transactionDate, rememberMerchant && canRememberMerchant)
+            if (cents != null) {
+              focus.clearFocus()
+              onSubmit(type, cents, categoryId, paymentMethodId, description.trim(), transactionDate, rememberMerchant && canRememberMerchant)
+            }
           }
         },
         size = SextantButtonSize.Medium,
+        enabled = !saving,
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 20.dp),
       ) {
-        Text(if (panel != EntryPanel.Form) "返回记账" else if (editing == null) "记好了" else "保存修改",
+        if (saving) {
+          SextantLoadingIndicator(size = 24.dp, color = SextantColors.TextMuted,
+            containerColor = SextantColors.SurfaceContainerHighest)
+          Spacer(Modifier.width(8.dp))
+        }
+        Text(if (saving) "正在保存" else if (panel != EntryPanel.Form) "返回记账" else if (editing == null) "记好了" else "保存修改",
           style = MaterialTheme.typography.titleSmall)
       }
     }

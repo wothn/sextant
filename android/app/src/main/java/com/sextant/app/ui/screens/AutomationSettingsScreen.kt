@@ -39,6 +39,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.sextant.app.ui.components.SextantPageContent
 import com.sextant.app.ui.components.SextantDetailTile
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.semantics
@@ -74,6 +76,7 @@ fun AutomationSettingsScreen(
 ) {
   val context = LocalContext.current
   var merchantRulesOpen by rememberSaveable { mutableStateOf(false) }
+  val pages = rememberSaveableStateHolder()
   val listState = rememberLazyListState()
   var draft by remember(state.automationSettings) { mutableStateOf(state.automationSettings) }
   var message by remember { mutableStateOf<String?>(null) }
@@ -119,155 +122,158 @@ fun AutomationSettingsScreen(
   }
 
   BackHandler(enabled = merchantRulesOpen) { merchantRulesOpen = false }
-  if (merchantRulesOpen) {
-    MerchantCategoryRulesScreen(state, repository, onNavigateBack = { merchantRulesOpen = false })
-    return
-  }
-
-  LazyColumn(
-    state = listState,
-    modifier = Modifier.fillMaxSize(),
-    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
-    verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    item {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        SextantIconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回") }
-        SectionTitle("自动记账")
-      }
-    }
-    item {
-      SextantCard() {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-          Text("通知读取授权", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-          Text(
-            "Sextant 只处理微信和支付宝中包含金额与支付关键词的通知。普通聊天不会保存或上传。功能默认关闭，可随时撤销系统授权。",
-            color = SextantColors.TextMuted,
-          )
-          Text(
-            text = when {
-              !listenerEnabled -> "状态：未授权，不会记录任何通知"
-              listenerConnected -> "状态：监听中"
-              else -> "状态：已授权，但监听服务当前没有运行"
-            },
-            color = when {
-              !listenerEnabled -> SextantColors.Danger
-              listenerConnected -> SextantColors.Success
-              else -> SextantColors.Danger
-            },
-          )
-          (listenerStatus.lastCapturedAt)?.let { capturedAt ->
-            Text(
-              "最近捕获支付通知：${SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(capturedAt))}",
-              color = SextantColors.TextMuted,
-              style = MaterialTheme.typography.bodySmall,
+  SextantPageContent(targetState = merchantRulesOpen, depth = { if (it) 1 else 0 }, modifier = Modifier.fillMaxSize()) { rulesOpen ->
+    pages.SaveableStateProvider(rulesOpen) {
+      if (rulesOpen) {
+        MerchantCategoryRulesScreen(state, repository, onNavigateBack = { merchantRulesOpen = false })
+      } else {
+        LazyColumn(
+          state = listState,
+          modifier = Modifier.fillMaxSize(),
+          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp + LocalBottomBarInset.current),
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              SextantIconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回") }
+              SectionTitle("自动记账")
+            }
+          }
+          item {
+            SextantCard() {
+              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("通知读取授权", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                  "Sextant 只处理微信和支付宝中包含金额与支付关键词的通知。普通聊天不会保存或上传。功能默认关闭，可随时撤销系统授权。",
+                  color = SextantColors.TextMuted,
+                )
+                Text(
+                  text = when {
+                    !listenerEnabled -> "状态：未授权，不会记录任何通知"
+                    listenerConnected -> "状态：监听中"
+                    else -> "状态：已授权，但监听服务当前没有运行"
+                  },
+                  color = when {
+                    !listenerEnabled -> SextantColors.Danger
+                    listenerConnected -> SextantColors.Success
+                    else -> SextantColors.Danger
+                  },
+                )
+                (listenerStatus.lastCapturedAt)?.let { capturedAt ->
+                  Text(
+                    "最近捕获支付通知：${SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(capturedAt))}",
+                    color = SextantColors.TextMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                  )
+                }
+                SextantOutlinedButton(onClick = {
+                  val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                  runCatching { notificationAccessLauncher.launch(intent) }
+                    .onFailure { message = "当前系统无法打开通知使用权设置。" }
+                }) { Text(if (listenerEnabled) "管理系统授权" else "前往授权") }
+              }
+            }
+          }
+          item {
+            SextantCard {
+              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("支付页面识别", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                  "通过无障碍服务读取微信、支付宝支付结果页和账单详情页的金额、商户、时间与交易单号，仅在本机解析，不保存或上传原始页面，也不会自动操作支付。",
+                  color = SextantColors.TextMuted,
+                )
+                Text("支付完成后停留片刻；打开账单详情可补记。当前支持已完成的人民币消费，转账、退款等仍通过通知记录。页面结构不受支持时可能无法识别。", color = SextantColors.TextMuted)
+                Text(
+                  if (pageAuthorized) "系统授权：已开启" else "系统授权：未开启",
+                  color = if (pageAuthorized) SextantColors.Success else SextantColors.TextMuted,
+                )
+                InlineSwitch("识别商户并补全记账", "开启后，从支付页面读到的商户名会补进尚未填写的备注，已有手动备注不会被覆盖", draft.paymentPageEnabled) {
+                  draft = draft.copy(paymentPageEnabled = it)
+                }
+                SextantOutlinedButton(onClick = {
+                  runCatching { pageAccessLauncher.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                    .onFailure { message = "当前系统无法打开无障碍设置。" }
+                }) { Text(if (pageAuthorized) "管理页面读取授权" else "前往开启无障碍服务") }
+              }
+            }
+          }
+          item {
+            SettingsSwitchCard(
+              title = "启用自动记账",
+              description = if (listenerEnabled || pageAuthorized) "根据已授权的通知和支付页面生成流水" else "请先授权通知读取或支付页面识别",
+              checked = draft.enabled,
+              enabled = listenerEnabled || pageAuthorized || draft.enabled,
+            ) { draft = draft.copy(enabled = it) }
+          }
+          item {
+            SextantCard() {
+              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("支付应用", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                InlineSwitch("微信", WECHAT_PACKAGE, draft.wechatEnabled) { draft = draft.copy(wechatEnabled = it) }
+                InlineSwitch("支付宝", ALIPAY_PACKAGE, draft.alipayEnabled) { draft = draft.copy(alipayEnabled = it) }
+              }
+            }
+          }
+          item {
+            SextantCard() {
+              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                InlineSwitch("入账结果通知", "可撤销或打开编辑", draft.resultNotificationsEnabled) {
+                  draft = draft.copy(resultNotificationsEnabled = it)
+                }
+                if (draft.resultNotificationsEnabled && Build.VERSION.SDK_INT >= 33) {
+                  SextantOutlinedButton(onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
+                    Text("允许结果通知")
+                  }
+                }
+              }
+            }
+          }
+          // 自动保存成功是正常路径，不摆文案；只有没写进去才需要说话。
+          autosave.failure?.let { reason ->
+            item {
+              Text(
+                "$reason 再改一次开关会重试。",
+                color = SextantColors.Danger,
+                style = MaterialTheme.typography.bodySmall,
+              )
+            }
+          }
+          message?.let { value -> item { Text(value, color = SextantColors.TextMuted) } }
+          item {
+            SextantDetailTile(
+              label = "商户分类",
+              value = if (state.merchantCategoryRules.isEmpty()) "管理商户的自动分类" else "已记住 ${state.merchantCategoryRules.size} 个商户",
+              icon = Icons.Outlined.Storefront,
+              modifier = Modifier.fillMaxWidth(),
+              onClick = { merchantRulesOpen = true },
             )
           }
-          SextantOutlinedButton(onClick = {
-            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-            runCatching { notificationAccessLauncher.launch(intent) }
-              .onFailure { message = "当前系统无法打开通知使用权设置。" }
-          }) { Text(if (listenerEnabled) "管理系统授权" else "前往授权") }
-        }
-      }
-    }
-    item {
-      SextantCard {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-          Text("支付页面识别", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-          Text(
-            "通过无障碍服务读取微信、支付宝支付结果页和账单详情页的金额、商户、时间与交易单号，仅在本机解析，不保存或上传原始页面，也不会自动操作支付。",
-            color = SextantColors.TextMuted,
-          )
-          Text("支付完成后停留片刻；打开账单详情可补记。当前支持已完成的人民币消费，转账、退款等仍通过通知记录。页面结构不受支持时可能无法识别。", color = SextantColors.TextMuted)
-          Text(
-            if (pageAuthorized) "系统授权：已开启" else "系统授权：未开启",
-            color = if (pageAuthorized) SextantColors.Success else SextantColors.TextMuted,
-          )
-          InlineSwitch("识别商户并补全记账", "开启后，从支付页面读到的商户名会补进尚未填写的备注，已有手动备注不会被覆盖", draft.paymentPageEnabled) {
-            draft = draft.copy(paymentPageEnabled = it)
-          }
-          SextantOutlinedButton(onClick = {
-            runCatching { pageAccessLauncher.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-              .onFailure { message = "当前系统无法打开无障碍设置。" }
-          }) { Text(if (pageAuthorized) "管理页面读取授权" else "前往开启无障碍服务") }
-        }
-      }
-    }
-    item {
-      SettingsSwitchCard(
-        title = "启用自动记账",
-        description = if (listenerEnabled || pageAuthorized) "根据已授权的通知和支付页面生成流水" else "请先授权通知读取或支付页面识别",
-        checked = draft.enabled,
-        enabled = listenerEnabled || pageAuthorized || draft.enabled,
-      ) { draft = draft.copy(enabled = it) }
-    }
-    item {
-      SextantCard() {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text("支付应用", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-          InlineSwitch("微信", WECHAT_PACKAGE, draft.wechatEnabled) { draft = draft.copy(wechatEnabled = it) }
-          InlineSwitch("支付宝", ALIPAY_PACKAGE, draft.alipayEnabled) { draft = draft.copy(alipayEnabled = it) }
-        }
-      }
-    }
-    item {
-      SextantCard() {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-          InlineSwitch("入账结果通知", "可撤销或打开编辑", draft.resultNotificationsEnabled) {
-            draft = draft.copy(resultNotificationsEnabled = it)
-          }
-          if (draft.resultNotificationsEnabled && Build.VERSION.SDK_INT >= 33) {
-            SextantOutlinedButton(onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
-              Text("允许结果通知")
-            }
-          }
-        }
-      }
-    }
-    // 自动保存成功是正常路径，不摆文案；只有没写进去才需要说话。
-    autosave.failure?.let { reason ->
-      item {
-        Text(
-          "$reason 再改一次开关会重试。",
-          color = SextantColors.Danger,
-          style = MaterialTheme.typography.bodySmall,
-        )
-      }
-    }
-    message?.let { value -> item { Text(value, color = SextantColors.TextMuted) } }
-    item {
-      SextantDetailTile(
-        label = "商户分类",
-        value = if (state.merchantCategoryRules.isEmpty()) "管理商户的自动分类" else "已记住 ${state.merchantCategoryRules.size} 个商户",
-        icon = Icons.Outlined.Storefront,
-        modifier = Modifier.fillMaxWidth(),
-        onClick = { merchantRulesOpen = true },
-      )
-    }
-    item { Text("最近处理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-    if (state.automationEvents.isEmpty()) {
-      item { Text("暂无自动记账事件。", color = SextantColors.TextMuted) }
-    } else {
-      items(state.automationEvents.size) { index ->
-        val event = state.automationEvents[index]
-        SextantCard() {
-          Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            val captureSource = if (event.parser?.contains("-page-") == true) "页面" else "通知"
-            Text("${event.sourcePackage.sourceName()}$captureSource · ${event.status.label()}", fontWeight = FontWeight.SemiBold)
-            Text(SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(event.postedAt)), color = SextantColors.TextMuted)
-            event.parsedSummary?.let { Text(it, color = SextantColors.TextMuted) }
-            if (event.status == AutomationEventStatus.Failed) {
-              event.failureCode?.let { Text("原因：${it.failureLabel()}", color = SextantColors.Danger) }
-            }
-            if (event.status == AutomationEventStatus.Failed && event.failureCode !in setOf("payment_match_ambiguous", "automation_disabled")) {
-              SextantOutlinedButton(onClick = {
-                scope.launch {
-                  val queued = (context.applicationContext as SextantApplication).automationCoordinator.retry(event.id)
-                  message = if (queued) "已重新加入处理队列。" else "原始信息不可用，请检查账本后手动补记。"
+          item { Text("最近处理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+          if (state.automationEvents.isEmpty()) {
+            item { Text("暂无自动记账事件。", color = SextantColors.TextMuted) }
+          } else {
+            items(state.automationEvents.size) { index ->
+              val event = state.automationEvents[index]
+              SextantCard() {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                  val captureSource = if (event.parser?.contains("-page-") == true) "页面" else "通知"
+                  Text("${event.sourcePackage.sourceName()}$captureSource · ${event.status.label()}", fontWeight = FontWeight.SemiBold)
+                  Text(SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(event.postedAt)), color = SextantColors.TextMuted)
+                  event.parsedSummary?.let { Text(it, color = SextantColors.TextMuted) }
+                  if (event.status == AutomationEventStatus.Failed) {
+                    event.failureCode?.let { Text("原因：${it.failureLabel()}", color = SextantColors.Danger) }
+                  }
+                  if (event.status == AutomationEventStatus.Failed && event.failureCode !in setOf("payment_match_ambiguous", "automation_disabled")) {
+                    SextantOutlinedButton(onClick = {
+                      scope.launch {
+                        val queued = (context.applicationContext as SextantApplication).automationCoordinator.retry(event.id)
+                        message = if (queued) "已重新加入处理队列。" else "原始信息不可用，请检查账本后手动补记。"
 
+                      }
+                    }) { Text("重试") }
+                  }
                 }
-              }) { Text("重试") }
+              }
             }
           }
         }

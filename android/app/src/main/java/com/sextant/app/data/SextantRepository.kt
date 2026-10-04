@@ -30,11 +30,12 @@ class SextantRepository(context: Context) {
   suspend fun loadState(
     filter: LedgerFilter = LedgerFilter.allTime(),
     projection: StateProjection = StateProjection.All,
+    analysisPeriod: AnalysisPeriod = AnalysisPeriod.Month,
   ): AppState = withContext(Dispatchers.Default) {
-    database.withTransaction { loadSnapshot(filter, projection) }
+    database.withTransaction { loadSnapshot(filter, projection, analysisPeriod) }
   }
 
-  private suspend fun loadSnapshot(filter: LedgerFilter, projection: StateProjection): AppState {
+  private suspend fun loadSnapshot(filter: LedgerFilter, projection: StateProjection, analysisPeriod: AnalysisPeriod): AppState {
     val categories = listCategories()
     val allPaymentMethods = listPaymentMethods()
     val paymentMethods = allPaymentMethods.filter { it.isActive }
@@ -59,9 +60,31 @@ class SextantRepository(context: Context) {
         recurringExpenses = listRecurringExpenses(),
       )
     }
-    val transactions = if (projection == StateProjection.Analytics) emptyList() else listTransactions(categories, allPaymentMethods, filter)
+    if (projection == StateProjection.Analytics) {
+      val window = AnalysisWindow(analysisPeriod, if (filter.isAllTime) java.time.LocalDate.now() else filter.rangeStart.toLocalDate())
+      val rows = listTransactions(categories, allPaymentMethods, window.filter)
+      val previousRows = listTransactions(categories, allPaymentMethods, window.previous.filter)
+      val previous = LedgerCalculations.breakdown(monthSpending(previousRows), categories).associateBy { it.categoryName }
+      val previousIncome = LedgerCalculations.breakdown(previousRows.filter(AnalysisMetric.Income::includes), categories)
+        .associateBy { it.categoryName }
+      val summary = LedgerCalculations.summarize(rows)
+      return AppState(
+        categories = categories, paymentMethods = paymentMethods, allPaymentMethods = allPaymentMethods,
+        monthSummary = summary,
+        analysisTransactions = rows,
+        categoryBreakdown = LedgerCalculations.breakdown(monthSpending(rows), categories).map {
+          it.copy(previousAmountCents = previous[it.categoryName]?.amountCents ?: 0L)
+        },
+        analysisReport = AnalysisReport(summary, LedgerCalculations.summarize(previousRows), expenseTrend(rows, window),
+          incomeTrend = expenseTrend(rows, window, AnalysisMetric.Income),
+          incomeBreakdown = LedgerCalculations.breakdown(rows.filter(AnalysisMetric.Income::includes), categories).map {
+            it.copy(previousAmountCents = previousIncome[it.categoryName]?.amountCents ?: 0L)
+          }),
+      )
+    }
+    val transactions = listTransactions(categories, allPaymentMethods, filter)
     val (todayStart, todayEnd) = todayRange()
-    val todayTransactions = if (projection == StateProjection.Analytics) emptyList() else listTransactions(
+    val todayTransactions = listTransactions(
       categories,
       allPaymentMethods,
       LedgerFilter(rangeStart = todayStart, rangeEnd = todayEnd),

@@ -7,9 +7,13 @@ import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.ui.components.SextantCollapsibleFab
 import com.sextant.app.ui.components.SextantTabContent
+import com.sextant.app.ui.components.SextantPageContent
+import com.sextant.app.ui.components.SextantPagePlaceholder
+import com.sextant.app.ui.components.SextantReadError
 import com.sextant.app.ui.components.SextantTextButton
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,7 +34,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.sextant.app.data.StateProjection
 import com.sextant.app.ui.components.rememberSaveAction
-import com.sextant.app.ui.components.SextantLoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
+import com.sextant.app.data.AnalysisPeriod
+import com.sextant.app.data.AnalysisWindow
+import com.sextant.app.data.toLocalDate
+import com.sextant.app.data.toStartOfDayMillis
 import com.sextant.app.data.BackupCoordinator
 import com.sextant.app.data.LedgerFilter
 import com.sextant.app.data.TransactionListItem
@@ -84,6 +91,9 @@ fun SextantApp(
   var editingTransaction by remember { mutableStateOf<TransactionListItem?>(null) }
   var pendingDelete by remember { mutableStateOf<TransactionListItem?>(null) }
   var filter by rememberSaveable(stateSaver = LedgerFilterSaver) { mutableStateOf(LedgerFilter.allTime()) }
+  var analysisAnchor by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
+  var analysisPeriod by rememberSaveable { mutableStateOf(AnalysisPeriod.Month) }
+  val analysisWindow = AnalysisWindow(analysisPeriod, analysisAnchor.toLocalDate())
   var lastPaymentMethodId by rememberSaveable { mutableStateOf<String?>(null) }
   val ui by viewModel.state.collectAsState()
   val projection = when (tab) {
@@ -92,15 +102,22 @@ fun SextantApp(
     Tab.Analytics -> StateProjection.Analytics
     else -> StateProjection.Ledger
   }
-  val request = LedgerRequest(if (tab == Tab.Home || tab == Tab.Analytics) filter else LedgerFilter.allTime(), projection)
-  val state = ui.data ?: AppState()
+  val request = LedgerRequest(when (tab) {
+    Tab.Home -> filter
+    Tab.Analytics -> analysisWindow.filter
+    else -> LedgerFilter.allTime()
+  }, projection, if (tab == Tab.Analytics) analysisPeriod else AnalysisPeriod.Month)
+  val currentData = ui.dataFor(request)
+  val state = currentData ?: AppState()
   val quickEntryFab = rememberQuickEntryFabState()
-  val saveAction = rememberSaveAction("ledger") {
+  val saveAction = rememberSaveAction("ledger", showFeedback = false) {
     showQuickEntry = false
     editingId = null
     pendingDelete = null
   }
+  val themeSaveAction = rememberSaveAction("theme")
   val pageStates = rememberSaveableStateHolder()
+  val ledgerPages = rememberSaveableStateHolder()
   LaunchedEffect(request) { viewModel.show(request) }
   LaunchedEffect(ui.theme) { if (ui.data != null) onThemePreferenceChanged(ui.theme) }
   LaunchedEffect(tab, calendarOpen) { if (tab == Tab.Home && !calendarOpen) quickEntryFab.show() }
@@ -151,42 +168,68 @@ fun SextantApp(
           .nestedScroll(quickEntryFab.nestedScrollConnection),
       ) {
         SextantTabContent(selectedIndex = tab.ordinal) { index ->
-          if (ui.request != request || ui.data == null || index != tab.ordinal) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-              if (ui.error == null || ui.request != request) SextantLoadingIndicator()
-              else SextantTextButton(onClick = viewModel::refresh) { Text("读取失败，点击重试") }
-            }
+          val pageTab = Tab.entries[index]
+          val pageRequest = LedgerRequest(
+            when (pageTab) {
+              Tab.Home -> filter
+              Tab.Analytics -> analysisWindow.filter
+              else -> LedgerFilter.allTime()
+            },
+            when (pageTab) {
+              Tab.Home -> StateProjection.Ledger
+              Tab.Analytics -> StateProjection.Analytics
+              Tab.Discover -> StateProjection.Plans
+              Tab.Settings -> StateProjection.Settings
+            },
+            if (pageTab == Tab.Analytics) analysisPeriod else AnalysisPeriod.Month,
+          )
+          val pageData = ui.dataFor(pageRequest)
+          val pageError = ui.error?.takeIf { ui.request == pageRequest }
+          if (pageData == null) {
+            SextantPagePlaceholder(pageTab.title, pageError, viewModel::refresh)
           } else {
-            pageStates.SaveableStateProvider(if (calendarOpen) "calendar" else index) {
-              when (Tab.entries[index]) {
-                Tab.Home -> if (calendarOpen) LedgerCalendarScreen(
-                  state = state,
-                  filter = filter,
-                  onFilterChanged = { filter = it },
-                  onBack = { showCalendar = false },
-                  onTransactionClick = { editingId = it.transaction.id },
-                ) else HomeScreen(
-                  state = state,
-                  filter = filter,
-                  onFilterChanged = { filter = it },
-                  onTransactionClick = { editingId = it.transaction.id },
-                  onOpenCalendar = { showCalendar = true },
-                )
-                Tab.Analytics -> AnalyticsScreen(
-                  state = state,
-                  monthStart = filter.anchorMonthStart,
-                  onTransactionClick = { editingId = it.transaction.id },
-                )
-                Tab.Discover -> PlansScreen(state, repository)
-                Tab.Settings -> SettingsScreen(
-                  state = state,
-                  repository = repository,
-                  backupCoordinator = backupCoordinator,
-                  themePreference = themePreference,
-                  onThemePreferenceChanged = { preference ->
-                    saveAction.launch { repository.setThemePreference(preference) }
-                  },
-                )
+            Column(Modifier.fillMaxSize()) {
+              if (pageError != null) SextantReadError("刷新失败，当前显示上次读取的内容。", viewModel::refresh)
+              pageStates.SaveableStateProvider(index) {
+                when (pageTab) {
+                  Tab.Home -> SextantPageContent(
+                    targetState = showCalendar,
+                    depth = { if (it) 1 else 0 },
+                    modifier = Modifier.fillMaxSize(),
+                  ) { calendar ->
+                    ledgerPages.SaveableStateProvider(calendar) {
+                      if (calendar) LedgerCalendarScreen(
+                        state = pageData,
+                        filter = filter,
+                        onFilterChanged = { filter = it },
+                        onBack = { showCalendar = false },
+                        onTransactionClick = { saveAction.dismissError(); editingId = it.transaction.id },
+                      ) else HomeScreen(
+                        state = pageData,
+                        filter = filter,
+                        onFilterChanged = { filter = it },
+                        onTransactionClick = { saveAction.dismissError(); editingId = it.transaction.id },
+                        onOpenCalendar = { showCalendar = true },
+                      )
+                    }
+                  }
+                  Tab.Analytics -> AnalyticsScreen(
+                    state = pageData,
+                    window = analysisWindow,
+                    onWindowChanged = { analysisAnchor = it.anchor.toStartOfDayMillis(); analysisPeriod = it.period },
+                    onTransactionClick = { saveAction.dismissError(); editingId = it.transaction.id },
+                  )
+                  Tab.Discover -> PlansScreen(pageData, repository)
+                  Tab.Settings -> SettingsScreen(
+                    state = pageData,
+                    repository = repository,
+                    backupCoordinator = backupCoordinator,
+                    themePreference = themePreference,
+                    onThemePreferenceChanged = { preference ->
+                      themeSaveAction.launch { repository.setThemePreference(preference) }
+                    },
+                  )
+                }
               }
             }
           }
@@ -195,8 +238,8 @@ fun SextantApp(
           // 记账入口只服务概览：这里才是「翻明细、看到想补记的一笔」的地方。
           // 分析、计划、设置都在做别的事，右下角常驻一颗铜橙按钮只会抢注意力；计划页的新增
           // 入口用区块标题右侧的按钮，和分类预算保持同一个模式。
-          visible = tab == Tab.Home && !calendarOpen && quickEntryFab.visible && ui.data != null && ui.request == request,
-          onClick = { showQuickEntry = true },
+          visible = tab == Tab.Home && !calendarOpen && quickEntryFab.visible && currentData != null,
+          onClick = { saveAction.dismissError(); showQuickEntry = true },
           icon = Icons.Outlined.Add,
           contentDescription = "记一笔",
           modifier = Modifier.align(Alignment.BottomEnd)
@@ -211,11 +254,13 @@ fun SextantApp(
     }
   }
 
-  if (showQuickEntry && ui.data != null) {
+  if (showQuickEntry && currentData != null) {
     QuickEntryDialog(
       state = state,
       initialPaymentMethodId = lastPaymentMethodId,
-      onDismiss = { showQuickEntry = false },
+      saving = saveAction.busy,
+      saveError = saveAction.error,
+      onDismiss = { showQuickEntry = false; saveAction.dismissError() },
       onSubmit = { type, amountCents, categoryId, paymentMethodId, description, transactionDate, rememberMerchant ->
         lastPaymentMethodId = paymentMethodId
         saveAction.launch {
@@ -229,7 +274,9 @@ fun SextantApp(
     QuickEntryDialog(
       state = state,
       editing = item,
-      onDismiss = { editingId = null },
+      saving = saveAction.busy,
+      saveError = saveAction.error,
+      onDismiss = { editingId = null; saveAction.dismissError() },
       onDelete = {
         pendingDelete = item
       },
@@ -248,6 +295,7 @@ fun SextantApp(
       text = { Text("删除后将从流水和统计中移除。") },
       confirmButton = {
         SextantTextButton(onClick = {
+          pendingDelete = null
           saveAction.launch {
             repository.deleteTransaction(item.transaction.id)
           }

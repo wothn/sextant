@@ -30,6 +30,50 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class SextantRepositoryTest {
+  @Test
+  fun analyticsWeekMonthAndYearUseTheSameRangeForTotalsCategoriesAndTrend() = runBlocking {
+    val originalZone = java.util.TimeZone.getDefault()
+    try {
+      java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+      val repository = SextantRepository(context)
+      val category = repository.loadState().categories.first { it.type == TransactionType.Expense && it.includeInSpending }
+      for ((date, amount) in listOf("2025-12-31" to 100L, "2026-01-01" to 200L,
+        "2026-01-04" to 300L, "2026-01-05" to 400L, "2026-12-31" to 500L, "2027-01-01" to 600L)) {
+        repository.addTransaction(TransactionType.Expense, amount, category.id, null, date,
+          java.time.LocalDate.parse(date).toStartOfDayMillis())
+      }
+      val anchor = java.time.LocalDate.of(2026, 1, 1)
+      val incomeCategory = repository.loadState().categories.first { it.type == TransactionType.Income }
+      for ((date, amount) in listOf("2025-12-31" to 500L, "2026-01-01" to 1000L,
+        "2026-01-04" to 2000L, "2026-12-31" to 3000L)) {
+        repository.addTransaction(TransactionType.Income, amount, incomeCategory.id, null, date,
+          java.time.LocalDate.parse(date).toStartOfDayMillis())
+      }
+      repository.addTransaction(TransactionType.Transfer, 90000, null, null, "transfer", anchor.toStartOfDayMillis())
+      for ((period, expected) in listOf(AnalysisPeriod.Week to 600L, AnalysisPeriod.Month to 900L, AnalysisPeriod.Year to 1400L)) {
+        val window = AnalysisWindow(period, anchor)
+        val state = repository.loadState(window.filter, StateProjection.Analytics, period)
+        val report = requireNotNull(state.analysisReport)
+        assertEquals(expected, report.summary.expenseCents)
+        assertEquals(expected, report.trend.sumOf { it.amountCents })
+        assertEquals(expected, state.categoryBreakdown.sumOf { it.amountCents })
+        val expectedIncome = when (period) {
+          AnalysisPeriod.Week -> 3500L
+          AnalysisPeriod.Month -> 3000L
+          AnalysisPeriod.Year -> 6000L
+        }
+        assertEquals(expectedIncome, report.summary.incomeCents)
+        assertEquals(expectedIncome, report.incomeTrend.sumOf { it.amountCents })
+        assertEquals(expectedIncome, report.incomeBreakdown.sumOf { it.amountCents })
+        assertTrue(report.incomeBreakdown.single().includes(incomeCategory.id))
+        if (period != AnalysisPeriod.Week) assertEquals(500L, report.previousSummary.incomeCents)
+        assertTrue(state.analysisTransactions.all {
+          it.transaction.transactionDate >= window.filter.rangeStart && it.transaction.transactionDate < window.filter.rangeEnd
+        })
+        if (period != AnalysisPeriod.Week) assertEquals(100L, report.previousSummary.expenseCents)
+      }
+    } finally { java.util.TimeZone.setDefault(originalZone) }
+  }
   private lateinit var context: Context
 
   @Before

@@ -48,6 +48,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.sextant.app.ui.components.SextantPageContent
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -78,6 +80,7 @@ fun SettingsScreen(
   // 设置里的子页面同样是「用户在哪儿」：用 remember 存的话，旋转屏幕或分屏改变窗口大小
   // 触发的 Activity 重建会把它弹回设置首页。
   var destination by rememberSaveable { mutableStateOf(SettingsDestination.Overview) }
+  val pages = rememberSaveableStateHolder()
   var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
   var showThemeDialog by remember { mutableStateOf(false) }
   // 备份的进行状态与结果放在应用级的协调者里，而不是这里的组合状态：读写文件、替换账本都
@@ -97,38 +100,42 @@ fun SettingsScreen(
     BackHandler { destination = SettingsDestination.Overview }
   }
 
-  when (destination) {
-    SettingsDestination.Overview -> SettingsOverview(
-      onAutomationClick = { destination = SettingsDestination.Automation },
-      onCategoryManagementClick = { destination = SettingsDestination.CategoryManagement },
-      onPaymentMethodManagementClick = { destination = SettingsDestination.PaymentMethodManagement },
-      themePreference = themePreference,
-      onThemeClick = { showThemeDialog = true },
-      isBusy = backupState.isBusy,
-      onBackupExport = { backupExportLauncher.launch(backupFileName()) },
-      onBackupImport = { backupImportLauncher.launch(arrayOf("application/json", "text/plain")) },
-    )
+  SextantPageContent(targetState = destination, depth = { if (it == SettingsDestination.Overview) 0 else 1 }) { visibleDestination ->
+    pages.SaveableStateProvider(visibleDestination) {
+      when (visibleDestination) {
+        SettingsDestination.Overview -> SettingsOverview(
+          onAutomationClick = { destination = SettingsDestination.Automation },
+          onCategoryManagementClick = { destination = SettingsDestination.CategoryManagement },
+          onPaymentMethodManagementClick = { destination = SettingsDestination.PaymentMethodManagement },
+          themePreference = themePreference,
+          onThemeClick = { showThemeDialog = true },
+          isBusy = backupState.isBusy,
+          onBackupExport = { backupExportLauncher.launch(backupFileName()) },
+          onBackupImport = { backupImportLauncher.launch(arrayOf("application/json", "text/plain")) },
+        )
 
-    SettingsDestination.CategoryManagement -> CategoryManagementScreen(
-      state = state,
-      repository = repository,
+        SettingsDestination.CategoryManagement -> CategoryManagementScreen(
+          state = state,
+          repository = repository,
 
-      onNavigateBack = { destination = SettingsDestination.Overview },
-    )
+          onNavigateBack = { destination = SettingsDestination.Overview },
+        )
 
-    SettingsDestination.PaymentMethodManagement -> PaymentMethodManagementScreen(
-      state = state,
-      repository = repository,
+        SettingsDestination.PaymentMethodManagement -> PaymentMethodManagementScreen(
+          state = state,
+          repository = repository,
 
-      onNavigateBack = { destination = SettingsDestination.Overview },
-    )
+          onNavigateBack = { destination = SettingsDestination.Overview },
+        )
 
-    SettingsDestination.Automation -> AutomationSettingsScreen(
-      state = state,
-      repository = repository,
+        SettingsDestination.Automation -> AutomationSettingsScreen(
+          state = state,
+          repository = repository,
 
-      onNavigateBack = { destination = SettingsDestination.Overview },
-    )
+          onNavigateBack = { destination = SettingsDestination.Overview },
+        )
+      }
+    }
   }
 
   pendingRestoreUri?.let { uri ->

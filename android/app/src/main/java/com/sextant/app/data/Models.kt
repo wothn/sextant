@@ -231,7 +231,8 @@ data class AppState(
   val rangeSummary: Summary = Summary(0, 0),
   val monthSummary: Summary = Summary(0, 0),
   val categoryBreakdown: List<CategoryBreakdown> = emptyList(),
-  /** 分析月份的全部流水，不受明细筛选条件影响；分类明细从这里取当月流水。 */
+  val analysisReport: AnalysisReport? = null,
+  /** 分析所选周期的全部流水，分类明细与图表使用同一时间范围。 */
   val analysisTransactions: List<TransactionListItem> = emptyList(),
   val budgets: List<BudgetProgress> = emptyList(),
   val monthlyBudgetCents: Long? = null,

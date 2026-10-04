@@ -32,6 +32,7 @@ class SaveAction(private val externalScope: CoroutineScope? = null) : ViewModel(
 
   fun launch(work: suspend () -> Unit) {
     if (busy || hasCompletion) return
+    error = null
     busy = true
     (externalScope ?: viewModelScope).launch {
       try {
@@ -51,7 +52,7 @@ class SaveAction(private val externalScope: CoroutineScope? = null) : ViewModel(
 }
 
 @Composable
-fun rememberSaveAction(key: String, onSuccess: () -> Unit = {}): SaveAction {
+fun rememberSaveAction(key: String, showFeedback: Boolean = true, onSuccess: () -> Unit = {}): SaveAction {
   val context = LocalContext.current
   val owner = remember(context) {
     var current = context
@@ -66,7 +67,7 @@ fun rememberSaveAction(key: String, onSuccess: () -> Unit = {}): SaveAction {
       action.acknowledge()
     }
   }
-  if (action.busy) {
+  if (showFeedback && action.busy) {
     SextantAlertDialog(
       onDismissRequest = {},
       title = { Text("正在保存") },
@@ -74,7 +75,7 @@ fun rememberSaveAction(key: String, onSuccess: () -> Unit = {}): SaveAction {
       confirmButton = {},
     )
   }
-  action.error?.let { message ->
+  action.error?.takeIf { showFeedback }?.let { message ->
     SextantAlertDialog(
       onDismissRequest = action::dismissError,
       title = { Text("操作未完成") },

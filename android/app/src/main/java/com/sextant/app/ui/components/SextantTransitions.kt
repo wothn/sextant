@@ -1,6 +1,7 @@
 package com.sextant.app.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -9,13 +10,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import com.sextant.app.ui.theme.SextantMotion
 
 /**
  * 动效包装层。
  *
- * 只放「怎么动」，不放任何颜色、圆角或尺寸 token，因此这个文件不参与样式冻结守卫：
- * 它不会让调用方绕过主题。Expressive 的动效原则是——位移用带过冲的空间弹簧，
+ * 只放「怎么动」，不放任何颜色、圆角或尺寸 token。Expressive 的动效原则是——位移用空间弹簧，
  * 颜色与透明度用临界阻尼的效果弹簧，反馈要短、要在手指上，不要循环装饰。
  */
 
@@ -54,4 +55,29 @@ fun SextantTabContent(
   ) { index ->
     content(index)
   }
+}
+
+/** 子页面与面板共用层级方向；内容必须按传入的目标绘制，才能保留离场页面。 */
+@Composable
+fun <T> SextantPageContent(
+  targetState: T,
+  depth: (T) -> Int,
+  modifier: Modifier = Modifier,
+  content: @Composable (T) -> Unit,
+) {
+  val spatial = SextantMotion.defaultSpatial<IntOffset>()
+  val size = SextantMotion.defaultSpatial<IntSize>()
+  val effects = SextantMotion.fastEffects<Float>()
+  AnimatedContent(
+    targetState = targetState,
+    modifier = modifier,
+    transitionSpec = {
+      val direction = if (depth(targetState) >= depth(initialState)) 1 else -1
+      (slideInHorizontally(spatial) { it / 8 * direction } + fadeIn(effects) togetherWith
+        slideOutHorizontally(spatial) { -it / 12 * direction } + fadeOut(effects))
+        .using(SizeTransform(clip = true, sizeAnimationSpec = { _, _ -> size }))
+    },
+    label = "pageContent",
+    content = { content(it) },
+  )
 }

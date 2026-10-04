@@ -12,6 +12,23 @@ import org.junit.Test
 
 class SaveActionTest {
   @Test
+  fun inlineRetryClearsPreviousErrorWhileWriteIsInFlight() {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    try {
+      val action = SaveAction(scope)
+      action.launch { error("disk unavailable") }
+      assertNotNull(action.error)
+      val commit = CompletableDeferred<Unit>()
+      action.launch { commit.await() }
+      assertTrue(action.busy)
+      assertNull(action.error)
+      commit.complete(Unit)
+      assertTrue(action.hasCompletion)
+      assertNull(action.error)
+    } finally { scope.cancel() }
+  }
+
+  @Test
   fun completionWaitsForTheRecreatedScreenBeforeAcceptingAnotherWrite() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     try {

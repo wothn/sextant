@@ -10,6 +10,27 @@ import org.junit.Before
 import org.junit.Test
 
 class LedgerCalculationsTest {
+  @Test
+  fun dayDetailUsesLocalDateAndMatchesChartAccounting() {
+    TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"))
+    val start = java.time.Instant.parse("2026-09-30T16:00:00Z").toEpochMilli()
+    val day = java.time.LocalDate.of(2026, 10, 1)
+    val expense = item(TransactionType.Expense, 1200, date = start)
+    val otherExpense = item(TransactionType.Expense, 800, date = start + 86_399_999)
+    val rows = listOf(expense, otherExpense,
+      item(TransactionType.Income, 3000, date = start),
+      item(TransactionType.Transfer, 4000, date = start),
+      item(TransactionType.Expense, 6000, includeInSpending = false, date = start),
+      item(TransactionType.Expense, 100, date = start - 1),
+      item(TransactionType.Expense, 200, date = start + 86_400_000))
+    val details = LedgerCalculations.spendingOnDay(rows, day)
+    assertEquals(listOf(expense, otherExpense), details)
+    assertEquals(2000L, details.sumOf { it.transaction.amountCents })
+    val monthlyRows = rows.filter { it.transaction.transactionDate >= start }
+    assertEquals(LedgerCalculations.dailySpending(monthlyRows, start).first().amountCents,
+      details.sumOf { it.transaction.amountCents })
+  }
+
   private lateinit var originalTimeZone: TimeZone
 
   @Before
