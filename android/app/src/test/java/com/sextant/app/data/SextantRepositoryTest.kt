@@ -230,6 +230,51 @@ class SextantRepositoryTest {
   }
 
   @Test
+  fun staleTransactionEditAndDeleteLeaveCommittedRowUntouched() = runBlocking {
+    val repository = SextantRepository(context)
+    repository.addTransaction(TransactionType.Expense, 1_000, null, null, "原记录", now())
+    val original = repository.loadState().transactions.single().transaction
+    repository.updateTransaction(
+      original.id, TransactionType.Expense, 2_000, null, null, "新记录", now(),
+      expectedUpdatedAt = original.updatedAt,
+    )
+    val committed = repository.database.transactionDao().findById(original.id)!!
+    val revision = repository.changes.value
+
+    val editError = assertThrows(IllegalArgumentException::class.java) {
+      runBlocking {
+        repository.updateTransaction(
+          original.id, TransactionType.Expense, 3_000, null, null, "过期修改", now(),
+          expectedUpdatedAt = original.updatedAt,
+        )
+      }
+    }
+    assertEquals("这笔记录已被修改，请刷新后重试", editError.message)
+    val deleteError = assertThrows(IllegalArgumentException::class.java) {
+      runBlocking { repository.deleteTransaction(original.id, expectedUpdatedAt = original.updatedAt) }
+    }
+    assertEquals("这笔记录已被修改，请刷新后重试", deleteError.message)
+    assertEquals(committed, repository.database.transactionDao().findById(original.id))
+    assertEquals(revision, repository.changes.value)
+
+    repository.deleteTransaction(original.id, expectedUpdatedAt = committed.updatedAt)
+    assertNull(repository.database.transactionDao().findById(original.id))
+  }
+
+  @Test
+  fun upsertingSameCategoryMonthKeepsOneBudgetRow() = runBlocking {
+    val repository = SextantRepository(context)
+    val categoryId = repository.loadState().categories.first { it.type == TransactionType.Expense }.id
+
+    repository.upsertBudget(categoryId, 10_000)
+    repository.upsertBudget(categoryId, 20_000)
+
+    val budgets = repository.database.budgetDao().listAll().filter { it.categoryId == categoryId }
+    assertEquals(1, budgets.size)
+    assertEquals(20_000L, budgets.single().amountCents)
+  }
+
+  @Test
   fun rejectsNonPositiveAmountsAtRepositoryBoundary() = runBlocking {
     val repository = SextantRepository(context)
 

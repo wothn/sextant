@@ -37,10 +37,10 @@ class QuickEntryFabState(private val hideThresholdPx: Float) {
   val nestedScrollConnection: NestedScrollConnection = object : NestedScrollConnection {
     // Compose 的嵌套滚动里 y 为负表示内容向前滚动（手指上滑），为正表示往回滚。
     // 符号约定只在这个适配层出现，下面的方法按「向前 / 往回」表达意图。
-    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
       when {
-        available.y < 0f -> onScrolledForward(-available.y)
-        available.y > 0f -> onScrolledBackward()
+        consumed.y < 0f -> onScrolledForward(-consumed.y)
+        consumed.y > 0f || available.y > 0f -> onScrolledBackward()
       }
       return Offset.Zero
     }

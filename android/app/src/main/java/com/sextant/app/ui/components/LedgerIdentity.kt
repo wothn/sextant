@@ -90,8 +90,8 @@ fun BudgetScale(
         cap = StrokeCap.Round,
       )
     }
-    // 刻度缺口直接切穿轨道，指向真实的 25/50/75%。缺口用页面底色画，
-    // 因此 BudgetScale 要放在页面底色上（当前三处调用都是）。
+    // 刻度缺口直接切穿轨道，指向真实的 25/50/75%。放在面板内时，
+    // 调用方传入承载表面的 notchColor，保证缺口与背景一致。
     for (index in 1..3) {
       val x = size.width * index / 4
       drawLine(

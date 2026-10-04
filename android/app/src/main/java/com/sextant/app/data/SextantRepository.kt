@@ -164,6 +164,10 @@ class SextantRepository(context: Context) {
     notifyChanged()
   }
 
+  /**
+   * [expectedUpdatedAt] 可保护基于旧快照发起的编辑；Agent 等异步写入者应传入读到的值。
+   * 校验和更新在同一个事务内，冲突时连商户分类规则也不会写入。
+   */
   suspend fun updateTransaction(
     id: String,
     type: TransactionType,
@@ -173,10 +177,12 @@ class SextantRepository(context: Context) {
     description: String,
     transactionDate: Long,
     rememberMerchantCategory: Boolean = false,
+    expectedUpdatedAt: Long? = null,
   ) {
     require(amountCents > 0) { "流水金额必须大于 0" }
     database.withTransaction {
       val row = requireNotNull(database.transactionDao().findById(id)) { "这笔记录已不存在" }
+      require(expectedUpdatedAt == null || row.updatedAt == expectedUpdatedAt) { "这笔记录已被修改，请刷新后重试" }
       if (rememberMerchantCategory) {
         require(type == TransactionType.Expense && row.automationKind == AutomationKind.Purchase) { "仅消费记录可记住商户分类" }
         saveMerchantCategoryRule(requireNotNull(row.merchantName) { "这笔记录没有已识别商户" }, categoryId)
@@ -211,8 +217,13 @@ class SextantRepository(context: Context) {
     notifyChanged()
   }
 
-  suspend fun deleteTransaction(id: String) {
-    database.transactionDao().deleteById(id)
+  /** 异步删除应传 [expectedUpdatedAt]，避免删除已被其他入口修改的流水。 */
+  suspend fun deleteTransaction(id: String, expectedUpdatedAt: Long? = null) {
+    database.withTransaction {
+      val row = requireNotNull(database.transactionDao().findById(id)) { "这笔记录已不存在" }
+      require(expectedUpdatedAt == null || row.updatedAt == expectedUpdatedAt) { "这笔记录已被修改，请刷新后重试" }
+      database.transactionDao().deleteById(id)
+    }
     notifyChanged()
   }
 
@@ -243,26 +254,29 @@ class SextantRepository(context: Context) {
     _changes.update { it + 1 }
   }
 
+  /** 月预算的查找和写入必须是一个事务，避免两个写入口同时创建同一业务键。 */
   suspend fun upsertBudget(categoryId: String, amountCents: Long) {
     require(categoryId.isNotBlank()) { "预算分类不能为空" }
     require(amountCents > 0) { "预算金额必须大于 0" }
     val budgets = database.budgetDao()
     val startDate = LedgerFilter.currentMonth().rangeStart
-    val existingId = budgets.findIdForCategoryMonth(categoryId, startDate)
-    if (existingId != null) {
-      budgets.updateAmount(existingId, amountCents)
-    } else {
-      budgets.insert(
-        BudgetEntity(
-          id = UUID.randomUUID().toString(),
-          categoryId = categoryId,
-          amountCents = amountCents,
-          period = "month",
-          startDate = startDate,
-          alertThreshold = 0.8,
-          isActive = true,
-        ),
-      )
+    database.withTransaction {
+      val existingId = budgets.findIdForCategoryMonth(categoryId, startDate)
+      if (existingId != null) {
+        budgets.updateAmount(existingId, amountCents)
+      } else {
+        budgets.insert(
+          BudgetEntity(
+            id = UUID.randomUUID().toString(),
+            categoryId = categoryId,
+            amountCents = amountCents,
+            period = "month",
+            startDate = startDate,
+            alertThreshold = 0.8,
+            isActive = true,
+          ),
+        )
+      }
     }
     notifyChanged()
   }

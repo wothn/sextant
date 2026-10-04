@@ -12,13 +12,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import com.sextant.app.ui.components.CategoryIcon
@@ -32,6 +31,7 @@ import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.SextantFabClearance
 import com.sextant.app.ui.components.SextantHeading
 import com.sextant.app.ui.components.SextantMetric
+import com.sextant.app.ui.components.SextantSurface
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,12 +61,16 @@ import com.sextant.app.ui.util.dayGroupLabel
 import com.sextant.app.ui.util.displayDescription
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
+import com.sextant.app.ui.util.rangeLabel
 import com.sextant.app.ui.util.signedAmountPlain
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.ExpandMore
 import com.sextant.app.ui.components.SextantTonalIconButton
+import com.sextant.app.ui.components.SextantTextButton
 import com.sextant.app.ui.theme.SextantFullShape
+import com.sextant.app.ui.theme.sextantEmphasized
 
 private val ScreenPadding = PaddingValues(start = 20.dp, end = 20.dp)
 
@@ -77,7 +82,7 @@ fun HomeScreen(
   onTransactionClick: (TransactionListItem) -> Unit,
   onOpenCalendar: () -> Unit,
 ) {
-  var showFilters by remember { mutableStateOf(false) }
+  var showFilters by rememberSaveable { mutableStateOf(false) }
   val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
   val listState = rememberLazyListState()
 
@@ -104,13 +109,13 @@ fun HomeScreen(
       contentPadding = PaddingValues(bottom = LocalBottomBarInset.current + SextantFabClearance),
     ) {
       item {
-        Box {
-          Column(Modifier.padding(ScreenPadding)) { LedgerOverview(state, filter) }
+        Column(Modifier.padding(ScreenPadding).padding(top = 8.dp, bottom = 24.dp)) {
+          LedgerOverview(state, filter)
         }
       }
       item {
         Column(Modifier.fillMaxWidth().padding(ScreenPadding)) {
-          RecentLedgerHeader(state.transactions.size)
+          RecentLedgerHeader(state.transactions.size, filter) { showFilters = true }
         }
       }
       if (state.groups.isEmpty()) {
@@ -122,17 +127,15 @@ fun HomeScreen(
         item(key = "day:${group.dayStartMillis}", contentType = "dayHeader") {
           Column(Modifier.padding(ScreenPadding)) { DailyLedgerHeader(group) }
         }
-        itemsIndexed(group.items, key = { _, item -> item.transaction.id }, contentType = { _, _ -> "transaction" }) { index, item ->
+        items(group.items, key = { it.transaction.id }, contentType = { "transaction" }) { item ->
           val category = categoriesById[item.transaction.categoryId]
-          Box {
-            Column(Modifier.padding(ScreenPadding)) {
-              LedgerTransactionRow(
-                item = item,
-                categoryName = category?.name ?: item.categoryName,
-                parentName = categoriesById[category?.parentCategoryId]?.name,
-                onClick = onTransactionClick,
-              )
-            }
+          Column(Modifier.padding(ScreenPadding)) {
+            LedgerTransactionRow(
+              item = item,
+              categoryName = category?.name ?: item.categoryName,
+              parentName = categoriesById[category?.parentCategoryId]?.name,
+              onClick = onTransactionClick,
+            )
           }
         }
       }
@@ -188,36 +191,38 @@ private fun FilterTrigger(filter: LedgerFilter, onClick: () -> Unit) {
 @Composable
 private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
   val currentMonth = filter.isCurrentMonth()
-  Column(
-    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 24.dp),
-    verticalArrangement = Arrangement.spacedBy(20.dp),
-  ) {
-    SextantMetric(
-      label = "今日支出",
-      value = formatCurrency(state.todaySummary.expenseCents),
-      primary = true,
-      valueStyle = MaterialTheme.typography.headlineLarge,
-    )
-    // 汇总口径固定为「当前查看月份」，不跟随明细的筛选范围放大成区间或累计总额：
-    // 概览只回答「这个月花了多少、收了多少」，全量数据留给分析页。
-    val monthScope = monthScopeLabel(filter, currentMonth)
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-      val metricModifier = Modifier.widthIn(min = (maxWidth - 16.dp) / 2, max = maxWidth)
-      FlowRow(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        OverviewMetric("${monthScope}支出", state.monthSummary.expenseCents, metricModifier)
-        OverviewMetric("${monthScope}收入", state.monthSummary.incomeCents, metricModifier)
-      }
-    }
-    state.monthlyBudgetCents?.let { total ->
-      MonthlyBudgetProgress(
-        label = "${monthScope}预算进度",
-        spent = state.monthSummary.expenseCents,
-        total = total,
+  SextantSurface(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+    Column(
+      modifier = Modifier.fillMaxWidth().padding(20.dp),
+      verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+      SextantMetric(
+        label = "今日支出",
+        value = formatCurrency(state.todaySummary.expenseCents),
+        primary = true,
+        valueStyle = MaterialTheme.typography.headlineLarge.sextantEmphasized(),
       )
+      // 汇总口径固定为「当前查看月份」，不跟随明细的筛选范围放大成区间或累计总额：
+      // 概览只回答「这个月花了多少、收了多少」，全量数据留给分析页。
+      val monthScope = monthScopeLabel(filter, currentMonth)
+      BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val metricModifier = Modifier.widthIn(min = (maxWidth - 16.dp) / 2, max = maxWidth)
+        FlowRow(
+          Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(16.dp),
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+          OverviewMetric("${monthScope}支出", state.monthSummary.expenseCents, metricModifier)
+          OverviewMetric("${monthScope}收入", state.monthSummary.incomeCents, metricModifier)
+        }
+      }
+      state.monthlyBudgetCents?.let { total ->
+        MonthlyBudgetProgress(
+          label = "${monthScope}预算",
+          spent = state.monthSummary.expenseCents,
+          total = total,
+        )
+      }
     }
   }
 }
@@ -244,27 +249,43 @@ private fun MonthlyBudgetProgress(label: String, spent: Long, total: Long) {
     else -> SextantColors.Accent
   }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      Text(label, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      Text(label, color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
       Text(
-        "${(ratio * 100).toInt()}%  ·  ${formatCurrency(spent)} / ${formatCurrency(total)}",
+        "已用 ${(ratio * 100).toInt()}%",
         color = color,
         style = MaterialTheme.typography.labelLarge,
       )
     }
-    BudgetScale(progress, color)
+    BudgetScale(progress, color, notchColor = SextantColors.SurfaceContainerLow)
+    Text(
+      "${formatCurrency(spent)} / ${formatCurrency(total)}",
+      color = SextantColors.TextMuted,
+      style = MaterialTheme.typography.bodySmall,
+    )
   }
 }
 
 @Composable
-private fun RecentLedgerHeader(count: Int) {
-  Row(
-    Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp),
+private fun RecentLedgerHeader(count: Int, filter: LedgerFilter, onOpenFilters: () -> Unit) {
+  FlowRow(
+    Modifier.fillMaxWidth().padding(bottom = 8.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically,
+    verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
-    SextantHeading("明细")
-    Text("$count 笔", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelLarge)
+    Row(
+      Modifier.padding(vertical = 12.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      SextantHeading(if (filter.hasConditions) "筛选明细" else "明细")
+      Text("$count 笔", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
+    }
+    SextantTextButton(onClick = onOpenFilters) {
+      Text(filter.rangeLabel(), style = MaterialTheme.typography.bodyMedium)
+      Spacer(Modifier.width(4.dp))
+      Icon(Icons.Outlined.ExpandMore, contentDescription = null, modifier = Modifier.size(20.dp))
+    }
   }
 }
 
@@ -290,15 +311,15 @@ private fun DailyLedgerHeader(group: DailyTransactionGroup) {
     Text(
       text = dailySummary(expense, income),
       color = SextantColors.TextSubtle,
-      style = MaterialTheme.typography.labelMedium,
+      style = MaterialTheme.typography.bodyMedium,
       softWrap = true,
     )
   }
 }
 
 private fun dailySummary(expense: Long, income: Long): String = buildList {
-  if (expense > 0) add("支 ${formatCurrency(expense)}")
-  if (income > 0) add("收 ${formatCurrency(income)}")
+  if (expense > 0) add("支出 ${formatCurrency(expense)}")
+  if (income > 0) add("收入 ${formatCurrency(income)}")
 }.joinToString("  ")
 
 /**
@@ -318,7 +339,7 @@ internal fun LedgerTransactionRow(
     Modifier.fillMaxWidth().clickable { onClick(item) }.padding(vertical = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor))
+    CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor), size = 48.dp, iconSize = 26.dp)
     Spacer(Modifier.width(12.dp))
     Column(
       modifier = Modifier.weight(1f),
@@ -342,7 +363,7 @@ internal fun LedgerTransactionRow(
             text = categoryName,
             modifier = Modifier.weight(1f, fill = false),
             color = SextantColors.Text,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -356,7 +377,7 @@ internal fun LedgerTransactionRow(
           // 数字往左推、离右缘更远。方向仍由符号表达，格式仍走共享函数。
           text = signedAmountPlain(item),
           color = SextantColors.Text,
-          style = MaterialTheme.typography.titleMedium,
+          style = MaterialTheme.typography.titleLarge.sextantEmphasized(),
           textAlign = TextAlign.End,
           softWrap = true,
         )
@@ -364,7 +385,7 @@ internal fun LedgerTransactionRow(
       Text(
         text = ledgerMetadata(item, parentName),
         color = SextantColors.TextSubtle,
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )

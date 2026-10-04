@@ -68,26 +68,26 @@ private val LightPalette = SextantPalette(
   accentSoft = Color(0xFFF3E7DF),
   accentMuted = Color(0xFFD9B49F),
   onAccent = Color.White,
-  secondary = Color(0xFF67645F),
-  secondaryStrong = Color(0xFF45423E),
-  secondarySoft = Color(0xFFECE9E3),
+  secondary = Color(0xFF666666),
+  secondaryStrong = Color(0xFF424242),
+  secondarySoft = Color(0xFFEEEEEE),
   tertiary = Color(0xFF8B6B43),
   tertiaryStrong = Color(0xFF654A2D),
   tertiarySoft = Color(0xFFF3ECE3),
-  surface = Color.White,
-  surfaceAlt = Color(0xFFEFEDE8),
-  surfaceStrong = Color(0xFFDCD8D0),
-  background = Color(0xFFF7F5F0),
-  backgroundSoft = Color(0xFFEAE6DE),
-  text = Color(0xFF262724),
-  textMuted = Color(0xFF5B5D57),
-  textSubtle = Color(0xFF60625B),
-  border = Color(0xFFDCD8D0),
+  surface = Color(0xFFF7F7F7),
+  surfaceAlt = Color(0xFFF0F0F0),
+  surfaceStrong = Color(0xFFDADADA),
+  background = Color.White,
+  backgroundSoft = Color(0xFFE8E8E8),
+  text = Color(0xFF262626),
+  textMuted = Color(0xFF595959),
+  textSubtle = Color(0xFF616161),
+  border = Color(0xFFDADADA),
   success = Color(0xFF2F7D5B),
   danger = Color(0xFFB64B45),
   warning = Color(0xFF865B18),
   info = Color(0xFF3E708F),
-  tabInactive = Color(0xFF75776F),
+  tabInactive = Color(0xFF757575),
 )
 
 private val DarkPalette = SextantPalette(
@@ -123,8 +123,8 @@ private val DarkPalette = SextantPalette(
  *
  * 除了原有的扁平语义色，这里补一条**色调阶梯**（`SurfaceContainerLowest` … `SurfaceContainerHighest`）。
  * Expressive 版界面靠这条阶梯区分层级，而不是靠 1dp 描边；两套主题各自单调：
- * 浅色主题阶越高越暗，深色主题阶越高越亮。阶梯上的每个色值都来自原有 palette，
- * 没有引入新色相——铜橙和中性色的取值都没有变。
+ * 浅色主题从白色页面逐级过渡到中性灰容器，深色主题阶越高越亮。
+ * 阶梯上的每个色值都来自 palette，铜橙仅用于强调和选中状态。
  */
 private val LocalSextantPalette = staticCompositionLocalOf { LightPalette }
 

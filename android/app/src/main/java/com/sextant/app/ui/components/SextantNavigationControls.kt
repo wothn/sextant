@@ -9,12 +9,14 @@ package com.sextant.app.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -33,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -42,7 +45,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.lerp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import com.sextant.app.ui.theme.sextantEmphasized
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.SextantFullShape
@@ -149,9 +154,11 @@ fun SextantCollapsibleFab(
  */
 val LocalBottomBarInset = compositionLocalOf { 0.dp }
 
-/** Sextant 的悬浮等宽底栏。外部负责安全区和留白，内部保留品牌指示条。 */
+/** 悬浮胶囊底栏；选中底块同时包住图标与标签。 */
 @Composable
 fun SextantNavigationBar(
+  selectedIndex: Int,
+  itemCount: Int,
   modifier: Modifier = Modifier,
   containerColor: Color = SextantColors.SurfaceContainerLow,
   content: @Composable RowScope.() -> Unit,
@@ -160,20 +167,46 @@ fun SextantNavigationBar(
     modifier = modifier,
     color = containerColor,
     contentColor = SextantColors.Text,
-    shape = MaterialTheme.shapes.extraLarge,
+    shape = SextantFullShape,
     tonalElevation = 0.dp,
     shadowElevation = 2.dp,
   ) {
-    Row(
-      modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).selectableGroup()
-        .padding(horizontal = 4.dp, vertical = 4.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      content = content,
-    )
+    BoxWithConstraints(
+      modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp)
+        .padding(horizontal = 6.dp, vertical = 6.dp),
+    ) {
+      val slotWidth = maxWidth / itemCount.coerceAtLeast(1)
+      val lastIndex = (itemCount - 1).coerceAtLeast(0)
+      val indicatorOffset by animateDpAsState(
+        targetValue = slotWidth * selectedIndex.coerceIn(0, lastIndex),
+        animationSpec = SextantMotion.fastSpatial(),
+        label = "navIndicatorOffset",
+      )
+      val density = LocalDensity.current
+      // One persistent indicator moves behind the items; it never fades out on release.
+      Box(Modifier.matchParentSize()) {
+        Box(
+          Modifier
+            .offset {
+              IntOffset(with(density) {
+                indicatorOffset.coerceIn(0.dp, slotWidth * lastIndex).toPx().roundToInt()
+              }, 0)
+            }
+            .width(slotWidth)
+            .fillMaxHeight()
+            .background(SextantColors.AccentSoft, SextantFullShape),
+        )
+      }
+      Row(
+        modifier = Modifier.fillMaxWidth().selectableGroup(),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+      )
+    }
   }
 }
 
-/** 选中、按下和聚焦由药丸指示条反馈；不叠加整项 ripple。 */
+/** 选中底块由底栏统一移动；按下只轻微缩放内容，键盘聚焦用描边表达。 */
 @Composable
 fun RowScope.SextantNavigationItem(
   selected: Boolean,
@@ -185,47 +218,46 @@ fun RowScope.SextantNavigationItem(
   val interactionSource = remember { MutableInteractionSource() }
   val pressed by interactionSource.collectIsPressedAsState()
   val focused by interactionSource.collectIsFocusedAsState()
-  val indicatorWidth by animateDpAsState(
-    targetValue = if (pressed) 52.dp else if (selected || focused) 64.dp else 40.dp,
-    animationSpec = SextantMotion.defaultSpatial(),
-    label = "navIndicatorWidth",
-  )
-  val indicatorColor by animateColorAsState(
-    targetValue = if (selected || pressed || focused) SextantColors.AccentSoft else Color.Transparent,
-    animationSpec = SextantMotion.defaultEffects(),
-    label = "navIndicatorColor",
+  val contentScale by animateFloatAsState(
+    targetValue = if (pressed) 0.96f else 1f,
+    animationSpec = SextantMotion.fastEffects(),
+    label = "navContentScale",
   )
   val contentColor by animateColorAsState(
     targetValue = if (selected) SextantColors.AccentStrong else SextantColors.TextSubtle,
     animationSpec = SextantMotion.defaultEffects(),
     label = "navContentColor",
   )
-  Column(
+  Box(
     modifier = modifier
       .weight(1f)
-      .heightIn(min = 52.dp)
+      .heightIn(min = 64.dp)
+      .clip(SextantFullShape)
       .selectable(
         selected = selected,
         interactionSource = interactionSource,
         indication = null,
         role = Role.Tab,
         onClick = onClick,
-      )
-      .padding(vertical = 2.dp),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+      ),
+    contentAlignment = Alignment.Center,
   ) {
-    Box(
+    Column(
       modifier = Modifier
-        .width(indicatorWidth)
-        .height(32.dp)
+        .fillMaxWidth()
         .clip(SextantFullShape)
-        .background(indicatorColor),
-      contentAlignment = Alignment.Center,
+        .then(if (focused) Modifier.border(1.dp, SextantColors.Accent, SextantFullShape) else Modifier)
+        .heightIn(min = 64.dp)
+        .padding(horizontal = 4.dp, vertical = 6.dp)
+        .graphicsLayer { scaleX = contentScale; scaleY = contentScale },
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
-      CompositionLocalProvider(LocalContentColor provides contentColor) { icon() }
+      CompositionLocalProvider(LocalContentColor provides contentColor) {
+        icon()
+        label()
+      }
     }
-    CompositionLocalProvider(LocalContentColor provides contentColor) { label() }
   }
 }
 
