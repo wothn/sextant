@@ -86,9 +86,16 @@ fun RecurringPane(
   listState: LazyListState,
   state: AppState,
   repository: SextantRepository,
-
+  requestedRecurringId: String? = null,
+  onRecurringRequestConsumed: () -> Unit = {},
 ) {
   var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+  androidx.compose.runtime.LaunchedEffect(requestedRecurringId) {
+    if (requestedRecurringId != null) {
+      editingId = requestedRecurringId.takeIf { id -> state.recurringExpenses.any { it.id == id } }
+      onRecurringRequestConsumed()
+    }
+  }
   val editing = state.recurringExpenses.firstOrNull { it.id == editingId }
   var creating by rememberSaveable { mutableStateOf(false) }
   var pendingDelete by remember { mutableStateOf<RecurringExpense?>(null) }

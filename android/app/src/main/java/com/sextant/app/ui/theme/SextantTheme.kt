@@ -128,6 +128,18 @@ private val DarkPalette = SextantPalette(
  */
 private val LocalSextantPalette = staticCompositionLocalOf { LightPalette }
 
+/** RemoteViews 在桌面进程绘制，不能读取 CompositionLocal；在此复用同一色板。 */
+data class SextantWidgetPalette(
+  val surface: Int, val text: Int, val muted: Int, val accent: Int,
+  val onAccent: Int, val track: Int, val danger: Int,
+)
+
+fun sextantWidgetPalette(dark: Boolean): SextantWidgetPalette {
+  val colors = if (dark) DarkPalette else LightPalette
+  return SextantWidgetPalette(colors.surface.toArgb(), colors.text.toArgb(), colors.textMuted.toArgb(),
+    colors.accent.toArgb(), colors.onAccent.toArgb(), colors.surfaceStrong.toArgb(), colors.danger.toArgb())
+}
+
 object SextantColors {
   private val palette: SextantPalette
     @Composable @ReadOnlyComposable get() = LocalSextantPalette.current

@@ -6,6 +6,15 @@ import androidx.room.Query
 
 @Dao
 internal interface TransactionDao {
+  /** 桌面只读取最近几笔真实消费，不加载整个账本。 */
+  @Query("""
+    SELECT t.* FROM transactions t LEFT JOIN categories c ON c.id = t.categoryId AND c.isActive = 1
+    WHERE t.type = 'expense' AND (c.id IS NULL OR c.includeInSpending = 1)
+      AND t.transactionDate < :before
+    ORDER BY t.transactionDate DESC, t.createdAt DESC, t.id DESC LIMIT :limit
+  """)
+  suspend fun recentSpending(before: Long, limit: Int): List<TransactionEntity>
+
   /**
    * 账本明细。时间范围是唯一必填条件，其余都是「传空即不过滤」的可选筛选项。
    *

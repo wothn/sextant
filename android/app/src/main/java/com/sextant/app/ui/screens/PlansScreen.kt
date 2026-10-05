@@ -30,10 +30,12 @@ enum class PlanSection(val title: String, val subtitle: String) {
  * 中间而头部还收着。分开之后还顺带得到了「每个视图记住自己的位置」——切来切去不会丢进度。
  */
 @Composable
-fun PlansScreen(state: AppState, repository: SextantRepository) {
+fun PlansScreen(state: AppState, repository: SextantRepository,
+  section: PlanSection, onSectionChanged: (PlanSection) -> Unit,
+  requestedRecurringId: String? = null, onRecurringRequestConsumed: () -> Unit = {},
+) {
   val budgetListState = rememberLazyListState()
   val recurringListState = rememberLazyListState()
-  var section by rememberSaveable { mutableStateOf(PlanSection.Budget) }
   val activeListState = when (section) {
     PlanSection.Budget -> budgetListState
     PlanSection.Recurring -> recurringListState
@@ -49,13 +51,13 @@ fun PlansScreen(state: AppState, repository: SextantRepository) {
     SextantTabRow(
       options = PlanSection.entries,
       selected = section,
-      onSelect = { section = it },
+      onSelect = onSectionChanged,
       label = { it.title },
       modifier = Modifier.padding(horizontal = 20.dp),
     )
     when (section) {
       PlanSection.Budget -> BudgetPane(budgetListState, state, repository)
-      PlanSection.Recurring -> RecurringPane(recurringListState, state, repository)
+      PlanSection.Recurring -> RecurringPane(recurringListState, state, repository, requestedRecurringId, onRecurringRequestConsumed)
     }
   }
 }

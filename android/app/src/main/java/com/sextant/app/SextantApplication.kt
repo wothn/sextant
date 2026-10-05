@@ -38,6 +38,9 @@ class SextantApplication : Application() {
     // 备份读写挂在应用级作用域上：它要比设置页活得久，旋转或分屏重建界面时不能把正在
     // 写文件的导出、正在替换账本的恢复一起取消掉。
     backupCoordinator = BackupCoordinator(this, repository, appScope)
+    appScope.launch {
+      repository.changes.collect { runCatching { com.sextant.app.widget.WidgetUpdates.enqueue(this@SextantApplication) } }
+    }
     // 进程每次重建都主动要求系统重新绑定监听服务。
     // 厂商清理后台会杀掉监听进程，但系统设置里的授权开关还留着，
     // 光靠读那个开关无法发现“已授权但没在监听”，只会表现为静默漏记。
@@ -52,5 +55,10 @@ class SextantApplication : Application() {
         cleanup,
       )
     }
+  }
+
+  override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+    super.onConfigurationChanged(newConfig)
+    com.sextant.app.widget.WidgetUpdates.enqueue(this)
   }
 }

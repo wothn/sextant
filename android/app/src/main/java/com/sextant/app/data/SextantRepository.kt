@@ -27,6 +27,28 @@ class SextantRepository(context: Context) {
   private val _changes = MutableStateFlow(0L)
   val changes: StateFlow<Long> = _changes.asStateFlow()
 
+  /** 同一次事务内读取桌面数据，月份固定为真实当前月。 */
+  suspend fun loadWidgetSnapshot(now: Long = System.currentTimeMillis()): WidgetSnapshot = withContext(Dispatchers.Default) {
+    database.withTransaction {
+      val categories = listCategories()
+      val methods = listPaymentMethods()
+      val month = listTransactions(categories, methods, LedgerFilter.forMonth(now))
+      val (start, end) = dayRangeOf(now)
+      val today = month.filter { it.transaction.transactionDate in start until end }
+      val recent = transactionItems(database.transactionDao().recentSpending(now + 1, 3), categories, methods)
+      WidgetSnapshot(
+        updatedAt = now,
+        todaySummary = LedgerCalculations.summarize(today),
+        todayCount = monthSpending(today).size,
+        monthSummary = LedgerCalculations.summarize(month),
+        monthlyBudgetCents = monthlyBudget(),
+        recent = recent,
+        upcoming = upcomingWidgetCharges(listRecurringExpenses(), now.toLocalDate()),
+        theme = loadThemePreference(),
+      )
+    }
+  }
+
   suspend fun loadState(
     filter: LedgerFilter = LedgerFilter.allTime(),
     projection: StateProjection = StateProjection.All,
@@ -533,9 +555,7 @@ class SextantRepository(context: Context) {
     paymentMethods: List<PaymentMethod>,
     filter: LedgerFilter,
   ): List<TransactionListItem> {
-    val categoryById = categories.associateBy { it.id }
-    val paymentById = paymentMethods.associateBy { it.id }
-    return database.transactionDao().listFiltered(
+    return transactionItems(database.transactionDao().listFiltered(
       rangeStart = filter.rangeStart,
       rangeEnd = filter.rangeEnd,
       query = filter.query.trim(),
@@ -547,7 +567,15 @@ class SextantRepository(context: Context) {
       type = filter.type?.storageValue().orEmpty(),
       minAmountCents = filter.minAmountCents ?: -1L,
       maxAmountCents = filter.maxAmountCents ?: -1L,
-    ).map { row ->
+    ), categories, paymentMethods)
+  }
+
+  private fun transactionItems(
+    rows: List<TransactionEntity>, categories: List<Category>, paymentMethods: List<PaymentMethod>,
+  ): List<TransactionListItem> {
+    val categoryById = categories.associateBy { it.id }
+    val paymentById = paymentMethods.associateBy { it.id }
+    return rows.map { row ->
       val category = row.categoryId?.let(categoryById::get)
       val paymentMethod = row.paymentMethodId?.let(paymentById::get)
       val transaction = Transaction(

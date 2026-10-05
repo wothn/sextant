@@ -95,9 +95,10 @@ fun AnalyticsScreen(
   window: AnalysisWindow,
   onWindowChanged: (AnalysisWindow) -> Unit,
   onTransactionClick: (TransactionListItem) -> Unit = {},
+  metric: AnalysisMetric,
+  onMetricChanged: (AnalysisMetric) -> Unit,
 ) {
   val listState = rememberLazyListState()
-  var metric by rememberSaveable { mutableStateOf(AnalysisMetric.Expense) }
   val breakdown = if (metric == AnalysisMetric.Expense) state.categoryBreakdown else state.analysisReport?.incomeBreakdown.orEmpty()
   var detailMembers by rememberSaveable(window, metric) { mutableStateOf<ArrayList<String>?>(null) }
   val pages = rememberSaveableStateHolder()
@@ -112,7 +113,7 @@ fun AnalyticsScreen(
           metric = metric,
           onBack = { detailMembers = null }, onTransactionClick = onTransactionClick)
       } else {
-        AnalyticsOverview(state, window, metric, listState, onWindowChanged, onMetricChanged = { metric = it }) { detailMembers = ArrayList(it.memberCategoryIds) }
+        AnalyticsOverview(state, window, metric, listState, onWindowChanged, onMetricChanged = onMetricChanged) { detailMembers = ArrayList(it.memberCategoryIds) }
       }
     }
   }

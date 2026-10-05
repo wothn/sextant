@@ -1,0 +1,19 @@
+<resources>
+  <!-- RemoteViews 的主题形状映射：SextantRadius.Large。 -->
+  <dimen name="widget_corner">20dp</dimen>
+  <string name="widget_loading">正在读取</string>
+  <string name="widget_settings">设置</string>
+  <string name="widget_add">记一笔</string>
+  <string name="widget_today">今日支出</string>
+  <string name="widget_entry">快捷记账</string>
+  <string name="widget_budget">本月预算</string>
+  <string name="widget_month">月度收支</string>
+  <string name="widget_upcoming">近期扣费</string>
+  <string name="widget_recent">最近消费</string>
+  <string name="widget_today_description">今日消费金额与快捷记账入口</string>
+  <string name="widget_entry_description">不展示金额，点击直接记一笔</string>
+  <string name="widget_budget_description">本月预算剩余或超出金额与进度</string>
+  <string name="widget_month_description">本月收入、支出与结余</string>
+  <string name="widget_upcoming_description">未来七天的预计扣费，不代表已实际支出</string>
+  <string name="widget_recent_description">最近三笔消费，点击查看或编辑</string>
+</resources>

@@ -1,0 +1,10 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+  <LinearLayout android:id="@+id/widget_month_expense" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="56dp" android:orientation="vertical" android:paddingEnd="8dp">
+    <TextView android:id="@+id/widget_expense_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="本月支出" android:textSize="12sp" />
+    <TextView android:id="@+id/widget_expense_amount" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="24sp" android:textStyle="bold" android:fontFeatureSettings="tnum" />
+  </LinearLayout>
+  <LinearLayout android:id="@+id/widget_month_income" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="56dp" android:orientation="vertical">
+    <TextView android:id="@+id/widget_income_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="本月收入" android:textSize="12sp" />
+    <TextView android:id="@+id/widget_income_amount" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="24sp" android:textStyle="bold" android:fontFeatureSettings="tnum" />
+  </LinearLayout>
+</LinearLayout>

@@ -81,6 +81,9 @@ fun SextantApp(
   onThemePreferenceChanged: (ThemePreference) -> Unit,
   requestedEditTransactionId: String? = null,
   onEditRequestConsumed: () -> Unit = {},
+  widgetDestination: String? = null,
+  widgetRecurringId: String? = null,
+  onWidgetRequestConsumed: () -> Unit = {},
 ) {
   var tab by rememberSaveable { mutableStateOf(Tab.Home) }
   var showCalendar by rememberSaveable { mutableStateOf(false) }
@@ -93,6 +96,10 @@ fun SextantApp(
   var filter by rememberSaveable(stateSaver = LedgerFilterSaver) { mutableStateOf(LedgerFilter.allTime()) }
   var analysisAnchor by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
   var analysisPeriod by rememberSaveable { mutableStateOf(AnalysisPeriod.Month) }
+  var analysisMetric by rememberSaveable { mutableStateOf(com.sextant.app.data.AnalysisMetric.Expense) }
+  var analysisNavigationVersion by rememberSaveable { mutableStateOf(0) }
+  var planSection by rememberSaveable { mutableStateOf(com.sextant.app.ui.screens.PlanSection.Budget) }
+  var pendingRecurringId by rememberSaveable { mutableStateOf<String?>(null) }
   val analysisWindow = AnalysisWindow(analysisPeriod, analysisAnchor.toLocalDate())
   var lastPaymentMethodId by rememberSaveable { mutableStateOf<String?>(null) }
   val ui by viewModel.state.collectAsState()
@@ -127,12 +134,40 @@ fun SextantApp(
   LaunchedEffect(requestedEditTransactionId) {
     val id = requestedEditTransactionId ?: return@LaunchedEffect
     repository.findTransaction(id)?.let { item ->
+      showQuickEntry = false
+      pendingDelete = null
+      saveAction.dismissError()
       filter = LedgerFilter.forMonth(item.transaction.transactionDate)
       tab = Tab.Home
       showCalendar = false
       editingId = id
     }
     onEditRequestConsumed()
+  }
+  LaunchedEffect(widgetDestination) {
+    val destination = widgetDestination ?: return@LaunchedEffect
+    showCalendar = false
+    showQuickEntry = false
+    editingId = null
+    pendingDelete = null
+    when (destination) {
+      "entry" -> { tab = Tab.Home; showQuickEntry = true }
+      "today" -> { tab = Tab.Home; filter = LedgerFilter.forDay(System.currentTimeMillis()).copy(type = com.sextant.app.data.TransactionType.Expense) }
+      "recent" -> { tab = Tab.Home; filter = LedgerFilter.allTime().copy(type = com.sextant.app.data.TransactionType.Expense) }
+      "budget", "recurring" -> {
+        tab = Tab.Discover
+        planSection = if (destination == "budget") com.sextant.app.ui.screens.PlanSection.Budget else com.sextant.app.ui.screens.PlanSection.Recurring
+        pendingRecurringId = widgetRecurringId
+      }
+      "expense", "income" -> {
+        tab = Tab.Analytics
+        analysisAnchor = System.currentTimeMillis()
+        analysisPeriod = AnalysisPeriod.Month
+        analysisMetric = if (destination == "income") com.sextant.app.data.AnalysisMetric.Income else com.sextant.app.data.AnalysisMetric.Expense
+        analysisNavigationVersion++
+      }
+    }
+    onWidgetRequestConsumed()
   }
   val lifecycleOwner = LocalLifecycleOwner.current
   DisposableEffect(lifecycleOwner, viewModel) {
@@ -213,13 +248,17 @@ fun SextantApp(
                       )
                     }
                   }
-                  Tab.Analytics -> AnalyticsScreen(
+                  Tab.Analytics -> androidx.compose.runtime.key(analysisNavigationVersion) { AnalyticsScreen(
                     state = pageData,
                     window = analysisWindow,
                     onWindowChanged = { analysisAnchor = it.anchor.toStartOfDayMillis(); analysisPeriod = it.period },
                     onTransactionClick = { saveAction.dismissError(); editingId = it.transaction.id },
-                  )
-                  Tab.Discover -> PlansScreen(pageData, repository)
+                    metric = analysisMetric,
+                    onMetricChanged = { analysisMetric = it },
+                  ) }
+                  Tab.Discover -> PlansScreen(pageData, repository,
+                    section = planSection, onSectionChanged = { planSection = it },
+                    requestedRecurringId = pendingRecurringId, onRecurringRequestConsumed = { pendingRecurringId = null })
                   Tab.Settings -> SettingsScreen(
                     state = pageData,
                     repository = repository,

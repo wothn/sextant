@@ -90,6 +90,8 @@ private fun AnalyticsScreenPreview() {
           incomeTrend = expenseTrend(populatedPreviewState.analysisTransactions, AnalysisWindow(AnalysisPeriod.Month, previewFilter.rangeStart.toLocalDate()), AnalysisMetric.Income),
           incomeBreakdown = LedgerCalculations.breakdown(populatedPreviewState.analysisTransactions.filter(AnalysisMetric.Income::includes), populatedPreviewState.categories))),
         window = AnalysisWindow(AnalysisPeriod.Month, previewFilter.rangeStart.toLocalDate()),
+        metric = AnalysisMetric.Expense,
+        onMetricChanged = {},
         onWindowChanged = {},
         onTransactionClick = {},
       )

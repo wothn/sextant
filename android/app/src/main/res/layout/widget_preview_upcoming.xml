@@ -1,0 +1,5 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+ android:layout_width="match_parent" android:layout_height="match_parent" android:padding="20dp"
+ android:orientation="vertical" android:gravity="center_vertical" android:background="@drawable/widget_surface">
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="近期扣费 · 未来7天\n会员、宽带等预计扣费\n以实际账单为准" android:textSize="18sp" android:textColor="@android:color/black" android:lineSpacingExtra="12dp" />
+</LinearLayout>

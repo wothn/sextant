@@ -17,10 +17,13 @@ import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
   private var requestedEditTransactionId by mutableStateOf<String?>(null)
+  private var widgetDestination by mutableStateOf<String?>(null)
+  private var widgetRecurringId by mutableStateOf<String?>(null)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     requestedEditTransactionId = intent.getStringExtra(AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID)
+    readWidgetRequest(intent)
     val sextantApplication = application as SextantApplication
     val repository = sextantApplication.repository
     // 主题必须在第一帧之前定下来，否则会先按系统主题画一帧、读完之后再跳成用户选的那套，
@@ -44,6 +47,14 @@ class MainActivity : ComponentActivity() {
           onThemePreferenceChanged = { themePreference = it },
           requestedEditTransactionId = requestedEditTransactionId,
           onEditRequestConsumed = ::consumeEditRequest,
+          widgetDestination = widgetDestination,
+          widgetRecurringId = widgetRecurringId,
+          onWidgetRequestConsumed = {
+            widgetDestination = null
+            widgetRecurringId = null
+            intent.removeExtra(com.sextant.app.widget.WidgetNavigation.EXTRA_DESTINATION)
+            intent.removeExtra(com.sextant.app.widget.WidgetNavigation.EXTRA_RECURRING_ID)
+          },
         )
       }
     }
@@ -53,6 +64,13 @@ class MainActivity : ComponentActivity() {
     super.onNewIntent(intent)
     setIntent(intent)
     requestedEditTransactionId = intent.getStringExtra(AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID)
+    readWidgetRequest(intent)
+  }
+
+  private fun readWidgetRequest(intent: Intent) {
+    widgetDestination = intent.getStringExtra(com.sextant.app.widget.WidgetNavigation.EXTRA_DESTINATION)
+      ?.takeIf { it in com.sextant.app.widget.WidgetNavigation.destinations }
+    widgetRecurringId = intent.getStringExtra(com.sextant.app.widget.WidgetNavigation.EXTRA_RECURRING_ID)
   }
 
   /**
