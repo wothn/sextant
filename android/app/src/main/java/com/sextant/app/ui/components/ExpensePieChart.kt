@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.CategoryBreakdown
 import com.sextant.app.ui.theme.SextantColors
@@ -34,18 +35,41 @@ fun ExpensePieChart(items: List<CategoryBreakdown>, total: Long, selectedId: Str
   val colors = items.map { argbColor(it.color) }
   val selectedIndex = items.indexOf(selected)
   val surface = SextantColors.SurfaceContainerLow
-  val fontScale = LocalDensity.current.fontScale
+  val density = LocalDensity.current
+  val textMeasurer = rememberTextMeasurer()
+  val metricLabel = analysisMetricLabel(metric)
+  val shareLabel = spendingShareLabel(selected.amountCents, total)
+  val amountLabel = formatCurrency(selected.amountCents)
+  val caption = if (selectedIndex == 0) metricLabel + "最多的分类" else "已选分类"
+  val centerWidth = maxOf(
+    textMeasurer.measure("占总$metricLabel", style = MaterialTheme.typography.labelSmall).size.width,
+    listOf("100%", "99.9%", "<0.1%").maxOf {
+      textMeasurer.measure(it, style = MaterialTheme.typography.titleLarge).size.width
+    },
+  )
+  val detailWidth = maxOf(
+    textMeasurer.measure(formatCurrency(items.maxOf { it.amountCents }), style = MaterialTheme.typography.titleLarge).size.width,
+    textMeasurer.measure(metricLabel + "最多的分类", style = MaterialTheme.typography.bodySmall).size.width,
+    items.maxOf { textMeasurer.measure(it.categoryName.take(4), style = MaterialTheme.typography.titleMedium).size.width } +
+      with(density) { 18.dp.roundToPx() },
+    if (items.size > 1) textMeasurer.measure("点击饼图查看占比", style = MaterialTheme.typography.bodySmall).size.width else 0,
+  )
+  val minimumChartSize = maxOf(128.dp, (with(density) { centerWidth.toDp() } + 18.dp) / .66f)
+  val minimumDetailWidth = with(density) { detailWidth.toDp() }
   SextantSurface(Modifier.fillMaxWidth(), color = surface) {
     BoxWithConstraints(Modifier.padding(20.dp)) {
-      val stacked = maxWidth < 340.dp || fontScale > 1.3f
+      val stacked = maxWidth < minimumChartSize + 16.dp + minimumDetailWidth
+      val chartSize = if (stacked) maxOf(176.dp, minimumChartSize).coerceAtMost(maxWidth)
+        else (maxWidth - 16.dp - minimumDetailWidth).coerceIn(minimumChartSize, maxOf(176.dp, minimumChartSize))
+      val strokeWidth = chartSize * .17f
       val chart: @Composable () -> Unit = {
-        Box(Modifier.size(176.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(chartSize), contentAlignment = Alignment.Center) {
           Canvas(Modifier.fillMaxSize()
-            .pointerInput(items, total) {
+            .pointerInput(items, total, chartSize) {
               detectTapGestures { point ->
                 val x = point.x - size.width / 2f; val y = point.y - size.height / 2f
                 val radius = minOf(size.width, size.height) / 2f
-                if (hypot(x, y) in (radius - 33.dp.toPx())..(radius - 3.dp.toPx())) {
+                if (hypot(x, y) in (radius - strokeWidth.toPx() - 3.dp.toPx())..(radius - 3.dp.toPx())) {
                   val angle = ((Math.toDegrees(atan2(y.toDouble(), x.toDouble())) + 450) % 360).toFloat()
                   var end = 0f
                   val hit = items.indexOfFirst { end += (it.amountCents.toDouble() / total * 360).toFloat(); angle < end }
@@ -62,7 +86,7 @@ fun ExpensePieChart(items: List<CategoryBreakdown>, total: Long, selectedId: Str
                 }
               }
             }) {
-            val stroke = 30.dp.toPx()
+            val stroke = strokeWidth.toPx()
             val inset = stroke / 2 + 3.dp.toPx()
             val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
             var start = -90f
@@ -79,7 +103,7 @@ fun ExpensePieChart(items: List<CategoryBreakdown>, total: Long, selectedId: Str
           }
           Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("占总" + analysisMetricLabel(metric), style = MaterialTheme.typography.labelSmall, color = SextantColors.TextSubtle)
-            Text(spendingShareLabel(selected.amountCents, total), style = MaterialTheme.typography.titleLarge)
+            Text(shareLabel, style = MaterialTheme.typography.titleLarge)
           }
         }
       }
@@ -89,10 +113,12 @@ fun ExpensePieChart(items: List<CategoryBreakdown>, total: Long, selectedId: Str
             ColorDot(argbColor(selected.color))
             Text(selected.categoryName, style = MaterialTheme.typography.titleMedium)
           }
-          Text(formatCurrency(selected.amountCents), style = MaterialTheme.typography.titleLarge)
-          Text(if (selectedIndex == 0) analysisMetricLabel(metric) + "最多的分类" else "已选分类", style = MaterialTheme.typography.bodySmall,
+          Text(amountLabel, style = MaterialTheme.typography.titleLarge)
+          Text(caption, style = MaterialTheme.typography.bodySmall,
             color = SextantColors.TextMuted)
-          Text("点击饼图查看占比", style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
+          if (items.size > 1) {
+            Text("点击饼图查看占比", style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
+          }
         }
       }
       if (stacked) {
@@ -100,7 +126,7 @@ fun ExpensePieChart(items: List<CategoryBreakdown>, total: Long, selectedId: Str
           verticalArrangement = Arrangement.spacedBy(16.dp)) { chart(); detail() }
       } else {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+          horizontalArrangement = Arrangement.spacedBy(16.dp)) {
           chart(); Box(Modifier.weight(1f)) { detail() }
         }
       }

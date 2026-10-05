@@ -71,6 +71,8 @@ import com.sextant.app.ui.components.ExpensePieChart
 import com.sextant.app.data.AnalysisMetric
 import com.sextant.app.ui.util.analysisMetricLabel
 import com.sextant.app.ui.components.SextantTabRow
+import com.sextant.app.ui.components.AnalysisDateSelector
+import com.sextant.app.ui.util.analysisDateSelectorLabel
 import com.sextant.app.data.AnalysisPeriod
 import com.sextant.app.data.AnalysisWindow
 import com.sextant.app.ui.util.analysisWindowLabel
@@ -133,28 +135,17 @@ private fun AnalyticsOverview(
   val trend = if (metric == AnalysisMetric.Expense) report.trend else report.incomeTrend
   var selectedCategory by rememberSaveable(window, metric) { mutableStateOf<String?>(null) }
   Column(Modifier.fillMaxSize()) {
-    SextantFlexibleHeader(title = "分析", scrollState = listState, subtitle = if (metric == AnalysisMetric.Expense) "看支出趋势，了解钱花在哪里" else "看收入趋势，了解收入来源",
-      modifier = Modifier.padding(horizontal = 20.dp))
-    SextantTabRow(options = AnalysisMetric.entries, selected = metric, onSelect = onMetricChanged,
-      label = { analysisMetricLabel(it) }, modifier = Modifier.padding(horizontal = 20.dp))
+    SextantFlexibleHeader(title = "分析", scrollState = listState,
+      subtitle = "按日期查看收支趋势与分类", modifier = Modifier.padding(horizontal = 20.dp))
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
       contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
       verticalArrangement = Arrangement.spacedBy(24.dp)) {
       item(key = "period") {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
           SextantSegmentedButtonGroup(options = AnalysisPeriod.entries, selected = window.period,
             onSelect = { onWindowChanged(AnalysisWindow(it, window.anchor)) }, label = { analysisPeriodLabel(it) },
             modifier = Modifier.fillMaxWidth())
-          Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            SextantIconButton(onClick = { onWindowChanged(window.move(-1)) }) {
-              Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "上一" + analysisPeriodLabel(window.period))
-            }
-            Text(analysisWindowLabel(window), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
-              textAlign = TextAlign.Center)
-            SextantIconButton(onClick = { onWindowChanged(window.move(1)) }) {
-              Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = "下一" + analysisPeriodLabel(window.period))
-            }
-          }
+          AnalysisDateAndMetric(window, metric, onWindowChanged, onMetricChanged)
           if (window.start != AnalysisWindow(window.period, LocalDate.now()).start) {
             SextantTextButton(onClick = { onWindowChanged(AnalysisWindow(window.period, LocalDate.now())) }) {
               Text("回到本" + analysisPeriodLabel(window.period))
@@ -186,6 +177,42 @@ private fun AnalyticsOverview(
       }
       items(breakdown, key = { "category:" + it.memberCategoryIds.sorted() }) { category ->
         CategorySpendingRow(category, total, window.period, metric, onCategoryClick)
+      }
+    }
+  }
+}
+
+/** 先确定日期，再选择该周期内的收支；长周区间或大字体下按此顺序分行。 */
+@Composable
+private fun AnalysisDateAndMetric(
+  window: AnalysisWindow,
+  metric: AnalysisMetric,
+  onWindowChanged: (AnalysisWindow) -> Unit,
+  onMetricChanged: (AnalysisMetric) -> Unit,
+) {
+  val textMeasurer = rememberTextMeasurer()
+  val density = LocalDensity.current
+  val tabStyle = MaterialTheme.typography.titleSmall
+  val dateStyle = MaterialTheme.typography.titleMedium
+  val dateLabel = analysisDateSelectorLabel(window)
+  val tabTextWidth = AnalysisMetric.entries.maxOf {
+    textMeasurer.measure(analysisMetricLabel(it), style = tabStyle).size.width
+  }
+  val tabsWidth = with(density) { tabTextWidth.toDp() + 16.dp }.coerceAtLeast(48.dp) * 2
+  val dateWidth = with(density) { textMeasurer.measure(dateLabel, style = dateStyle).size.width.toDp() }
+  BoxWithConstraints(Modifier.fillMaxWidth()) {
+    if (maxWidth >= dateWidth + 124.dp + tabsWidth + 4.dp) {
+      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        AnalysisDateSelector(window, onWindowChanged, Modifier.weight(1f))
+        SextantTabRow(options = AnalysisMetric.entries, selected = metric, onSelect = onMetricChanged,
+          label = { analysisMetricLabel(it) }, modifier = Modifier.width(tabsWidth))
+      }
+    } else {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        AnalysisDateSelector(window, onWindowChanged, Modifier.fillMaxWidth())
+        SextantTabRow(options = AnalysisMetric.entries, selected = metric, onSelect = onMetricChanged,
+          label = { analysisMetricLabel(it) })
       }
     }
   }
