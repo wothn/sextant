@@ -33,7 +33,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.Category
 import com.sextant.app.data.TransactionListItem
@@ -168,20 +167,22 @@ fun QuickEntryDialog(
               Column(Modifier.padding(top = 6.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${type.label}金额", color = SextantColors.TextSubtle, style = MaterialTheme.typography.labelMedium)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                  Text("¥", fontSize = 28.sp, color = SextantColors.TextMuted, fontWeight = FontWeight.Medium)
+                  Text("¥", style = MaterialTheme.typography.headlineSmall,
+                    color = SextantColors.TextMuted, fontWeight = FontWeight.Medium)
                   BasicTextField(
                     value = amountText,
                     readOnly = saving,
                     onValueChange = { amountText = it; amountError = false },
-                    modifier = Modifier.weight(1f).heightIn(min = 60.dp).semantics { contentDescription = "金额" },
-                    textStyle = MaterialTheme.typography.displaySmall.copy(fontSize = 42.sp,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = "金额" },
+                    textStyle = MaterialTheme.typography.headlineLarge.copy(
                       fontWeight = FontWeight.SemiBold, color = SextantColors.Text),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     cursorBrush = SolidColor(SextantColors.Accent),
                     singleLine = true,
                     decorationBox = { inner ->
                       Box(contentAlignment = Alignment.CenterStart) {
-                        if (amountText.isEmpty()) Text("0.00", fontSize = 42.sp, fontWeight = FontWeight.SemiBold,
+                        if (amountText.isEmpty()) Text("0.00", style = MaterialTheme.typography.headlineLarge,
+                          fontWeight = FontWeight.SemiBold,
                           color = SextantColors.TextSubtle.copy(alpha = 0.55f))
                         inner()
                       }

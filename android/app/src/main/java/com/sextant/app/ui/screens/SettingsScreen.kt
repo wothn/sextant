@@ -213,7 +213,7 @@ private fun SettingsOverview(
       }
       item {
         SettingsSection("外观") {
-          Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
               SettingsIcon(Icons.Outlined.Palette)
               Spacer(Modifier.width(12.dp))
@@ -309,7 +309,7 @@ private fun AutomationOverview(
       .clickable(role = Role.Button, onClick = onClick),
     shape = MaterialTheme.shapes.large,
   ) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically) {
         SettingsIcon(Icons.Outlined.AutoAwesome, highlighted = true)
         Spacer(Modifier.width(12.dp))

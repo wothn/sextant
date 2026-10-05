@@ -24,7 +24,7 @@ fun LedgerNavigationBar(
         selected = tab == selectedTab,
         onClick = { onTabSelected(tab) },
         icon = {
-          Icon(tab.icon, contentDescription = null, modifier = Modifier.size(28.dp))
+          Icon(tab.icon, contentDescription = null, modifier = Modifier.size(24.dp))
         },
         label = {
           Text(tab.title, style = if (tab == selectedTab) MaterialTheme.typography.labelLarge.sextantEmphasized()

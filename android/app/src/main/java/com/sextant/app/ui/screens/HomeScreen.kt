@@ -109,7 +109,7 @@ fun HomeScreen(
       contentPadding = PaddingValues(bottom = LocalBottomBarInset.current + SextantFabClearance),
     ) {
       item {
-        Column(Modifier.padding(ScreenPadding).padding(top = 8.dp, bottom = 24.dp)) {
+        Column(Modifier.padding(ScreenPadding).padding(top = 8.dp, bottom = 16.dp)) {
           LedgerOverview(state, filter)
         }
       }
@@ -193,8 +193,8 @@ private fun LedgerOverview(state: AppState, filter: LedgerFilter) {
   val currentMonth = filter.isCurrentMonth()
   SextantSurface(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
     Column(
-      modifier = Modifier.fillMaxWidth().padding(20.dp),
-      verticalArrangement = Arrangement.spacedBy(16.dp),
+      modifier = Modifier.fillMaxWidth().padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       SextantMetric(
         label = "今日支出",
@@ -336,10 +336,10 @@ internal fun LedgerTransactionRow(
   onClick: (TransactionListItem) -> Unit,
 ) {
   Row(
-    Modifier.fillMaxWidth().clickable { onClick(item) }.padding(vertical = 12.dp),
+    Modifier.fillMaxWidth().clickable { onClick(item) }.padding(vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor), size = 48.dp, iconSize = 26.dp)
+    CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor), size = 40.dp, iconSize = 22.dp)
     Spacer(Modifier.width(12.dp))
     Column(
       modifier = Modifier.weight(1f),
@@ -363,7 +363,7 @@ internal fun LedgerTransactionRow(
             text = categoryName,
             modifier = Modifier.weight(1f, fill = false),
             color = SextantColors.Text,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -377,7 +377,7 @@ internal fun LedgerTransactionRow(
           // 数字往左推、离右缘更远。方向仍由符号表达，格式仍走共享函数。
           text = signedAmountPlain(item),
           color = SextantColors.Text,
-          style = MaterialTheme.typography.titleLarge.sextantEmphasized(),
+          style = MaterialTheme.typography.titleMedium.sextantEmphasized(),
           textAlign = TextAlign.End,
           softWrap = true,
         )

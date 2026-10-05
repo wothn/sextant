@@ -58,7 +58,7 @@ import com.sextant.app.ui.theme.SextantMotion
 // ---------------------------------------------------------------------------
 
 /**
- * 浮动操作按钮：56dp 正圆、铜橙填充。
+ * 浮动操作按钮：48dp 正圆、铜橙填充。
  *
  * 用 [SextantFullShape] 而不是 [MaterialTheme.shapes] 的一档：正方形的 FAB 取胶囊圆角就是
  * 正圆，形状本身说明「这是主操作」，与同样全圆角的按钮、chip 一致。
@@ -80,7 +80,7 @@ fun SextantFab(
 ) {
   Surface(
     onClick = onClick,
-    modifier = modifier.size(56.dp),
+    modifier = modifier.size(48.dp),
     shape = SextantFullShape,
     color = containerColor,
     contentColor = contentColor,
@@ -94,13 +94,13 @@ fun SextantFab(
 }
 
 /**
- * 铺了记账 FAB 的列表（目前只有概览）底部要再预留的空白：56dp 按钮 + 16dp 下边距 + 16dp 呼吸。
+ * 铺了记账 FAB 的列表（目前只有概览）底部要再预留的空白：48dp 按钮 + 16dp 下边距 + 16dp 呼吸。
  *
  * 起算点是**底栏上沿**，所以页面把它和 [LocalBottomBarInset] 一起加进 `contentPadding.bottom`：
  * 再加上底栏那一份，最后一行就不会停在 FAB 底下——明细的金额正在右边，也正是 FAB 待的位置。
  * 没有 FAB 的页面只加 [LocalBottomBarInset]。
  */
-val SextantFabClearance: Dp = 88.dp
+val SextantFabClearance: Dp = 80.dp
 
 /**
  * 会随滚动收起的记账 FAB。
@@ -172,8 +172,8 @@ fun SextantNavigationBar(
     shadowElevation = 2.dp,
   ) {
     BoxWithConstraints(
-      modifier = Modifier.fillMaxWidth().heightIn(min = 76.dp)
-        .padding(horizontal = 6.dp, vertical = 6.dp),
+      modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+        .padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
       val slotWidth = maxWidth / itemCount.coerceAtLeast(1)
       val lastIndex = (itemCount - 1).coerceAtLeast(0)
@@ -231,7 +231,7 @@ fun RowScope.SextantNavigationItem(
   Box(
     modifier = modifier
       .weight(1f)
-      .heightIn(min = 64.dp)
+      .heightIn(min = 48.dp)
       .clip(SextantFullShape)
       .selectable(
         selected = selected,
@@ -247,11 +247,11 @@ fun RowScope.SextantNavigationItem(
         .fillMaxWidth()
         .clip(SextantFullShape)
         .then(if (focused) Modifier.border(1.dp, SextantColors.Accent, SextantFullShape) else Modifier)
-        .heightIn(min = 64.dp)
-        .padding(horizontal = 4.dp, vertical = 6.dp)
+        .heightIn(min = 48.dp)
+        .padding(horizontal = 4.dp, vertical = 2.dp)
         .graphicsLayer { scaleX = contentScale; scaleY = contentScale },
       horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+      verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
       CompositionLocalProvider(LocalContentColor provides contentColor) {
         icon()
@@ -273,7 +273,7 @@ fun RowScope.SextantNavigationItem(
  * 标记与副标题淡出。整条头部有背景色，不会透出下面的明细。
  *
  * 展开高度跟着内容走（见 [expandedHeight] 的默认值）：没有副标题的页面不会为一行不存在的
- * 文字留出 20dp 空气，而有副标题的页面也不会被压扁。两种情况下标题行都在离头部顶端 18dp 处，
+ * 文字留出额外空气，而有副标题的页面也不会被压扁。两种情况下标题行都在离头部顶端 12dp 处，
  * 所以在四个主页面之间切换时标题不会上下跳。
  *
  * 官方的 `MediumFlexibleTopAppBar` / `LargeFlexibleTopAppBar` 需要 `TopAppBarScrollBehavior`
@@ -287,10 +287,10 @@ fun SextantFlexibleHeader(
   modifier: Modifier = Modifier,
   subtitle: String? = null,
   collapsedHeight: Dp = 60.dp,
-  // 一行标题 48dp（动作按钮撑起来的行高）+ 上下 6dp 内边距 + 每侧 12dp 呼吸 = 84dp；
-  // 有副标题时再加一行 bodyMedium 的 20dp = 104dp。收起高度固定 60dp，正好是
+  // 一行标题 48dp（动作按钮撑起来的行高）+ 上下 6dp 内边距 + 每侧 6dp 呼吸 = 72dp；
+  // 有副标题时再加一行 bodyMedium 的 18dp = 90dp。收起高度固定 60dp，正好是
   // 「48dp 标题行 + 12dp 内边距」，也就是没有空气的一行标题。
-  expandedHeight: Dp = if (subtitle == null) 84.dp else 104.dp,
+  expandedHeight: Dp = if (subtitle == null) 72.dp else 90.dp,
   actions: @Composable RowScope.() -> Unit = {},
 ) {
   val collapseDistance = with(LocalDensity.current) { (expandedHeight - collapsedHeight).toPx() }

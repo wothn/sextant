@@ -196,7 +196,7 @@ private fun BudgetOverview(state: AppState, onEdit: () -> Unit) {
   val daysRemaining = max(1, calendar.getActualMaximum(Calendar.DAY_OF_MONTH) - calendar.get(Calendar.DAY_OF_MONTH) + 1)
 
   SextantSurface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
-    Column(Modifier.fillMaxWidth().padding(20.dp).animateContentSize(animationSpec = SextantMotion.defaultSpatial()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxWidth().padding(16.dp).animateContentSize(animationSpec = SextantMotion.defaultSpatial()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("本月预算", color = SextantColors.TextMuted, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 12.dp))
         SextantTextButton(onClick = onEdit) {

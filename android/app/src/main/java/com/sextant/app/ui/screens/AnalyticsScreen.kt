@@ -368,7 +368,7 @@ private fun AnalysisSummary(state: AppState, window: AnalysisWindow, metric: Ana
   val label = analysisMetricLabel(metric)
   val previousLabel = "上" + analysisPeriodLabel(window.period)
   SextantSurface(Modifier.fillMaxWidth(), color = SextantColors.SurfaceContainerLow) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       SextantMetric(label = "总" + label, value = formatCurrency(metric.amount(report.summary)), primary = true,
         valueStyle = MaterialTheme.typography.headlineLarge)
       FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(32.dp),

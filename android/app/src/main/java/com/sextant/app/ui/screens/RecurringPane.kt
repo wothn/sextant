@@ -210,7 +210,7 @@ private fun RecurringOverview(expenses: List<RecurringExpense>, today: LocalDate
   val budgetShare = monthlyBudgetCents?.takeIf { it > 0L }?.let { monthlyTotal * 100 / it }
 
   SextantSurface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
-    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       SextantMetric(
         label = "未来 30 天待扣费",
         value = if (expenses.isEmpty()) "—" else formatCurrency(upcomingTotal),

@@ -398,22 +398,22 @@ object SextantMotion {
   fun <T> slowEffects(): FiniteAnimationSpec<T> = MaterialTheme.motionScheme.slowEffectsSpec()
 }
 
-/** 基础排版保留常规层级；核心金额单独强调，金额使用等宽数字。 */
+/** 手机上的紧凑排版阶梯；保留系统字体缩放、常规字重和等宽数字。 */
 private val SextantTypography: Typography = Typography().let { base ->
   Typography(
     displayLarge = base.displayLarge.tnum(),
     displayMedium = base.displayMedium.tnum(),
     displaySmall = base.displaySmall.tnum(),
-    headlineLarge = base.headlineLargeEmphasized.tnum().copy(fontSize = 40.sp, lineHeight = 48.sp),
-    headlineMedium = base.headlineMedium.tnum(),
-    headlineSmall = base.headlineSmall.tnum(),
-    titleLarge = base.titleLarge.tnum(),
-    titleMedium = base.titleMedium.tnum(),
+    headlineLarge = base.headlineLargeEmphasized.tnum().copy(fontSize = 32.sp, lineHeight = 40.sp),
+    headlineMedium = base.headlineMedium.tnum().copy(fontSize = 24.sp, lineHeight = 32.sp),
+    headlineSmall = base.headlineSmall.tnum().copy(fontSize = 22.sp, lineHeight = 28.sp),
+    titleLarge = base.titleLarge.tnum().copy(fontSize = 18.sp, lineHeight = 24.sp),
+    titleMedium = base.titleMedium.tnum().copy(fontSize = 15.sp, lineHeight = 22.sp),
     titleSmall = base.titleSmall.tnum(),
-    bodyLarge = base.bodyLarge.tnum(),
-    bodyMedium = base.bodyMedium.tnum(),
+    bodyLarge = base.bodyLarge.tnum().copy(fontSize = 15.sp, lineHeight = 22.sp),
+    bodyMedium = base.bodyMedium.tnum().copy(fontSize = 13.sp, lineHeight = 18.sp),
     bodySmall = base.bodySmall.tnum(),
-    labelLarge = base.labelLarge.tnum(),
+    labelLarge = base.labelLarge.tnum().copy(fontSize = 13.sp, lineHeight = 18.sp),
     labelMedium = base.labelMedium.tnum(),
     labelSmall = base.labelSmall.tnum(),
   )
