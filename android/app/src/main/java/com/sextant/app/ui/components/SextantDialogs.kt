@@ -30,6 +30,9 @@ fun SextantBottomSheet(
   content: @Composable ColumnScope.() -> Unit,
 ) {
   ModalBottomSheet(onDismissRequest = onDismissRequest, sheetState = sheetState, sheetGesturesEnabled = sheetGesturesEnabled,
+    // 顶部安全区固定在面板外，避免拖动时内容高度随 top inset 改变，反复重建拖拽锚点。
+    modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
+    contentWindowInsets = { WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom) },
     shape = SextantSheetShape,
     containerColor = SextantColors.SurfaceContainerLow, contentColor = SextantColors.Text, tonalElevation = 0.dp,
     dragHandle = { BottomSheetDefaults.DragHandle(color = SextantColors.SurfaceContainerHighest) }, content = content)
