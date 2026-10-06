@@ -45,9 +45,6 @@
     <receiver
       android:name=".automation.AutomationUndoReceiver"
       android:exported="false" />
-    <activity android:name=".widget.WidgetConfigurationActivity" android:exported="true">
-      <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
-    </activity>
     <receiver android:name=".widget.TodayWidget" android:exported="false" android:label="@string/widget_today">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

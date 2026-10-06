@@ -5,6 +5,6 @@
   android:targetCellWidth="2" android:targetCellHeight="2"
   android:updatePeriodMillis="1800000" android:initialLayout="@layout/widget_shell"
   android:previewLayout="@layout/widget_preview_today"
-  android:configure="com.sextant.app.widget.WidgetConfigurationActivity"
+  android:previewImage="@drawable/widget_preview_today"
   android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen"
-  android:widgetFeatures="reconfigurable" android:description="@string/widget_today_description" />
+  android:description="@string/widget_today_description" />

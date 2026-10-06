@@ -151,6 +151,7 @@ fun SextantApp(
     editingId = null
     pendingDelete = null
     when (destination) {
+      "home" -> { tab = Tab.Home; filter = LedgerFilter.forMonth(System.currentTimeMillis()) }
       "entry" -> { tab = Tab.Home; showQuickEntry = true }
       "today" -> { tab = Tab.Home; filter = LedgerFilter.forDay(System.currentTimeMillis()).copy(type = com.sextant.app.data.TransactionType.Expense) }
       "recent" -> { tab = Tab.Home; filter = LedgerFilter.allTime().copy(type = com.sextant.app.data.TransactionType.Expense) }

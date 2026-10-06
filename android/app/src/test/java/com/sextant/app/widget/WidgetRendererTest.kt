@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.view.LayoutInflater
 import android.widget.FrameLayout
 import android.widget.TextView
 import com.sextant.app.R
@@ -42,7 +43,12 @@ class WidgetRendererTest {
   @Test fun allSixInflateInBothThemesAndPrivacyHidesValuesAndProgress() {
     for (appearance in listOf(WidgetAppearance.Light, WidgetAppearance.Dark)) {
       WidgetPreferences(context).save(42, WidgetOptions(appearance, false))
-      for (kind in WidgetKind.entries) assertNotNull(render(kind).findViewById<View>(R.id.widget_settings))
+      for (kind in WidgetKind.entries) {
+        val view = render(kind)
+        assertNotNull(view.findViewById<View>(R.id.widget_body))
+        assertFalse(texts(view).contains("设置"))
+        assertEquals(View.GONE, view.findViewById<View>(R.id.widget_status).visibility)
+      }
       WidgetPreferences(context).save(42, WidgetOptions(appearance, true))
       for (kind in WidgetKind.entries) {
         val view = render(kind)
@@ -64,14 +70,21 @@ class WidgetRendererTest {
     assertTrue(texts(render(WidgetKind.Today, data.copy(todaySummary = Summary(0, amount)))).contains(formatCurrency(amount)))
   }
 
-  @Test fun recentRowOpensExactTransactionAndHeaderOpensExpenseList() {
-    val root = render(WidgetKind.Recent)
-    root.findViewById<View>(R.id.widget_row).performClick()
-    val transaction = shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity
-    assertEquals("purchase", transaction.getStringExtra(com.sextant.app.automation.AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID))
-    root.findViewById<View>(R.id.widget_title).performClick()
-    val list = shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity
-    assertEquals("recent", list.getStringExtra(WidgetNavigation.EXTRA_DESTINATION))
+  @Test fun everyWidgetClickOpensHomeWithoutQuickEntryOrRecordEditing() {
+    for (kind in WidgetKind.entries) {
+      val root = render(kind)
+      assertFalse(texts(root).contains("＋"))
+      val targets = listOf(R.id.widget_root, R.id.widget_title, R.id.widget_body,
+        R.id.widget_text, R.id.widget_row, R.id.widget_month_expense, R.id.widget_month_income)
+      for (target in targets) {
+        val view = root.findViewById<View>(target) ?: continue
+        assertTrue(view.performClick())
+        val intent = shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity
+        assertEquals("home", intent.getStringExtra(WidgetNavigation.EXTRA_DESTINATION))
+        assertFalse(intent.hasExtra(com.sextant.app.automation.AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID))
+        assertFalse(intent.hasExtra(WidgetNavigation.EXTRA_RECURRING_ID))
+      }
+    }
   }
 
   @Test fun pendingIntentsForDifferentTransactionsDoNotOverwriteEachOther() {
@@ -84,5 +97,26 @@ class WidgetRendererTest {
 
   @Test @Config(sdk = [26]) fun remoteViewsAlsoInflateOnMinimumAndroidVersion() {
     for (kind in WidgetKind.entries) assertNotNull(render(kind))
+  }
+
+  @Test @Config(sdk = [26, 35]) fun everyWidgetOffersImageFallbackAndAddsWithoutConfiguration() {
+    val providers = listOf(R.xml.widget_today, R.xml.widget_entry, R.xml.widget_budget,
+      R.xml.widget_month, R.xml.widget_upcoming, R.xml.widget_recent)
+    val android = "http://schemas.android.com/apk/res/android"
+    for (resource in providers) {
+      context.resources.getXml(resource).use { xml ->
+        while (xml.next() != org.xmlpull.v1.XmlPullParser.START_TAG) { /* find provider */ }
+        assertNull(xml.getAttributeValue(android, "configure"))
+        assertNull(xml.getAttributeValue(android, "widgetFeatures"))
+        val image = xml.getAttributeResourceValue(android, "previewImage", 0)
+        assertNotEquals(0, image)
+        val drawable = context.getDrawable(image)!!
+        assertTrue(drawable.intrinsicWidth > 100)
+        assertTrue(drawable.intrinsicHeight > 100)
+        val layout = xml.getAttributeResourceValue(android, "previewLayout", 0)
+        val preview = LayoutInflater.from(context).inflate(layout, FrameLayout(context), false)
+        assertTrue(texts(preview).isNotEmpty())
+      }
+    }
   }
 }

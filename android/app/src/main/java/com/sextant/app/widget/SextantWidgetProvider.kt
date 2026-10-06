@@ -18,7 +18,7 @@ import kotlinx.coroutines.sync.withLock
 
 enum class WidgetKind(val title: String, val provider: Class<out SextantWidgetProvider>) {
   Today("今日支出", TodayWidget::class.java),
-  QuickEntry("快捷记账", QuickEntryWidget::class.java),
+  QuickEntry("账本入口", QuickEntryWidget::class.java),
   Budget("本月预算", BudgetWidget::class.java),
   Month("月度收支", MonthWidget::class.java),
   Upcoming("近期扣费", UpcomingWidget::class.java),
@@ -57,15 +57,6 @@ class RecentWidget : SextantWidgetProvider()
 
 object WidgetUpdates {
   private val mutex = Mutex()
-  suspend fun configure(context: Context, kind: WidgetKind, id: Int, options: WidgetOptions) {
-    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + kotlinx.coroutines.Dispatchers.IO) {
-      mutex.withLock {
-        WidgetPreferences(context).save(id, options)
-        WidgetRenderer.clearForConfiguration(context, kind, id)
-      }
-      enqueue(context)
-    }
-  }
   fun installed(context: Context): List<Pair<WidgetKind, Int>> {
     val manager = AppWidgetManager.getInstance(context)
     return WidgetKind.entries.flatMap { kind ->
@@ -84,7 +75,7 @@ object WidgetUpdates {
     try {
       val snapshot = (context.applicationContext as SextantApplication).repository.loadWidgetSnapshot()
       widgets.forEach { (kind, id) ->
-        // 配置和尺寸在快照读取后获取，避免显示已取消的隐私设置。
+        // 尺寸和旧版保留的隐私设置在快照读取后获取。
         WidgetRenderer.update(context, kind, id, snapshot)
       }
       true

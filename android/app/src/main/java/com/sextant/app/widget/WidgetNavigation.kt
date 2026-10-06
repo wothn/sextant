@@ -10,7 +10,7 @@ import com.sextant.app.automation.AutomationNotifier
 object WidgetNavigation {
   const val EXTRA_DESTINATION = "com.sextant.app.widget.DESTINATION"
   const val EXTRA_RECURRING_ID = "com.sextant.app.widget.RECURRING_ID"
-  val destinations = setOf("entry", "today", "budget", "expense", "income", "recurring", "recent")
+  val destinations = setOf("home", "entry", "today", "budget", "expense", "income", "recurring", "recent")
 
   fun intent(context: Context, destination: String, itemId: String? = null): Intent =
     Intent(context, MainActivity::class.java).apply {

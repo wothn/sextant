@@ -74,9 +74,6 @@ fun timestampLabel(millis: Long, today: LocalDate = LocalDate.now()): String {
   return "$year${date.monthValue}月${date.dayOfMonth}日 ${SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(millis))}"
 }
 
-/** 小组件始终带日期，跨日后旧缓存不会被误认成刚刚更新。 */
-fun widgetUpdatedLabel(millis: Long): String = SimpleDateFormat("M/d HH:mm", Locale.CHINA).format(Date(millis)) + " 更新"
-
 fun formatCurrency(valueCents: Long): String {
   return NumberFormat.getCurrencyInstance(Locale.CHINA).format(valueCents / 100.0)
 }
