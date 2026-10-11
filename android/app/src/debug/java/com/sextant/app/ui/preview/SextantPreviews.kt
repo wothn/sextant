@@ -8,6 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Devices
@@ -35,6 +39,7 @@ import com.sextant.app.data.Transaction
 import com.sextant.app.data.TransactionListItem
 import com.sextant.app.data.TransactionType
 import com.sextant.app.ui.components.SextantCollapsibleFab
+import com.sextant.app.ui.components.ExpensePieChart
 import com.sextant.app.ui.navigation.LedgerNavigationBar
 import com.sextant.app.ui.navigation.Tab
 import com.sextant.app.ui.screens.AnalyticsScreen
@@ -95,6 +100,50 @@ private fun AnalyticsScreenPreview() {
         onWindowChanged = {},
         onTransactionClick = {},
       )
+    }
+  }
+}
+
+@SextantThemePreviews
+@Composable
+private fun PieChartTotalPreview() {
+  PieChartPreview(populatedPreviewState.categoryBreakdown)
+}
+
+@Preview(name = "选中分类", group = "饼图", widthDp = 360)
+@Composable
+private fun PieChartSelectedPreview() {
+  PieChartPreview(populatedPreviewState.categoryBreakdown, selectedId = "shopping")
+}
+
+@Preview(name = "密集小分类", group = "饼图", widthDp = 360)
+@Composable
+private fun PieChartDensePreview() {
+  PieChartPreview(listOf(populatedPreviewState.categoryBreakdown.first().copy(amountCents = 999_000)) +
+    List(10) { index ->
+      populatedPreviewState.categoryBreakdown[index % 5].copy(categoryName = "小额分类${index + 1}",
+        amountCents = 100, memberCategoryIds = setOf("small-$index"))
+    })
+}
+
+@Preview(name = "窄屏大字体长金额", group = "饼图", widthDp = 320, fontScale = 1.5f)
+@Composable
+private fun PieChartLongAmountPreview() {
+  PieChartPreview(populatedPreviewState.categoryBreakdown.take(2).map { it.copy(amountCents = it.amountCents * 100_000) })
+}
+
+@Preview(name = "单分类收入", group = "饼图", widthDp = 360)
+@Composable
+private fun PieChartSingleIncomePreview() {
+  PieChartPreview(listOf(populatedPreviewState.categoryBreakdown.first().copy(categoryName = "工资")), metric = AnalysisMetric.Income)
+}
+
+@Composable
+private fun PieChartPreview(items: List<CategoryBreakdown>, selectedId: String? = null, metric: AnalysisMetric = AnalysisMetric.Expense) {
+  var selection by rememberSaveable { mutableStateOf(selectedId) }
+  SextantTheme(themePreference = ThemePreference.System) {
+    Box(Modifier.padding(20.dp)) {
+      ExpensePieChart(items, items.sumOf { it.amountCents }, selection, metric, onSelect = { selection = it })
     }
   }
 }
