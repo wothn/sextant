@@ -189,9 +189,10 @@ data class LedgerFilter(
   val isAllTime: Boolean
     get() = rangeStart == Long.MIN_VALUE && rangeEnd == Long.MAX_VALUE
 
-  /** 除时间范围以外的条件数量，用于概览入口的角标。 */
+  /** 生效条件数量，非全部时间的范围也算一项，用于概览入口的角标。 */
   val conditionCount: Int
     get() = listOf(
+      !isAllTime,
       query.isNotBlank(),
       categoryId != null,
       paymentMethodId != null,
@@ -202,8 +203,8 @@ data class LedgerFilter(
   val hasConditions: Boolean
     get() = conditionCount > 0
 
-  /** 只保留时间范围，清掉其它筛选条件。 */
-  fun cleared(): LedgerFilter = LedgerFilter(rangeStart = rangeStart, rangeEnd = rangeEnd)
+  /** 清掉全部筛选条件，时间范围恢复为不限。 */
+  fun cleared(): LedgerFilter = allTime()
 
   companion object {
     fun forMonth(monthMillis: Long): LedgerFilter = monthRangeOf(monthMillis).let { (start, end) ->

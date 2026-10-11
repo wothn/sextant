@@ -265,7 +265,7 @@ fun SextantIconButton(
       contentColor = tint, disabledContentColor = SextantColors.TextSubtle), content = content)
 }
 
-/** 并列的工具入口共用淡底、24dp 图标与 48dp 点击区域；生效条件使用强调色。 */
+/** 工具入口默认无底色，生效条件使用强调色；保留 24dp 图标与 48dp 点击区域。 */
 @Composable
 fun SextantTonalIconButton(
   onClick: () -> Unit,
@@ -278,7 +278,7 @@ fun SextantTonalIconButton(
     modifier = modifier.size(48.dp),
     shape = SextantFullShape,
     colors = IconButtonDefaults.filledTonalIconButtonColors(
-      containerColor = if (highlighted) SextantColors.AccentSoft else SextantColors.SurfaceContainer,
+      containerColor = if (highlighted) SextantColors.AccentSoft else Color.Transparent,
       contentColor = if (highlighted) SextantColors.AccentStrong else SextantColors.TextMuted,
     ),
     content = content,

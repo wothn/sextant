@@ -333,12 +333,7 @@ fun LedgerFilterSheet(
             .padding(horizontal = 20.dp, vertical = 16.dp),
           horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-          SextantOutlinedButton(onClick = {
-              draft = LedgerFilter.allTime()
-              queryText = ""
-              minAmountText = ""
-              maxAmountText = ""
-            },
+          SextantOutlinedButton(onClick = { resetConditions() },
             modifier = Modifier.weight(1f),
           ) { Text("重置筛选") }
           SextantButton(onClick = { onApply(draft) },
