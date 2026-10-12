@@ -354,7 +354,6 @@ fun RecurringExpenseEditor(
       ) {
         Text(
           if (panel != RecurringPanel.Form) "返回周期支出" else if (editing == null) "添加" else "保存修改",
-          style = MaterialTheme.typography.titleSmall,
         )
       }
     }

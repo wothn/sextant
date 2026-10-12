@@ -58,10 +58,8 @@ import com.sextant.app.ui.theme.SextantMotion
 // ---------------------------------------------------------------------------
 
 /**
- * 浮动操作按钮：48dp 正圆、铜橙填充。
- *
- * 用 [SextantFullShape] 而不是 [MaterialTheme.shapes] 的一档：正方形的 FAB 取胶囊圆角就是
- * 正圆，形状本身说明「这是主操作」，与同样全圆角的按钮、chip 一致。
+ * 记账主操作：56dp 起的铜橙胶囊，图标与文字共同说明用途。
+ * 按压形变复用官方中号按钮形状，字体放大时允许自然增高。
  *
  * Sextant 将记账主操作放在独立 FAB 中，让入口易于触达。
  *
@@ -78,29 +76,35 @@ fun SextantFab(
   containerColor: Color = SextantColors.Accent,
   contentColor: Color = SextantColors.OnAccent,
 ) {
-  Surface(
+  Button(
     onClick = onClick,
-    modifier = modifier.size(48.dp),
-    shape = SextantFullShape,
-    color = containerColor,
-    contentColor = contentColor,
-    tonalElevation = 0.dp,
-    shadowElevation = 3.dp,
+    modifier = modifier.heightIn(min = ButtonDefaults.MediumContainerHeight),
+    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MediumContainerHeight),
+    colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = contentColor),
+    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 1.dp),
+    contentPadding = ButtonDefaults.MediumContentPadding,
   ) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(24.dp))
-    }
+    Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.MediumIconSize))
+    Spacer(Modifier.width(ButtonDefaults.MediumIconSpacing))
+    Text(contentDescription, style = MaterialTheme.typography.titleMedium, maxLines = 1)
   }
 }
 
 /**
- * 铺了记账 FAB 的列表（目前只有概览）底部要再预留的空白：48dp 按钮 + 16dp 下边距 + 16dp 呼吸。
+ * 概览结尾给记账按钮、16dp 下边距与16dp 呼吸留位；按钮高度随字体缩放计算。
  *
  * 起算点是**底栏上沿**，所以页面把它和 [LocalBottomBarInset] 一起加进 `contentPadding.bottom`：
  * 再加上底栏那一份，最后一行就不会停在 FAB 底下——明细的金额正在右边，也正是 FAB 待的位置。
  * 没有 FAB 的页面只加 [LocalBottomBarInset]。
  */
-val SextantFabClearance: Dp = 80.dp
+val SextantFabClearance: Dp
+  @Composable get() {
+    val textHeight = with(LocalDensity.current) { MaterialTheme.typography.titleMedium.lineHeight.toDp() }
+    val padding = ButtonDefaults.MediumContentPadding
+    val contentHeight = maxOf(textHeight, ButtonDefaults.MediumIconSize) +
+      padding.calculateTopPadding() + padding.calculateBottomPadding()
+    return maxOf(ButtonDefaults.MediumContainerHeight, contentHeight) + 32.dp
+  }
 
 /**
  * 会随滚动收起的记账 FAB。
@@ -220,7 +224,7 @@ fun RowScope.SextantNavigationItem(
   val focused by interactionSource.collectIsFocusedAsState()
   val contentScale by animateFloatAsState(
     targetValue = if (pressed) 0.96f else 1f,
-    animationSpec = SextantMotion.fastEffects(),
+    animationSpec = SextantMotion.fastSpatial(),
     label = "navContentScale",
   )
   val contentColor by animateColorAsState(

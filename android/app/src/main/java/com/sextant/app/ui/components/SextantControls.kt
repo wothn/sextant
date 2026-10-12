@@ -174,7 +174,7 @@ fun SextantButton(
     elevation = null,
     contentPadding = size.contentPadding,
     interactionSource = interactionSource,
-    content = content,
+    content = { ProvideTextStyle(ButtonDefaults.textStyleFor(size.height)) { content() } },
   )
 }
 
@@ -233,7 +233,7 @@ fun SextantOutlinedButton(
     ),
     contentPadding = size.contentPadding,
     interactionSource = interactionSource,
-    content = content,
+    content = { ProvideTextStyle(ButtonDefaults.textStyleFor(size.height)) { content() } },
   )
 }
 
@@ -241,7 +241,7 @@ fun SextantOutlinedButton(
 @Composable
 fun SextantTextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable RowScope.() -> Unit) {
   TextButton(onClick = onClick, modifier = modifier.heightIn(min = 48.dp), enabled = enabled,
-    shape = SextantFullShape,
+    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
     colors = ButtonDefaults.textButtonColors(
       contentColor = SextantColors.AccentStrong,
@@ -260,7 +260,7 @@ fun SextantIconButton(
   tint: Color = SextantColors.TextMuted,
   content: @Composable () -> Unit,
 ) {
-  IconButton(onClick = onClick, modifier = modifier, enabled = enabled,
+  IconButton(onClick = onClick, shapes = IconButtonDefaults.shapes(), modifier = modifier, enabled = enabled,
     colors = IconButtonDefaults.iconButtonColors(
       contentColor = tint, disabledContentColor = SextantColors.TextSubtle), content = content)
 }
@@ -276,7 +276,7 @@ fun SextantTonalIconButton(
   FilledTonalIconButton(
     onClick = onClick,
     modifier = modifier.size(48.dp),
-    shape = SextantFullShape,
+    shapes = IconButtonDefaults.shapes(),
     colors = IconButtonDefaults.filledTonalIconButtonColors(
       containerColor = if (highlighted) SextantColors.AccentSoft else Color.Transparent,
       contentColor = if (highlighted) SextantColors.AccentStrong else SextantColors.TextMuted,

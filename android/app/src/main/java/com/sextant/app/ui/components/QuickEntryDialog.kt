@@ -315,8 +315,7 @@ fun QuickEntryDialog(
             containerColor = SextantColors.SurfaceContainerHighest)
           Spacer(Modifier.width(8.dp))
         }
-        Text(if (saving) "正在保存" else if (panel != EntryPanel.Form) "返回记账" else if (editing == null) "记好了" else "保存修改",
-          style = MaterialTheme.typography.titleSmall)
+        Text(if (saving) "正在保存" else if (panel != EntryPanel.Form) "返回记账" else if (editing == null) "记好了" else "保存修改")
       }
     }
   }

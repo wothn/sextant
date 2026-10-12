@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,8 +27,10 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sextant.app.data.Category
 import com.sextant.app.data.PaymentMethod
 import com.sextant.app.ui.theme.sextantEmphasized
@@ -97,7 +101,29 @@ fun SextantMetric(
       color = SextantColors.TextSubtle,
       style = if (primary) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium,
     )
-    Text(value, style = valueStyle, color = valueColor)
+    if (primary) {
+      BoxWithConstraints {
+        val measurer = rememberTextMeasurer()
+        val minFontSize = MaterialTheme.typography.titleLarge.fontSize
+        val maxWidthPx = constraints.maxWidth
+        // 核心金额优先保持完整一行；最低保留次级金额字号，更长时允许完整换行。
+        val fittedStyle = remember(value, valueStyle, minFontSize, maxWidthPx, measurer) {
+          var style = valueStyle
+          while (style.fontSize > minFontSize &&
+            measurer.measure(value, style = style, softWrap = false).size.width > maxWidthPx) {
+            val size = (style.fontSize.value - 1f).coerceAtLeast(minFontSize.value)
+            style = valueStyle.copy(
+              fontSize = size.sp,
+              lineHeight = (valueStyle.lineHeight.value * size / valueStyle.fontSize.value).sp,
+            )
+          }
+          style
+        }
+        Text(value, style = fittedStyle, color = valueColor)
+      }
+    } else {
+      Text(value, style = valueStyle, color = valueColor)
+    }
   }
 }
 
