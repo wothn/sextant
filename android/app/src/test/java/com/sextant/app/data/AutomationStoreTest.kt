@@ -101,6 +101,27 @@ class AutomationStoreTest {
   }
 
   @Test
+  fun shenzhenTransitResultEnrichesMerchantlessNotificationWithoutDuplicatingExpense() = runBlocking {
+    val time = 1_791_817_200_000L
+    val event = store.capture(notification("transit-payment").copy(postedAt = time), encrypted())!!
+    val posted = store.postCandidate(event, WECHAT_PACKAGE,
+      candidate().copy(amountCents = 2000, occurredAt = time, description = "", merchant = null))!!
+    val page = PaymentPageParser.parse(WECHAT_PACKAGE,
+      listOf("支付成功", "示例交通服务", "￥20.00", "摇一摇，有优惠", "返回商家"), time + 3850)!!
+    val pageEvent = store.capture(pageNotification("transit-page", page), encrypted())!!
+    val enriched = store.postCandidate(pageEvent, WECHAT_PACKAGE, page)!!
+    val row = database.transactionDao().findById(posted.id)!!
+    assertEquals(posted.id, enriched.id)
+    assertEquals(1L, database.count("transactions"))
+    assertEquals(2000L, row.amountCents)
+    assertEquals(time, row.transactionDate)
+    assertEquals("示例交通服务", row.merchantName)
+    assertEquals("示例交通服务", row.description)
+    assertEquals(AutomationEventStatus.Duplicate, store.getEvent(pageEvent)!!.status)
+    assertEquals("payment_merged", store.listRecentEvents().first { it.id == pageEvent }.failureCode)
+  }
+
+  @Test
   fun pageEnrichesNotificationWithoutAddingTransactionAndRefreshesUndoVersion() = runBlocking {
     val event = store.capture(notification("notification-first"), encrypted())!!
     val posted = store.postCandidate(event, WECHAT_PACKAGE, candidate().copy(description = ""))!!
