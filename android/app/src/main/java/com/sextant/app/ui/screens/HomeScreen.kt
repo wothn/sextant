@@ -61,14 +61,11 @@ import com.sextant.app.ui.util.dayGroupLabel
 import com.sextant.app.ui.util.displayDescription
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
-import com.sextant.app.ui.util.rangeLabel
 import com.sextant.app.ui.util.signedAmountPlain
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.ExpandMore
 import com.sextant.app.ui.components.SextantTonalIconButton
-import com.sextant.app.ui.components.SextantTextButton
 import com.sextant.app.ui.theme.SextantFullShape
 import com.sextant.app.ui.theme.sextantEmphasized
 
@@ -115,7 +112,7 @@ fun HomeScreen(
       }
       item {
         Column(Modifier.fillMaxWidth().padding(ScreenPadding)) {
-          RecentLedgerHeader(state.transactions.size, filter) { showFilters = true }
+          RecentLedgerHeader(state.transactions.size, filter)
         }
       }
       if (state.groups.isEmpty()) {
@@ -157,7 +154,7 @@ fun HomeScreen(
 
 @Composable
 private fun EmptyLedgerCard(filter: LedgerFilter) {
-  if (filter.hasConditions || !filter.isAllTime) {
+  if (filter.hasConditions) {
     EmptyCard("这个条件下还没有记录", "换个时间范围，或清除筛选条件后再看看。")
   } else {
     EmptyCard("还没有记录", "记一笔后，这里会按日期排好最近的明细。")
@@ -170,11 +167,10 @@ private fun EmptyLedgerCard(filter: LedgerFilter) {
  */
 @Composable
 private fun FilterTrigger(filter: LedgerFilter, onClick: () -> Unit) {
-  val highlighted = filter.hasConditions || !filter.isAllTime
   Box(contentAlignment = Alignment.TopEnd) {
     SextantTonalIconButton(
       onClick = onClick,
-      highlighted = highlighted,
+      highlighted = filter.hasConditions,
     ) {
       Icon(
         Icons.Outlined.Tune,
@@ -267,25 +263,14 @@ private fun MonthlyBudgetProgress(label: String, spent: Long, total: Long) {
 }
 
 @Composable
-private fun RecentLedgerHeader(count: Int, filter: LedgerFilter, onOpenFilters: () -> Unit) {
-  FlowRow(
-    Modifier.fillMaxWidth().padding(bottom = 8.dp),
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+private fun RecentLedgerHeader(count: Int, filter: LedgerFilter) {
+  Row(
+    Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 20.dp),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically,
   ) {
-    Row(
-      Modifier.padding(vertical = 12.dp),
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-    ) {
-      SextantHeading(if (filter.hasConditions) "筛选明细" else "明细")
-      Text("$count 笔", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
-    }
-    SextantTextButton(onClick = onOpenFilters) {
-      Text(filter.rangeLabel(), style = MaterialTheme.typography.bodyMedium)
-      Spacer(Modifier.width(4.dp))
-      Icon(Icons.Outlined.ExpandMore, contentDescription = null, modifier = Modifier.size(20.dp))
-    }
+    SextantHeading(if (filter.hasConditions) "筛选明细" else "明细")
+    Text("$count 笔", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodyMedium)
   }
 }
 

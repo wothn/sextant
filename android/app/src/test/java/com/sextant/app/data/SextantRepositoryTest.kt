@@ -485,6 +485,32 @@ class SextantRepositoryTest {
   }
 
   @Test
+  fun clearingAllFiltersRestoresTransactionsOutsideTheSelectedConditions() = runBlocking {
+    val repository = SextantRepository(context)
+    val initial = repository.loadState()
+    val expenseCategory = initial.categories.first { it.type == TransactionType.Expense && it.includeInSpending }
+    val incomeCategory = initial.categories.first { it.type == TransactionType.Income }
+    val source = initial.paymentMethods.first()
+    val earlierDay = now() - 40 * 86_400_000L
+    repository.addTransaction(TransactionType.Expense, 1_000, expenseCategory.id, source.id, "午饭", now())
+    repository.addTransaction(TransactionType.Income, 50_000, incomeCategory.id, null, "早前收入", earlierDay)
+    val filtered = LedgerFilter.currentMonth().copy(
+      query = "午饭",
+      categoryId = expenseCategory.id,
+      paymentMethodId = source.id,
+      type = TransactionType.Expense,
+      minAmountCents = 500,
+      maxAmountCents = 2_000,
+    )
+
+    assertEquals(listOf("午饭"), repository.loadState(filtered).transactions.map { it.transaction.description })
+    val restored = repository.loadState(filtered.cleared())
+    assertEquals(setOf("午饭", "早前收入"), restored.transactions.map { it.transaction.description }.toSet())
+    assertEquals(1_000L, restored.rangeSummary.expenseCents)
+    assertEquals(50_000L, restored.rangeSummary.incomeCents)
+  }
+
+  @Test
   fun filtersByAmountRange() = runBlocking {
     val repository = SextantRepository(context)
     val initial = repository.loadState(filter())

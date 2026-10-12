@@ -1,133 +1,202 @@
 package com.sextant.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import com.sextant.app.data.AnalysisMetric
 import com.sextant.app.data.CategoryBreakdown
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
-import com.sextant.app.data.AnalysisMetric
 import com.sextant.app.ui.util.analysisMetricLabel
+import com.sextant.app.ui.util.calendarAmount
 import com.sextant.app.ui.util.formatCurrency
+import com.sextant.app.ui.util.pieLabelCenters
+import com.sextant.app.ui.util.pieSliceAt
+import com.sextant.app.ui.util.pieSlices
 import com.sextant.app.ui.util.spendingShareLabel
-import kotlin.math.atan2
-import kotlin.math.hypot
 
-/** 扇区保留真实占比，不为小分类强制扩大角度；列表提供完整名称和替代操作。 */
+/** 分类与占比沿引导线标注；中心默认显示总额，选中分类后显示该分类金额。 */
 @Composable
-fun ExpensePieChart(items: List<CategoryBreakdown>, total: Long, selectedId: String?, metric: AnalysisMetric = AnalysisMetric.Expense, onSelect: (String) -> Unit) {
+fun ExpensePieChart(
+  items: List<CategoryBreakdown>,
+  total: Long,
+  selectedId: String?,
+  metric: AnalysisMetric = AnalysisMetric.Expense,
+  onSelect: (String?) -> Unit,
+) {
   if (total <= 0 || items.isEmpty()) return
   fun identity(item: CategoryBreakdown) = item.memberCategoryIds.sorted().joinToString("|")
-  val selected = items.firstOrNull { identity(it) == selectedId } ?: items.first()
+  val selected = items.firstOrNull { identity(it) == selectedId }
+  fun select(index: Int) {
+    val id = identity(items[index])
+    onSelect(if (id == selectedId) null else id)
+  }
+  val selectedIndex = selected?.let(items::indexOf) ?: -1
+  val slices = pieSlices(items.map { it.amountCents }, total)
   val colors = items.map { argbColor(it.color) }
-  val selectedIndex = items.indexOf(selected)
+  val shares = items.map { spendingShareLabel(it.amountCents, total) }
   val surface = SextantColors.SurfaceContainerLow
+  val textColor = SextantColors.Text
+  val subtle = SextantColors.TextSubtle
   val density = LocalDensity.current
-  val textMeasurer = rememberTextMeasurer()
+  val measurer = rememberTextMeasurer()
+  val nameStyle = MaterialTheme.typography.labelMedium
+  val shareStyle = MaterialTheme.typography.labelSmall
+  val amountStyle = MaterialTheme.typography.titleLarge
   val metricLabel = analysisMetricLabel(metric)
-  val shareLabel = spendingShareLabel(selected.amountCents, total)
-  val amountLabel = formatCurrency(selected.amountCents)
-  val caption = if (selectedIndex == 0) metricLabel + "最多的分类" else "已选分类"
-  val centerWidth = maxOf(
-    textMeasurer.measure("占总$metricLabel", style = MaterialTheme.typography.labelSmall).size.width,
-    listOf("100%", "99.9%", "<0.1%").maxOf {
-      textMeasurer.measure(it, style = MaterialTheme.typography.titleLarge).size.width
-    },
-  )
-  val detailWidth = maxOf(
-    textMeasurer.measure(formatCurrency(items.maxOf { it.amountCents }), style = MaterialTheme.typography.titleLarge).size.width,
-    textMeasurer.measure(metricLabel + "最多的分类", style = MaterialTheme.typography.bodySmall).size.width,
-    items.maxOf { textMeasurer.measure(it.categoryName.take(4), style = MaterialTheme.typography.titleMedium).size.width } +
-      with(density) { 18.dp.roundToPx() },
-    if (items.size > 1) textMeasurer.measure("点击饼图查看占比", style = MaterialTheme.typography.bodySmall).size.width else 0,
-  )
-  val minimumChartSize = maxOf(128.dp, (with(density) { centerWidth.toDp() } + 18.dp) / .66f)
-  val minimumDetailWidth = with(density) { detailWidth.toDp() }
+  val centerLabel = selected?.categoryName ?: "总$metricLabel"
+  val amount = selected?.amountCents ?: total
+  val exactAmount = formatCurrency(amount)
+
   SextantSurface(Modifier.fillMaxWidth(), color = surface) {
-    BoxWithConstraints(Modifier.padding(20.dp)) {
-      val stacked = maxWidth < minimumChartSize + 16.dp + minimumDetailWidth
-      val chartSize = if (stacked) maxOf(176.dp, minimumChartSize).coerceAtMost(maxWidth)
-        else (maxWidth - 16.dp - minimumDetailWidth).coerceIn(minimumChartSize, maxOf(176.dp, minimumChartSize))
-      val strokeWidth = chartSize * .17f
-      val chart: @Composable () -> Unit = {
-        Box(Modifier.size(chartSize), contentAlignment = Alignment.Center) {
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(12.dp)) {
+      val availableWidth = maxWidth
+      // 标签占两侧，宽屏限制圆环大小；行高随文字测量，分类密集时增加图表高度。
+      val shareWidth = with(density) { shares.maxOf { measurer.measure(it, style = shareStyle).size.width }.toDp() }
+      val labelWidth = maxOf((availableWidth * .2f).coerceAtMost(112.dp), shareWidth + 4.dp)
+      val diameter = (availableWidth - (labelWidth + 12.dp) * 2).coerceAtMost(240.dp)
+      val radius = with(density) { diameter.toPx() / 2 }
+      val stroke = radius * .28f
+      val widthPx = with(density) { availableWidth.toPx() }
+      val labelWidthPx = with(density) { labelWidth.roundToPx() }
+      val nameHeight = items.maxOf {
+        measurer.measure(it.categoryName, style = nameStyle.copy(fontWeight = FontWeight.Bold),
+          constraints = Constraints(maxWidth = labelWidthPx), maxLines = 2, overflow = TextOverflow.Ellipsis).size.height
+      }
+      val shareHeight = shares.maxOf { measurer.measure(it, style = shareStyle).size.height }
+      val rowHeight = maxOf(with(density) { 48.dp.toPx() }, nameHeight + shareHeight + with(density) { 8.dp.toPx() })
+      val sideCount = maxOf(slices.count { it.isRight }, slices.count { !it.isRight })
+      val heightPx = maxOf(radius * 2 + with(density) { 24.dp.toPx() }, sideCount * rowHeight)
+      val center = Offset(widthPx / 2, heightPx / 2)
+      val labelCenters = mutableMapOf<Int, Float>()
+      listOf(false, true).forEach { right ->
+        val side = slices.filter { it.isRight == right }
+        val centers = pieLabelCenters(side.map { center.y + it.y * (radius + with(density) { 6.dp.toPx() }) },
+          rowHeight / 2, heightPx - rowHeight / 2, rowHeight)
+        side.forEachIndexed { index, slice -> labelCenters[slice.index] = centers[index] }
+      }
+      val centerWidth = diameter * .66f
+      val compact = measurer.measure(exactAmount, style = amountStyle).size.width > with(density) { centerWidth.toPx() }
+      val centerAmount = if (compact) "¥" + calendarAmount(amount) else exactAmount
+      val centerAmountStyle = if (measurer.measure(centerAmount, style = amountStyle).size.width > with(density) { centerWidth.toPx() })
+        MaterialTheme.typography.titleMedium else amountStyle
+      val centerLabelStyle = MaterialTheme.typography.labelSmall
+      val centerTextHeight = measurer.measure(centerLabel, style = centerLabelStyle, maxLines = 1).size.height +
+        measurer.measure(centerAmount, style = centerAmountStyle).size.height
+      val showCenterLabel = centerTextHeight <= with(density) { (diameter * .52f).toPx() }
+
+      Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.fillMaxWidth().height(with(density) { heightPx.toDp() }), contentAlignment = AbsoluteAlignment.TopLeft) {
           Canvas(Modifier.fillMaxSize()
-            .pointerInput(items, total, chartSize) {
+            .pointerInput(items, total, selectedId, diameter, heightPx) {
               detectTapGestures { point ->
-                val x = point.x - size.width / 2f; val y = point.y - size.height / 2f
-                val radius = minOf(size.width, size.height) / 2f
-                if (hypot(x, y) in (radius - strokeWidth.toPx() - 3.dp.toPx())..(radius - 3.dp.toPx())) {
-                  val angle = ((Math.toDegrees(atan2(y.toDouble(), x.toDouble())) + 450) % 360).toFloat()
-                  var end = 0f
-                  val hit = items.indexOfFirst { end += (it.amountCents.toDouble() / total * 360).toFloat(); angle < end }
-                  if (hit >= 0) onSelect(identity(items[hit]))
-                }
+                pieSliceAt(point.x - center.x, point.y - center.y, radius, stroke, slices)?.let(::select)
               }
             }
             .clearAndSetSemantics {
-              contentDescription = analysisMetricLabel(metric) + "分类占比饼图"
-              stateDescription = selected.categoryName + "，" + spendingShareLabel(selected.amountCents, total)
-              customActions = items.map { item ->
-                CustomAccessibilityAction(item.categoryName + " " + spendingShareLabel(item.amountCents, total)) {
-                  onSelect(identity(item)); true
+              contentDescription = "$metricLabel 分类占比饼图"
+              stateDescription = "$centerLabel，$exactAmount" + (selected?.let { "，" + spendingShareLabel(it.amountCents, total) } ?: "")
+              customActions = slices.map { slice ->
+                CustomAccessibilityAction(items[slice.index].categoryName + " " + shares[slice.index]) {
+                  select(slice.index); true
                 }
-              }
+              } + if (selected != null) listOf(CustomAccessibilityAction("显示总$metricLabel") { onSelect(null); true }) else emptyList()
             }) {
-            val stroke = strokeWidth.toPx()
-            val inset = stroke / 2 + 3.dp.toPx()
-            val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
-            var start = -90f
-            items.forEachIndexed { index, item ->
-              val sweep = (item.amountCents.toDouble() / total * 360).toFloat()
-              drawArc(colors[index].copy(alpha = if (index == selectedIndex) 1f else .65f), start, sweep,
-                false, Offset(inset, inset), arcSize, style = Stroke(stroke))
-              // 分隔线不会改变扇区的统计角度。
-              if (items.size > 1 && sweep > 2f) {
-                drawArc(surface, start, .7f, false, Offset(inset, inset), arcSize, style = Stroke(stroke + 1.dp.toPx()))
+            val arcRadius = radius - stroke / 2
+            val arcOffset = center - Offset(arcRadius, arcRadius)
+            val arcSize = Size(arcRadius * 2, arcRadius * 2)
+            slices.forEach { slice ->
+              val active = slice.index == selectedIndex
+              val color = colors[slice.index].copy(alpha = if (selected == null || active) 1f else .45f)
+              drawArc(color, slice.start, slice.sweep, false, arcOffset, arcSize,
+                style = Stroke(stroke + if (active) 3.dp.toPx() else 0f))
+              // 分隔线覆盖绘制，不改变扇区占比和点击角度。
+              if (slices.size > 1 && slice.sweep > 2f) {
+                drawArc(surface, slice.start, .7f, false, arcOffset, arcSize, style = Stroke(stroke + 4.dp.toPx()))
               }
-              start += sweep
+              val direction = Offset(slice.x, slice.y)
+              val anchor = center + direction * (radius + if (active) 2.dp.toPx() else 0f)
+              val radialEnd = center + direction * (radius + 6.dp.toPx())
+              val labelY = labelCenters.getValue(slice.index)
+              val sign = if (slice.isRight) 1 else -1
+              // 先横向离开圆环，再连接错开的标签，避免密集标签的引导线穿过扇区。
+              val sideExit = Offset(center.x + sign * (radius + 4.dp.toPx()), radialEnd.y)
+              val elbow = Offset(center.x + sign * (radius + 8.dp.toPx()), labelY)
+              val end = Offset(if (slice.isRight) size.width - labelWidth.toPx() else labelWidth.toPx(), labelY)
+              val lineColor = colors[slice.index].copy(alpha = if (active) 1f else .65f)
+              val lineWidth = if (active) 1.5.dp.toPx() else 1.dp.toPx()
+              drawLine(lineColor, anchor, radialEnd, lineWidth, StrokeCap.Round)
+              drawLine(lineColor, radialEnd, sideExit, lineWidth, StrokeCap.Round)
+              drawLine(lineColor, sideExit, elbow, lineWidth, StrokeCap.Round)
+              drawLine(lineColor, elbow, end, lineWidth, StrokeCap.Round)
+              if (active) drawCircle(colors[slice.index], 2.5.dp.toPx(), anchor)
             }
           }
-          Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("占总" + analysisMetricLabel(metric), style = MaterialTheme.typography.labelSmall, color = SextantColors.TextSubtle)
-            Text(shareLabel, style = MaterialTheme.typography.titleLarge)
+          slices.forEach { slice ->
+            val item = items[slice.index]
+            val active = slice.index == selectedIndex
+            Column(
+              Modifier.absoluteOffset(
+                x = if (slice.isRight) availableWidth - labelWidth else 0.dp,
+                y = with(density) { (labelCenters.getValue(slice.index) - rowHeight / 2).toDp() },
+              ).width(labelWidth).height(with(density) { rowHeight.toDp() })
+                .selectable(selected = active, role = Role.Button, onClick = { select(slice.index) })
+                .semantics { contentDescription = "${item.categoryName}，${shares[slice.index]}，${formatCurrency(item.amountCents)}" },
+              verticalArrangement = Arrangement.Center,
+              horizontalAlignment = if (slice.isRight) Alignment.Start else Alignment.End,
+            ) {
+              val textAlign = if (slice.isRight) TextAlign.Start else TextAlign.End
+              Text(item.categoryName, Modifier.fillMaxWidth(), style = nameStyle,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal, color = textColor,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = textAlign)
+              Text(shares[slice.index], Modifier.fillMaxWidth(), style = shareStyle, color = subtle,
+                maxLines = 1, textAlign = textAlign)
+            }
+          }
+          Column(
+            Modifier.absoluteOffset(x = (availableWidth - centerWidth) / 2,
+              y = with(density) { center.y.toDp() } - diameter * .26f)
+              .width(centerWidth).height(diameter * .52f)
+              .clickable(enabled = selected != null, onClickLabel = "显示总$metricLabel") { onSelect(null) },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+          ) {
+            if (showCenterLabel) {
+              Text(centerLabel, style = centerLabelStyle, color = subtle,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(centerAmount, style = centerAmountStyle, color = textColor, textAlign = TextAlign.Center)
           }
         }
-      }
-      val detail: @Composable () -> Unit = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ColorDot(argbColor(selected.color))
-            Text(selected.categoryName, style = MaterialTheme.typography.titleMedium)
-          }
-          Text(amountLabel, style = MaterialTheme.typography.titleLarge)
-          Text(caption, style = MaterialTheme.typography.bodySmall,
-            color = SextantColors.TextMuted)
-          if (items.size > 1) {
-            Text("点击饼图查看占比", style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
-          }
+        // 极长金额或大字体下圆心用单位简写，精确金额仍完整展示，不截断金额。
+        if (compact || !showCenterLabel) {
+          Text("$centerLabel · $exactAmount", style = MaterialTheme.typography.titleMedium,
+            color = textColor, textAlign = TextAlign.Center)
         }
-      }
-      if (stacked) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(16.dp)) { chart(); detail() }
-      } else {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-          chart(); Box(Modifier.weight(1f)) { detail() }
+        if (items.size > 1) {
+          Text(if (selected == null) "点击扇区或标签查看金额" else "再次点击已选分类或圆心查看总额",
+            style = MaterialTheme.typography.bodySmall, color = subtle, textAlign = TextAlign.Center)
         }
       }
     }
