@@ -190,7 +190,7 @@ fun SextantApp(
   ) { padding ->
     // 底栏照旧交给 Scaffold 去量高度，但内容不再吃它的下边距：底栏是悬浮的，被它盖住的
     // 只有条本身，两侧和上方的空隙应该能看到明细在滚。于是这里只让开系统导航区，把量到的
-    // 底栏高度通过 LocalBottomBarInset 交给页面，由页面在列表结尾预留（见 design.md）。
+    // 底栏高度通过 LocalBottomBarInset 交给页面，由页面在列表结尾预留。
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val barInset = (padding.calculateBottomPadding() - navBarInset - BottomBarGap)
       .coerceAtLeast(0.dp)
