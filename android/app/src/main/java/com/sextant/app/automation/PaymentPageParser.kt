@@ -9,11 +9,15 @@ import java.time.format.ResolverStyle
 
 /** Only completed, single-transaction pages. Never infer a payment from a chat or bill list. */
 object PaymentPageParser {
-  fun parse(sourcePackage: String, text: List<String>, observedAt: Long): ParsedTransactionCandidate? {
-    if (sourcePackage !in setOf(WECHAT_PACKAGE, ALIPAY_PACKAGE)) return null
+  fun parse(sourcePackage: String, text: List<String>, observedAt: Long): ParsedTransactionCandidate? =
+    inspect(sourcePackage, text, observedAt).candidate
+
+  fun inspect(sourcePackage: String, text: List<String>, observedAt: Long): PaymentPageInspection {
+    fun reject(reason: String) = PaymentPageInspection(reason = reason)
+    if (sourcePackage !in setOf(WECHAT_PACKAGE, ALIPAY_PACKAGE)) return reject("unsupported_source")
     val lines = text.flatMap { it.lines() }.map { it.trim().replace('￥', '¥') }.filter(String::isNotEmpty)
-    if (lines.size !in 3..200) return null
-    if (lines.any { it in rejectedPages }) return null
+    if (lines.size !in 3..200) return reject("page_text_incomplete")
+    if (lines.any { it in rejectedPages }) return reject("page_not_completed")
     // Alipay's WebView content precedes the native toolbar, so there the title sits anywhere on the
     // page. WeChat's native detail page keeps the title in the toolbar at the very top, while the
     // payment card embedded in a mini-program puts it on the row right above the amount. WeChat's
@@ -30,21 +34,21 @@ object PaymentPageParser {
     val expenseLines = if (sourcePackage == ALIPAY_PACKAGE && detail) {
       lines.filter { alipayExpenseAmount.matches(it) }.distinct()
     } else emptyList()
-    if (expenseLines.size > 1) return null
+    if (expenseLines.size > 1) return reject("amount_ambiguous")
     val expenseLine = expenseLines.singleOrNull()
     // An income or malformed spoken total must not fall back to a discount's negative amount.
     if (sourcePackage == ALIPAY_PACKAGE && detail && expenseLine == null &&
-      lines.take(12).any { it.startsWith("支出") || it.startsWith("收入") }) return null
+      lines.take(12).any { it.startsWith("支出") || it.startsWith("收入") }) return reject("unsupported_direction")
     val detailTotal = expenseLine?.let { alipayExpenseAmount.matchEntire(it)!!.groupValues[1] }
     // Alipay exposes the actual total in a parent content description, while child nodes
     // also contain the original price and bank discount. Do not infer it from their order.
     val alipayTotals = if (sourcePackage == ALIPAY_PACKAGE && !detail) {
       lines.take(16).mapNotNull { alipaySuccessAmount.matchEntire(it)?.groupValues?.get(1) }.distinct()
     } else emptyList()
-    if (alipayTotals.size > 1) return null
+    if (alipayTotals.size > 1) return reject("amount_ambiguous")
     val alipayTotal = alipayTotals.singleOrNull()
     val success = lines.take(16).firstOrNull { it in successTitles }
-      ?: alipayTotal?.let { "支付成功" } ?: return null
+      ?: alipayTotal?.let { "支付成功" } ?: return reject("success_missing")
     // WeChat's native and mini-program result pages expose only content descriptions: success,
     // merchant, unsigned yuan total, then optional promotions and a closing action. The native
     // page closes with 完成, the mini-program page with 返回商家; accepting only 完成 rejected the
@@ -55,23 +59,23 @@ object PaymentPageParser {
       lines[1].takeIf { validMerchant(it) && excludedKinds.none(it::startsWith) }
     } else null
     val hasPaymentField = lines.any { line -> paymentFields.any { line == it || line.startsWith("$it：") || line.startsWith("$it:") } }
-    if (!detail && !hasPaymentField && wechatResultMerchant == null) return null
+    if (!detail && !hasPaymentField && wechatResultMerchant == null) return reject("payment_fields_missing")
 
     val labeledAmount = field(lines, listOf("实付金额", "实付款", "支付金额", "付款金额"))
     val explicitTotal = alipayTotal ?: detailTotal
     if (explicitTotal != null && labeledAmount != null) {
-      val labeledMatch = amount.matchEntire(labeledAmount) ?: return null
-      val explicitMatch = amount.matchEntire(explicitTotal) ?: return null
-      if (parseAmountCents(labeledMatch.groupValues[2]) != parseAmountCents(explicitMatch.groupValues[2])) return null
+      val labeledMatch = amount.matchEntire(labeledAmount) ?: return reject("amount_invalid")
+      val explicitMatch = amount.matchEntire(explicitTotal) ?: return reject("amount_invalid")
+      if (parseAmountCents(labeledMatch.groupValues[2]) != parseAmountCents(explicitMatch.groupValues[2])) return reject("amount_conflict")
     }
     val amountText = explicitTotal ?: labeledAmount
       ?: lines.take(12).filter { amount.matches(it) && it.any { char -> char in "¥元.+-" } }.distinct().singleOrNull()
-      ?: return null
-    val amountMatch = amount.matchEntire(amountText) ?: return null
-    val cents = parseAmountCents(amountMatch.groupValues[2]) ?: return null
+      ?: return reject("amount_missing_or_ambiguous")
+    val amountMatch = amount.matchEntire(amountText) ?: return reject("amount_invalid")
+    val cents = parseAmountCents(amountMatch.groupValues[2]) ?: return reject("amount_invalid")
     // This first adapter handles purchases; transfers, refunds and repayments need their own rules.
-    if (lines.any { line -> excludedKinds.any { line == it || line.startsWith("$it：") || line.startsWith("$it:") } }) return null
-    if (amountMatch.groupValues[1] == "+") return null
+    if (lines.any { line -> excludedKinds.any { line == it || line.startsWith("$it：") || line.startsWith("$it:") } }) return reject("unsupported_kind")
+    if (amountMatch.groupValues[1] == "+") return reject("income_page")
 
     // 微信交易详情里，个人卖家的「商户全称」会被脱敏成「商户_」加真名的形式，招牌名则同时出现在
     // 「商品」和金额上方那行标题里。招牌名才是顾客认得的、通知里会写的那个名字，补记时要靠它和
@@ -92,20 +96,20 @@ object PaymentPageParser {
         listOfNotNull(lines.getOrNull(index - 1), lines.getOrNull(index + 1))
           .firstOrNull { signedExpense && validMerchant(it) && excludedKinds.none(it::startsWith) }
       } else null
-    if (merchant != null && !validMerchant(merchant)) return null
+    if (merchant != null && !validMerchant(merchant)) return reject("merchant_invalid")
     // Only this explicit Alipay success total permits an absent merchant. Keep the
     // description empty so notifications can match and later enrich the transaction.
-    if (merchant == null && alipayTotal == null) return null
+    if (merchant == null && alipayTotal == null) return reject("merchant_missing")
 
     val timeText = field(lines, listOf("付款时间", "支付时间", "交易时间", "创建时间", "转账时间"))
     val transactionTime = timeText?.let(::parseTime)
-    if (timeText != null && transactionTime == null) return null
-    if (detail && transactionTime == null) return null
+    if (timeText != null && transactionTime == null) return reject("time_invalid")
+    if (detail && transactionTime == null) return reject("time_missing")
     val occurredAt = transactionTime ?: observedAt
-    if (occurredAt > observedAt + 60_000) return null
+    if (occurredAt > observedAt + 60_000) return reject("time_future")
     val reference = field(lines, listOf("交易单号", "交易号", "订单号", "转账单号"))
       ?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{6,80}")) }
-    return ParsedTransactionCandidate(
+    return PaymentPageInspection(reason = "parsed", candidate = ParsedTransactionCandidate(
       direction = TransactionType.Expense,
       kind = AutomationKind.Purchase,
       amountCents = cents,
@@ -117,7 +121,7 @@ object PaymentPageParser {
       directionEvidence = success,
       parser = if (sourcePackage == WECHAT_PACKAGE) "wechat-page-v1" else "alipay-page-v1",
       hasExactTime = transactionTime != null,
-    )
+    ))
   }
 
   private fun field(lines: List<String>, labels: List<String>): String? {
@@ -182,3 +186,5 @@ object PaymentPageParser {
   )).toSet()
   private val timeFormats = listOf("uuuu-MM-dd HH:mm:ss", "uuuu/MM/dd HH:mm:ss", "uuuu年M月d日 HH:mm:ss")
 }
+
+data class PaymentPageInspection(val reason: String, val candidate: ParsedTransactionCandidate? = null)

@@ -47,6 +47,9 @@ object NotificationParserRegistry {
     )
   }
 
+  internal fun hasPaymentClues(notification: CapturedNotification): Boolean =
+    listOf("支付", "付款", "收款", "到账", "转账", "退款", "交易").any(notification.normalizedText()::contains)
+
   fun isPlausibleFinancial(notification: CapturedNotification): Boolean {
     if (notification.sourcePackage !in SUPPORTED_PACKAGES) return false
     val title = notification.title.trim()

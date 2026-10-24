@@ -9,6 +9,7 @@ import com.sextant.app.automation.AutomationCoordinator
 import com.sextant.app.automation.NotificationListenerConnection
 import com.sextant.app.data.BackupCoordinator
 import com.sextant.app.data.SextantRepository
+import com.sextant.app.data.DiagnosticExportCoordinator
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,8 @@ class SextantApplication : Application() {
     private set
   lateinit var backupCoordinator: BackupCoordinator
     private set
+  lateinit var diagnosticExporter: DiagnosticExportCoordinator
+    private set
 
   private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -38,6 +41,7 @@ class SextantApplication : Application() {
     // 备份读写挂在应用级作用域上：它要比设置页活得久，旋转或分屏重建界面时不能把正在
     // 写文件的导出、正在替换账本的恢复一起取消掉。
     backupCoordinator = BackupCoordinator(this, repository, appScope)
+    diagnosticExporter = DiagnosticExportCoordinator(this, repository, appScope)
     appScope.launch {
       repository.changes.collect { runCatching { com.sextant.app.widget.WidgetUpdates.enqueue(this@SextantApplication) } }
     }

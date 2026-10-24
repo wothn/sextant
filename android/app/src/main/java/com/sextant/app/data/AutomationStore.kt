@@ -8,6 +8,7 @@ import com.sextant.app.automation.ParsedTransactionCandidate
 import com.sextant.app.automation.WECHAT_PACKAGE
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 自动记账的持久化：通知事件，以及「把一条通知落成流水」这个动作本身。
@@ -25,6 +26,8 @@ internal class AutomationStore(private val database: SextantDatabase) {
       alipayEnabled = values[KEY_ALIPAY].toBooleanSetting(default = true),
       resultNotificationsEnabled = values[KEY_RESULT_NOTIFICATIONS].toBooleanSetting(default = true),
       paymentPageEnabled = values[KEY_PAYMENT_PAGE].toBooleanSetting(),
+      diagnosticsEnabled = values[AutomationDiagnostics.ENABLED_KEY].toBooleanSetting(),
+      diagnosticContentEnabled = values[AutomationDiagnostics.CONTENT_KEY].toBooleanSetting(),
     )
   }
 
@@ -35,11 +38,17 @@ internal class AutomationStore(private val database: SextantDatabase) {
       KEY_ALIPAY to settings.alipayEnabled.asSetting(),
       KEY_RESULT_NOTIFICATIONS to settings.resultNotificationsEnabled.asSetting(),
       KEY_PAYMENT_PAGE to settings.paymentPageEnabled.asSetting(),
+      AutomationDiagnostics.ENABLED_KEY to settings.diagnosticsEnabled.asSetting(),
+      AutomationDiagnostics.CONTENT_KEY to (settings.diagnosticsEnabled && settings.diagnosticContentEnabled).asSetting(),
     )
-    database.withTransaction {
-      values.forEach { (key, value) ->
-        database.appSettingDao().upsert(AppSettingEntity(key, value))
+    database.diagnosticPolicy.mutex.withLock {
+      database.withTransaction {
+        values.forEach { (key, value) ->
+          database.appSettingDao().upsert(AppSettingEntity(key, value))
+        }
       }
+      database.diagnosticPolicy.settings = settings.copy(
+        diagnosticContentEnabled = settings.diagnosticsEnabled && settings.diagnosticContentEnabled)
     }
   }
 
@@ -342,6 +351,8 @@ internal data class StoredAutomationEvent(
   val postedAt: Long,
   val encrypted: EncryptedValue?,
   val status: AutomationEventStatus,
+  val failureCode: String?,
+  val transactionId: String?,
 )
 
 internal data class PostedTransaction(
@@ -363,6 +374,8 @@ private fun AutomationEventEntity.toStoredEvent() = StoredAutomationEvent(
     EncryptedValue(encryptedPayload, payloadIv)
   },
   status = status,
+  failureCode = failureCode,
+  transactionId = transactionId,
 )
 
 private fun AutomationKind.storageValue(): String = name.replace(Regex("([a-z])([A-Z])"), "$1_$2").lowercase()

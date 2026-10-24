@@ -20,6 +20,35 @@ class PaymentPageParserTest {
   }
   @After fun tearDown() { TimeZone.setDefault(previousZone) }
 
+  @Test fun diagnosticInspectionExplainsWhyPagesAreRejected() {
+    val cases = listOf(
+      emptyList<String>() to "page_text_incomplete",
+      listOf("微信", "首页", "朋友") to "success_missing",
+      listOf("支付成功", "¥12.00", "完成") to "payment_fields_missing",
+      listOf("支付成功", "¥12.00", "付款方式", "零钱") to "merchant_missing",
+      detail.filterNot { it.startsWith("付款时间") } to "time_missing",
+      detail.map { if (it.startsWith("付款时间")) "付款时间：昨天" else it } to "time_invalid",
+      (detail + "转账") to "unsupported_kind",
+    )
+    for ((page, reason) in cases) {
+      val inspection = PaymentPageParser.inspect(WECHAT_PACKAGE, page, now)
+      assertEquals(page.toString(), reason, inspection.reason)
+      assertNull(inspection.candidate)
+      assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, page, now))
+    }
+    val accepted = PaymentPageParser.inspect(WECHAT_PACKAGE, wechatMiniProgramSuccess, now)
+    assertEquals("parsed", accepted.reason)
+    assertEquals(PaymentPageParser.parse(WECHAT_PACKAGE, wechatMiniProgramSuccess, now), accepted.candidate)
+  }
+
+  @Test fun paymentKeywordsInChatsDoNotProducePaymentCandidates() {
+    for (page in listOf(
+      listOf("朋友", "今晚一起吃饭吗", "12元"),
+      listOf("聊天信息", "支付成功", "¥12.00"),
+      listOf("立即付款", "收款方", "街角咖啡", "¥12.00"),
+    )) assertNull(PaymentPageParser.inspect(WECHAT_PACKAGE, page, now).candidate)
+  }
+
   @Test fun wechatResultExtractsMerchantAndActualAmount() {
     val candidate = PaymentPageParser.parse(WECHAT_PACKAGE,
       listOf("支付成功", "¥12.00", "实付金额", "¥12.00", "收款方", "街角咖啡", "付款方式", "零钱", "优惠券", "5.00元"), now)!!

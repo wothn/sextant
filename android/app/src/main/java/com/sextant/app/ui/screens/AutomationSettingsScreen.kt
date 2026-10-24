@@ -80,6 +80,10 @@ import com.sextant.app.data.AutomationSettings
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.util.timestampLabel
+import com.sextant.app.ui.util.diagnosticTimestampLabel
+import com.sextant.app.ui.util.diagnosticChannelLabel
+import com.sextant.app.ui.util.diagnosticReasonLabel
+import com.sextant.app.ui.util.diagnosticStageLabel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 
@@ -97,9 +101,24 @@ fun AutomationSettingsScreen(
   var draft by remember(state.automationSettings) { mutableStateOf(state.automationSettings) }
   var message by remember { mutableStateOf<String?>(null) }
   val scope = rememberCoroutineScope()
+  val snackbar = LocalSnackbarHostState.current
+  val app = context.applicationContext as SextantApplication
+  val diagnosticCount by repository.diagnosticEntryCount.collectAsState(initial = 0)
+  val recentDiagnostics by repository.recentDiagnostics.collectAsState(initial = emptyList())
+  val diagnosticError by repository.diagnosticWriteError.collectAsState()
+  val diagnosticExport by app.diagnosticExporter.state.collectAsState()
+  val diagnosticExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+    if (uri != null) app.diagnosticExporter.export(uri)
+  }
+  LaunchedEffect(diagnosticExport.message) {
+    diagnosticExport.message?.let { snackbarMessage ->
+      snackbar.showSnackbar(snackbarMessage)
+      app.diagnosticExporter.dismissMessage()
+    }
+  }
+  LaunchedEffect(Unit) { repository.cleanupAutomationDiagnostics() }
   // 这些开关改一下就生效，不该再要求点一次「保存设置」。开关自己就是草稿，改动由这里
   // 合并后落库；界面对成功保持沉默，只有失败才出声。
-  val snackbar = LocalSnackbarHostState.current
   val autosave = rememberAutosave(
     spec = draft,
     load = { repository.loadAutomationSettings() },
@@ -214,7 +233,9 @@ fun AutomationSettingsScreen(
                     title = "支付页面",
                     status = if (pageAuthorized) "已授权" else "未授权",
                     ready = pageAuthorized,
-                    description = "通过无障碍服务读取支付信息，仅在本机解析，不保存或上传原始页面，也不会自动操作支付。",
+                    description = if (draft.diagnosticsEnabled && draft.diagnosticContentEnabled)
+                      "通过无障碍服务在本机解析支付信息。诊断内容记录已开启，会加密保留支付页面可读文字。"
+                      else "通过无障碍服务读取支付信息，仅在本机解析，不保存或上传原始页面，也不会自动操作支付。",
                     action = if (pageAuthorized) "管理授权" else "授权页面读取",
                     onClick = {
                       runCatching { pageAccessLauncher.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
@@ -239,6 +260,50 @@ fun AutomationSettingsScreen(
                     Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                       Text("系统尚未允许结果通知，自动入账仍可继续。", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
                       SextantTonalButton(onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("允许结果通知") }
+                    }
+                  }
+                }
+              }
+            }
+            item(key = "diagnostics") {
+              AutomationSection("识别诊断") {
+                Column {
+                  InlineSwitch("记录诊断日志", "排查重复记账和页面漏识别，默认不记录支付正文", draft.diagnosticsEnabled) {
+                    draft = draft.copy(diagnosticsEnabled = it,
+                      diagnosticContentEnabled = if (it) draft.diagnosticContentEnabled else false)
+                  }
+                  if (draft.diagnosticsEnabled) {
+                    InlineSwitch("记录支付内容", "额外加密保存支付通知正文和页面提取的支付字段，可能包含金额、商户及交易单号", draft.diagnosticContentEnabled) {
+                      draft = draft.copy(diagnosticContentEnabled = it)
+                    }
+                  }
+                  Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("仅保存在本机，最多保留 7 天、500 条。关闭后停止新增；已有日志可清空。导出文件为可读文本，记录支付内容时请留意其中的个人信息。",
+                      color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+                    Text("已有 $diagnosticCount 条日志", style = MaterialTheme.typography.bodyMedium)
+                    diagnosticError?.let { Text(it, color = SextantColors.Danger) }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                      SextantTonalButton(enabled = !diagnosticExport.busy, onClick = {
+                        runCatching { diagnosticExportLauncher.launch("sextant-diagnostics-${System.currentTimeMillis()}.json") }
+                          .onFailure { message = "当前系统无法打开文件保存位置。" }
+                      }) { Text(if (diagnosticExport.busy) "正在导出" else "导出诊断日志") }
+                      SextantTextButton(enabled = diagnosticCount > 0, onClick = {
+                        scope.launch {
+                          runCatching { repository.clearAutomationDiagnostics() }
+                            .onSuccess { snackbar.showSnackbar("诊断日志已清空。") }
+                            .onFailure { snackbar.showSnackbar("清空失败，请重试。") }
+                        }
+                      }) { Text("清空日志") }
+                    }
+                    if (draft.diagnosticsEnabled) {
+                      Text("开启后重现一次问题，再回到这里导出日志。若没有页面读取记录，可检查无障碍服务是否仍已连接。",
+                        color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    recentDiagnostics.forEach { entry ->
+                      Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("${diagnosticChannelLabel(entry.channel)} · ${diagnosticStageLabel(entry.stage)} · ${diagnosticReasonLabel(entry.reason)}", style = MaterialTheme.typography.bodyMedium)
+                        Text(diagnosticTimestampLabel(entry.at), style = MaterialTheme.typography.bodySmall, color = SextantColors.TextMuted)
+                      }
                     }
                   }
                 }

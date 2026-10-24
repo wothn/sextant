@@ -6,6 +6,15 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/** Short-lived diagnostic records; the complete record, including any opt-in content, is encrypted. */
+@Entity(tableName = "automation_diagnostics", indices = [Index(value = ["createdAt"], name = "idx_diagnostics_created")])
+internal data class AutomationDiagnosticEntity(
+  @PrimaryKey(autoGenerate = true) val id: Long = 0,
+  val createdAt: Long,
+  val ciphertext: ByteArray,
+  val iv: ByteArray,
+)
+
 /**
  * Room 实体：数据库表结构的唯一声明处。
  *

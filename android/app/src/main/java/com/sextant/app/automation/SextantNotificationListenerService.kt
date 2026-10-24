@@ -12,6 +12,7 @@ class SextantNotificationListenerService : NotificationListenerService() {
   override fun onListenerConnected() {
     super.onListenerConnected()
     connection.markConnected()
+    (application as SextantApplication).automationCoordinator.noteServiceEvent("notification", "listener_connected")
   }
 
   override fun onListenerDisconnected() {
@@ -20,6 +21,7 @@ class SextantNotificationListenerService : NotificationListenerService() {
     // 注意：requestRebind() 在 onListenerDisconnected 之后立刻调用会被系统丢弃，
     // 所以交给 connection 延迟一小段时间再试，并带上失败退避。
     connection.markDisconnected()
+    (application as SextantApplication).automationCoordinator.noteServiceEvent("notification", "listener_disconnected")
     connection.scheduleRebind(this, (application as SextantApplication).applicationScope)
   }
 
@@ -27,6 +29,11 @@ class SextantNotificationListenerService : NotificationListenerService() {
     val posted = sbn ?: return
     if (posted.packageName != WECHAT_PACKAGE && posted.packageName != ALIPAY_PACKAGE) return
     val captured = notificationsForCapture(posted) { activeNotifications }
+    if (posted.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
+      (application as SextantApplication).automationCoordinator.noteServiceEvent("notification", "group_summary",
+        posted.packageName, mapOf("childCount" to captured.size.toString(), "postedAt" to posted.postTime.toString(),
+          "notificationKeyHash" to com.sextant.app.data.AutomationDiagnostics.fingerprint(posted.key)))
+    }
     captured.forEach {
       (application as SextantApplication).automationCoordinator.capture(it)
     }

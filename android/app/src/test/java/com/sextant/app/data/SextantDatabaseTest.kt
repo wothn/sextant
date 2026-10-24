@@ -58,6 +58,8 @@ class SextantDatabaseTest {
     assertTrue(db.hasTable("budgets"))
     assertTrue(db.hasTable("app_settings"))
     assertTrue(db.hasTable("automation_events"))
+    assertTrue(db.hasTable("automation_diagnostics"))
+    assertTrue(db.hasIndex("idx_diagnostics_created"))
     assertFalse(db.hasTable("classification_rules"))
     assertTrue(db.hasTable("recurring_expenses"))
     assertTrue(db.hasTable("merchant_category_rules"))
@@ -83,6 +85,25 @@ class SextantDatabaseTest {
     assertEquals(setOf("银行卡", "微信", "支付宝", "现金"), db.stringSet("SELECT name FROM payment_methods"))
     assertEquals(4L, db.longValue("SELECT COUNT(*) FROM payment_methods WHERE isBuiltIn = 1 AND isActive = 1"))
     assertTrue(db.longValue("SELECT COUNT(*) FROM categories") > 7)
+  }
+
+  @Test
+  fun versionThirteenUpgradePreservesLedgerAndCreatesEmptyDiagnosticLog() {
+    // Exact sqlite_master statements captured from the existing v13 emulator database.
+    val schema = javaClass.getResource("/database/v13-device-schema.json")!!.readText()
+    context.openOrCreateDatabase(DATABASE_NAME, Context.MODE_PRIVATE, null).use { db ->
+      Json.decodeFromString<List<String>>(schema).forEach { db.execSQL(it) }
+      db.execSQL("INSERT INTO transactions (id, amountCents, type, description, transactionDate, createdAt, updatedAt, merchantName) VALUES ('v13-row', 1234, 'expense', '保留备注', 10, 11, 12, '咖啡店')")
+      db.execSQL("INSERT INTO app_settings VALUES ('automation_enabled', 'true')")
+      db.version = 13
+    }
+    val db = openCurrentDatabase()
+    assertEquals(SextantDatabase.DATABASE_VERSION, db.version)
+    assertEquals(1234L, db.longValue("SELECT amountCents FROM transactions WHERE id = 'v13-row'"))
+    assertEquals("咖啡店", db.stringValue("SELECT merchantName FROM transactions WHERE id = 'v13-row'"))
+    assertEquals("true", db.stringValue("SELECT value FROM app_settings WHERE key = 'automation_enabled'"))
+    assertTrue(db.hasIndex("idx_diagnostics_created"))
+    assertEquals(0L, db.longValue("SELECT COUNT(*) FROM automation_diagnostics"))
   }
 
   @Test
@@ -177,7 +198,7 @@ class SextantDatabaseTest {
       db.version = 12
     }
     val db = openCurrentDatabase()
-    assertEquals(13, db.version)
+    assertEquals(SextantDatabase.DATABASE_VERSION, db.version)
     assertTrue(db.hasTable("merchant_category_rules"))
     assertEquals(0L, db.longValue("SELECT COUNT(*) FROM merchant_category_rules"))
     assertEquals(1234L, db.longValue("SELECT amountCents FROM transactions WHERE id = 'v12-row'"))

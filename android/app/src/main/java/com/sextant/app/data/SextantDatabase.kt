@@ -31,12 +31,14 @@ import java.util.UUID
     RecurringExpenseEntity::class,
     AutomationEventEntity::class,
     MerchantCategoryRuleEntity::class,
+    AutomationDiagnosticEntity::class,
   ],
   version = SextantDatabase.DATABASE_VERSION,
   exportSchema = true,
 )
 @TypeConverters(SextantTypeConverters::class)
 abstract class SextantDatabase : RoomDatabase() {
+  internal val diagnosticPolicy = DiagnosticPolicy()
   internal abstract fun categoryDao(): CategoryDao
   internal abstract fun transactionDao(): TransactionDao
   internal abstract fun paymentMethodDao(): PaymentMethodDao
@@ -45,9 +47,10 @@ abstract class SextantDatabase : RoomDatabase() {
   internal abstract fun recurringExpenseDao(): RecurringExpenseDao
   internal abstract fun automationEventDao(): AutomationEventDao
   internal abstract fun merchantCategoryRuleDao(): MerchantCategoryRuleDao
+  internal abstract fun automationDiagnosticDao(): AutomationDiagnosticDao
 
   companion object {
-    const val DATABASE_VERSION = 13
+    const val DATABASE_VERSION = 14
 
     private const val DATABASE_NAME = "sextant.db"
     const val THEME_PREFERENCE_KEY = "theme_preference"
@@ -71,7 +74,7 @@ abstract class SextantDatabase : RoomDatabase() {
 
     private fun build(context: Context): SextantDatabase = Room
       .databaseBuilder(context, SextantDatabase::class.java, DATABASE_NAME)
-      .addMigrations(MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
+      .addMigrations(MIGRATION_13_14, MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
       .addCallback(SeedCallback)
       // Room 的 AUTOMATIC 在真机上本来就会选 WAL，但那是运行时的选择：显式写下来，
       // 「监听服务写流水的同时页面在读书、两边不互相阻塞」才是这个库的既定行为。
@@ -87,7 +90,7 @@ abstract class SextantDatabase : RoomDatabase() {
      */
     internal fun createForTests(context: Context, name: String = DATABASE_NAME): SextantDatabase =
       Room.databaseBuilder(context.applicationContext, SextantDatabase::class.java, name)
-        .addMigrations(MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
+        .addMigrations(MIGRATION_13_14, MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
         .addCallback(SeedCallback)
         .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
         .allowMainThreadQueries()
@@ -142,6 +145,13 @@ abstract class SextantDatabase : RoomDatabase() {
           columns = "sourcePackage, providerReference",
           unique = true,
         )
+      }
+    }
+
+    val MIGRATION_13_14 = object : Migration(13, 14) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS automation_diagnostics (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, createdAt INTEGER NOT NULL, ciphertext BLOB NOT NULL, iv BLOB NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_diagnostics_created ON automation_diagnostics(createdAt)")
       }
     }
 
@@ -234,7 +244,7 @@ abstract class SextantDatabase : RoomDatabase() {
     """.trimIndent()
 
     /**
-     * 任意旧版本 → 13：重放 `SQLiteOpenHelper` 时代的 `onUpgrade` 分支，再补齐后续版本
+     * 任意旧版本 → 当前版本：重放 `SQLiteOpenHelper` 时代的 `onUpgrade` 分支，再补齐后续版本
      * 才引入的表。
      *
      * 加列走 [addColumnIfMissing]（先 `PRAGMA table_info` 判断），而不是无脑 `ALTER TABLE
@@ -280,6 +290,7 @@ abstract class SextantDatabase : RoomDatabase() {
         rebuildTransactions(db, convertAmounts = !transactionsHadCents)
         rebuildBudgets(db, convertAmounts = !budgetsHadCents)
         MIGRATION_12_13.migrate(db)
+        MIGRATION_13_14.migrate(db)
 
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transactionDate)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(type, transactionDate)")

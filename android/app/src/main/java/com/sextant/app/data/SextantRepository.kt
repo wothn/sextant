@@ -23,6 +23,11 @@ class SextantRepository(context: Context) {
   private val backupStore = BackupStore(database)
   internal val automationStore = AutomationStore(database)
   internal val automationSecretStore = AutomationSecretStore(context.applicationContext)
+  internal val automationDiagnostics = AutomationDiagnostics(database,
+    automationSecretStore::encrypt, automationSecretStore::decrypt)
+  val diagnosticEntryCount get() = automationDiagnostics.count
+  val recentDiagnostics get() = automationDiagnostics.recent
+  val diagnosticWriteError get() = automationDiagnostics.lastError
   val notificationListenerConnection = NotificationListenerConnection.create(appContext)
   private val _changes = MutableStateFlow(0L)
   val changes: StateFlow<Long> = _changes.asStateFlow()
@@ -315,6 +320,31 @@ class SextantRepository(context: Context) {
   }
 
   suspend fun listAutomationEvents(): List<AutomationEventSummary> = automationStore.listRecentEvents()
+
+  suspend fun clearAutomationDiagnostics() = automationDiagnostics.clear()
+  suspend fun cleanupAutomationDiagnostics() = automationDiagnostics.cleanup()
+
+  suspend fun exportAutomationDiagnostics(): String {
+    val info = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+    val settings = loadAutomationSettings()
+    return automationDiagnostics.export(mapOf(
+      "appVersion" to info.versionName.orEmpty(),
+      "databaseVersion" to SextantDatabase.DATABASE_VERSION.toString(),
+      "androidSdk" to android.os.Build.VERSION.SDK_INT.toString(),
+      "manufacturer" to android.os.Build.MANUFACTURER,
+      "model" to android.os.Build.MODEL,
+      "timezone" to java.util.TimeZone.getDefault().id,
+      "notificationConnection" to notificationListenerConnection.status.value.connection.name,
+      "notificationAuthorized" to notificationListenerConnection.status.value.authorized.toString(),
+      "pageAuthorized" to com.sextant.app.automation.isPaymentPageServiceEnabled(appContext).toString(),
+      "automationEnabled" to settings.enabled.toString(),
+      "pageEnabled" to settings.paymentPageEnabled.toString(),
+      "wechatEnabled" to settings.wechatEnabled.toString(),
+      "alipayEnabled" to settings.alipayEnabled.toString(),
+      "diagnosticsEnabled" to settings.diagnosticsEnabled.toString(),
+      "contentEnabled" to settings.diagnosticContentEnabled.toString(),
+    ))
+  }
 
   /**
    * 按 id 找一笔流水，连它的分类与来源展示信息一起返回。

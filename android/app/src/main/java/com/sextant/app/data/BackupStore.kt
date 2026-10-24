@@ -1,6 +1,7 @@
 package com.sextant.app.data
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -45,30 +46,34 @@ internal class BackupStore(private val database: SextantDatabase) {
   suspend fun restore(content: String): BackupSummary {
     val document = BackupCodec.decodeAndValidate(content)
     try {
-      database.withTransaction {
-        val categories = database.categoryDao()
-        val paymentMethods = database.paymentMethodDao()
-        val transactions = database.transactionDao()
-        val budgets = database.budgetDao()
-        val recurringExpenses = database.recurringExpenseDao()
-        val settings = database.appSettingDao()
+      database.diagnosticPolicy.mutex.withLock {
+        database.withTransaction {
+          val categories = database.categoryDao()
+          val paymentMethods = database.paymentMethodDao()
+          val transactions = database.transactionDao()
+          val budgets = database.budgetDao()
+          val recurringExpenses = database.recurringExpenseDao()
+          val settings = database.appSettingDao()
 
-        database.merchantCategoryRuleDao().deleteAll()
-        budgets.deleteAll()
-        recurringExpenses.deleteAll()
-        database.automationEventDao().deleteAll()
-        transactions.deleteAll()
-        settings.deleteAll()
-        paymentMethods.deleteAll()
-        categories.deleteAll()
+          database.merchantCategoryRuleDao().deleteAll()
+          budgets.deleteAll()
+          recurringExpenses.deleteAll()
+          database.automationEventDao().deleteAll()
+          database.automationDiagnosticDao().deleteAll()
+          transactions.deleteAll()
+          settings.deleteAll()
+          paymentMethods.deleteAll()
+          categories.deleteAll()
 
-        document.categories.forEach { categories.insert(it.toEntity()) }
-        document.merchantCategoryRules.forEach { database.merchantCategoryRuleDao().upsert(MerchantCategoryRuleEntity(it.merchantKey, it.merchantName, it.categoryId)) }
-        document.paymentMethods.forEach { paymentMethods.insert(it.toEntity()) }
-        document.transactions.forEach { transactions.insert(it.toEntity()) }
-        document.budgets.forEach { budgets.insert(it.toEntity()) }
-        document.recurringExpenses.forEach { recurringExpenses.insert(it.toEntity()) }
-        document.settings.forEach { settings.upsert(AppSettingEntity(it.key, it.value)) }
+          document.categories.forEach { categories.insert(it.toEntity()) }
+          document.merchantCategoryRules.forEach { database.merchantCategoryRuleDao().upsert(MerchantCategoryRuleEntity(it.merchantKey, it.merchantName, it.categoryId)) }
+          document.paymentMethods.forEach { paymentMethods.insert(it.toEntity()) }
+          document.transactions.forEach { transactions.insert(it.toEntity()) }
+          document.budgets.forEach { budgets.insert(it.toEntity()) }
+          document.recurringExpenses.forEach { recurringExpenses.insert(it.toEntity()) }
+          document.settings.forEach { settings.upsert(AppSettingEntity(it.key, it.value)) }
+        }
+        database.diagnosticPolicy.settings = AutomationSettings()
       }
     } catch (error: Exception) {
       throw BackupException("恢复失败，原有数据未被修改", error)

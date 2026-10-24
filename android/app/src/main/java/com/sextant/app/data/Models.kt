@@ -84,7 +84,11 @@ data class AutomationSettings(
   val alipayEnabled: Boolean = true,
   val resultNotificationsEnabled: Boolean = true,
   val paymentPageEnabled: Boolean = false,
+  val diagnosticsEnabled: Boolean = false,
+  val diagnosticContentEnabled: Boolean = false,
 )
+
+data class AutomationDiagnosticSummary(val at: Long, val channel: String, val reason: String, val stage: String = "")
 
 data class Budget(
   val id: String,

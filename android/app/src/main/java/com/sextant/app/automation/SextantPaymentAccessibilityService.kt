@@ -9,6 +9,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.sextant.app.SextantApplication
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -26,6 +27,11 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
   private var lastPage: String? = null
   private var lastWindow: Pair<String, Int>? = null
 
+  override fun onServiceConnected() {
+    super.onServiceConnected()
+    (application as SextantApplication).automationCoordinator.noteServiceEvent("page", "page_service_connected")
+  }
+
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     val packageName = event?.packageName?.toString() ?: return
     if (packageName != WECHAT_PACKAGE && packageName != ALIPAY_PACKAGE) return
@@ -42,18 +48,31 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
       return
     }
     val scanSession = session
+    val eventDetails = mapOf("windowId" to event.windowId.toString(), "eventType" to event.eventType.toString(),
+      "windowClass" to event.className?.toString().orEmpty())
     scanJob = serviceScope.launch {
+      val app = application as SextantApplication
+      val diagnostics = app.repository.automationDiagnostics
+      val reasons = mutableListOf<String>()
+      var result = "scan_cancelled"
+      var errorType: String? = null
       try {
-        val app = application as SextantApplication
         val settings = app.repository.loadAutomationSettings()
-        if (!settings.enabled || !settings.paymentPageEnabled) return@launch
-        if (packageName == WECHAT_PACKAGE && !settings.wechatEnabled) return@launch
-        if (packageName == ALIPAY_PACKAGE && !settings.alipayEnabled) return@launch
+        if (!settings.enabled || !settings.paymentPageEnabled ||
+          (packageName == WECHAT_PACKAGE && !settings.wechatEnabled) ||
+          (packageName == ALIPAY_PACKAGE && !settings.alipayEnabled)) {
+          result = "automation_disabled"
+          return@launch
+        }
         val candidate = awaitPaymentPageCandidate(pause = { delay(it) }) {
-          val root = rootInActiveWindow ?: return@awaitPaymentPageCandidate null
+          val root = rootInActiveWindow ?: run {
+            reasons.add("root_unavailable")
+            return@awaitPaymentPageCandidate null
+          }
           val texts = try {
             if (root.packageName?.toString() != packageName ||
               (window.second >= 0 && root.windowId != window.second)) {
+              result = "window_changed"
               return@launch
             }
             collectPaymentPageText(root)
@@ -61,29 +80,52 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
             @Suppress("DEPRECATION")
             root.recycle()
           }
-          PaymentPageParser.parse(packageName, texts, System.currentTimeMillis())
+          val inspection = PaymentPageParser.inspect(packageName, texts, System.currentTimeMillis())
+          reasons.add(inspection.reason)
+          // Never retain the surrounding accessibility tree, including on failed parses.
+          inspection.candidate
         }
         if (candidate == null) {
+          result = "scan_exhausted"
           lastPage = null
           session = UUID.randomUUID().toString()
           return@launch
         }
         val identity = "$packageName|${candidate.providerReference}|${candidate.amountCents}|${candidate.description}|${candidate.occurredAt.takeIf { candidate.hasExactTime }}"
-        if (identity == lastPage) return@launch
-        // Once recognized, finish storing and enqueueing together even if the next window opens.
+        if (identity == lastPage) {
+          result = "page_repeated"
+          return@launch
+        }
         withContext(NonCancellable + Dispatchers.Default) {
           app.automationCoordinator.receivePaymentPage(packageName, scanSession, candidate)
         }
         lastPage = identity
+        result = "parsed"
+      } catch (cancelled: CancellationException) {
+        throw cancelled
       } catch (_: SecurityException) {
-        // Permission can be revoked while a scan is in progress.
+        result = "access_revoked"
+      } catch (error: Exception) {
+        result = "scan_error"
+        errorType = error.javaClass.simpleName
+      } finally {
+        // One summary per scan, dispatched outside the retry loop and service lifetime.
+        val details = eventDetails + mapOf("attempts" to reasons.size.toString(),
+          "reasons" to reasons.joinToString(",")) + (errorType?.let { mapOf("errorType" to it) } ?: emptyMap())
+        val finalResult = result
+        app.applicationScope.launch {
+          diagnostics.record("page", "scan", finalResult, packageName, scanSession, details)
+        }
       }
     }
   }
 
-  override fun onInterrupt() = Unit
+  override fun onInterrupt() {
+    (application as SextantApplication).automationCoordinator.noteServiceEvent("page", "page_service_interrupted")
+  }
 
   override fun onDestroy() {
+    (application as SextantApplication).automationCoordinator.noteServiceEvent("page", "page_service_destroyed")
     serviceScope.cancel()
     super.onDestroy()
   }
