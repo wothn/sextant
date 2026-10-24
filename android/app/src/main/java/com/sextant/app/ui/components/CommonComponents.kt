@@ -25,6 +25,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -47,11 +50,20 @@ import com.sextant.app.ui.theme.SextantFullShape
 
 /** 空状态：凹槽色底，不再描边——空状态本来就是「没有内容」，不该比有内容时更抢眼。 */
 @Composable
-fun EmptyCard(title: String, description: String) {
-  SextantSurface(color = SextantColors.SurfaceContainer) {
+fun EmptyCard(
+  title: String,
+  description: String,
+  modifier: Modifier = Modifier,
+  actionLabel: String? = null,
+  onAction: (() -> Unit)? = null,
+) {
+  SextantSurface(modifier = modifier.fillMaxWidth(), color = SextantColors.SurfaceContainer) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
       Text(title, style = MaterialTheme.typography.titleMedium, color = SextantColors.Text)
       Text(description, style = MaterialTheme.typography.bodyMedium, color = SextantColors.TextMuted)
+      if (actionLabel != null && onAction != null) {
+        SextantTextButton(onClick = onAction) { Text(actionLabel) }
+      }
     }
   }
 }
@@ -66,7 +78,8 @@ fun EmptyCard(title: String, description: String) {
 fun SectionTitle(text: String) {
   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
     SextantMark()
-    Text(text, style = MaterialTheme.typography.headlineMedium.sextantEmphasized(), color = SextantColors.Text)
+    Text(text, style = MaterialTheme.typography.headlineMedium.sextantEmphasized(), color = SextantColors.Text,
+      modifier = Modifier.semantics { heading() })
   }
 }
 
@@ -79,7 +92,7 @@ fun SectionTitle(text: String) {
 fun SextantHeading(text: String, modifier: Modifier = Modifier) {
   Text(
     text = text,
-    modifier = modifier,
+    modifier = modifier.semantics { heading() },
     style = MaterialTheme.typography.titleLarge,
     color = SextantColors.Text,
   )
@@ -132,7 +145,9 @@ fun SextantMetric(
 fun SextantBadge(count: Int, modifier: Modifier = Modifier) {
   Box(
     modifier = modifier.sizeIn(minWidth = 18.dp, minHeight = 18.dp)
-      .clip(SextantFullShape).background(SextantColors.Accent).padding(horizontal = 4.dp),
+      .clip(SextantFullShape).background(SextantColors.Accent).padding(horizontal = 4.dp)
+      // 数量已经写进筛选按钮的 contentDescription，这里不再让读屏重复一遍孤立数字。
+      .clearAndSetSemantics { },
     contentAlignment = Alignment.Center,
   ) {
     Text(
@@ -187,7 +202,7 @@ fun <T> FlowChips(
         onClick = { onSelect(item) },
         label = { Text(label(item), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         leadingIcon = { FlowChipLeading(itemColor, icon?.invoke(item)) },
-        showSelectionCheck = icon != null,
+        showSelectionCheck = true,
       )
     }
   }
@@ -223,7 +238,7 @@ fun SextantManagementHeader(
       Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = backDescription)
     }
     SextantMark()
-    Text(title, modifier = Modifier.weight(1f),
+    Text(title, modifier = Modifier.weight(1f).semantics { heading() },
       style = MaterialTheme.typography.headlineMedium.sextantEmphasized(),
       maxLines = 2, overflow = TextOverflow.Ellipsis)
     SextantTextButton(onClick = onAction) { Text(actionLabel) }

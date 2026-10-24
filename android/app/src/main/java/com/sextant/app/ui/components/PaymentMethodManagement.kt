@@ -84,7 +84,12 @@ fun PaymentMethodManagement(
               PaymentMethodRow(method,
                 onEdit = { editingId = method.id },
                 onActiveChanged = { value -> saveAction.launch { repository.setPaymentMethodActive(method.id, value) } },
-                onDelete = if (!method.isBuiltIn && method.transactionCount == 0L) ({ pendingDeleteId = method.id }) else null)
+                onDelete = if (!method.isBuiltIn && method.transactionCount == 0L) ({ pendingDeleteId = method.id }) else null,
+                deleteDisabledReason = when {
+                  method.isBuiltIn -> "内置来源不可删除，可停用"
+                  method.transactionCount > 0L -> "有 ${method.transactionCount} 笔流水，请先停用"
+                  else -> null
+                })
             }
           }
         }
@@ -96,6 +101,7 @@ fun PaymentMethodManagement(
     PaymentMethodDialog(
       methods = methods,
       initial = null,
+      saving = saveAction.busy,
       onDismiss = { showAdd = false },
       onSubmit = { name, color ->
         saveAction.launch {
@@ -109,6 +115,7 @@ fun PaymentMethodManagement(
     PaymentMethodDialog(
       methods = methods,
       initial = method,
+      saving = saveAction.busy,
       onDismiss = { editingId = null },
       onSubmit = { name, color ->
         saveAction.launch {
@@ -124,11 +131,14 @@ fun PaymentMethodManagement(
       title = { Text("删除“${method.name}”？") },
       text = { Text("这个来源尚未被流水使用，删除后无法恢复。") },
       confirmButton = {
-        SextantTextButton(onClick = {
-          saveAction.launch {
-            repository.deletePaymentMethod(method.id)
-          }
-        }) { Text("删除") }
+        SextantTextButton(
+          onClick = {
+            saveAction.launch {
+              repository.deletePaymentMethod(method.id)
+            }
+          },
+          contentColor = SextantColors.Danger,
+        ) { Text("删除") }
       },
       dismissButton = { SextantTextButton(onClick = { pendingDeleteId = null }) { Text("取消") } },
     )
@@ -141,6 +151,7 @@ private fun PaymentMethodRow(
   onEdit: () -> Unit,
   onActiveChanged: (Boolean) -> Unit,
   onDelete: (() -> Unit)?,
+  deleteDisabledReason: String?,
 ) {
   var showActions by rememberSaveable { mutableStateOf(false) }
   Row(
@@ -173,10 +184,11 @@ private fun PaymentMethodRow(
       }
       SextantDropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
         SextantDropdownMenuItem(text = { Text("编辑") }, onClick = { showActions = false; onEdit() })
-        if (onDelete != null) {
-          SextantDropdownMenuItem(text = { Text("删除", color = SextantColors.Danger) },
-            onClick = { showActions = false; onDelete() })
-        }
+        SextantDropdownMenuItem(
+          text = { Text(if (deleteDisabledReason == null) "删除" else "删除（$deleteDisabledReason）", color = if (deleteDisabledReason == null) SextantColors.Danger else SextantColors.TextSubtle) },
+          enabled = onDelete != null,
+          onClick = { showActions = false; onDelete?.invoke() },
+        )
       }
     }
   }
@@ -186,6 +198,7 @@ private fun PaymentMethodRow(
 private fun PaymentMethodDialog(
   methods: List<PaymentMethod>,
   initial: PaymentMethod?,
+  saving: Boolean = false,
   onDismiss: () -> Unit,
   onSubmit: (String, Long) -> Unit,
 ) {
@@ -226,8 +239,14 @@ private fun PaymentMethodDialog(
     },
     confirmButton = {
       SextantButton(onClick = { onSubmit(trimmedName, color) },
-        enabled = trimmedName.isNotEmpty() && nameError == null,
-      ) { Text("保存") }
+        enabled = trimmedName.isNotEmpty() && nameError == null && !saving,
+      ) {
+        if (saving) {
+          SextantLoadingIndicator(size = 18.dp, color = SextantColors.TextMuted,
+            containerColor = SextantColors.SurfaceContainerHighest)
+        }
+        Text("保存")
+      }
     },
     dismissButton = { SextantTextButton(onClick = onDismiss) { Text("取消") } },
   )

@@ -1,9 +1,11 @@
 package com.sextant.app.ui.components
 
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -12,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.sextant.app.ui.theme.SextantMotion
+import kotlinx.coroutines.flow.collect
 
 /**
  * 动效包装层。
@@ -34,22 +37,16 @@ fun SextantTabContent(
 ) {
   // 弹簧来自 CompositionLocal，而 transitionSpec 不是 composable lambda，
   // 所以先把值取出来再传进去。
-  val spatialSpec = SextantMotion.defaultSpatial<IntOffset>()
+  val spatialSpec = SextantMotion.defaultSpatial<Float>()
   val effectsSpec = SextantMotion.defaultEffects<Float>()
   AnimatedContent(
     targetState = selectedIndex,
     modifier = modifier,
     transitionSpec = {
-      val forward = targetState > initialState
-      val enter = slideInHorizontally(
-        animationSpec = spatialSpec,
-        initialOffsetX = { width -> if (forward) width / 6 else -width / 6 },
-      ) + fadeIn(animationSpec = effectsSpec)
-      val exit = slideOutHorizontally(
-        animationSpec = spatialSpec,
-        targetOffsetX = { width -> if (forward) -width / 8 else width / 8 },
-      ) + fadeOut(animationSpec = effectsSpec)
-      enter togetherWith exit
+      // 顶级目的地之间不存在左右空间关系，用 fade through：旧页淡出、新页从 94% 放大淡入。
+      // 有方向的 shared axis 留给子页面和下钻（见 SextantPageContent）。
+      (fadeIn(animationSpec = effectsSpec) + scaleIn(initialScale = 0.94f, animationSpec = spatialSpec)) togetherWith
+        fadeOut(animationSpec = effectsSpec)
     },
     label = "tabContent",
   ) { index ->
@@ -80,4 +77,18 @@ fun <T> SextantPageContent(
     label = "pageContent",
     content = { content(it) },
   )
+}
+
+/**
+ * 返回手势：把系统预测性返回的进度流交给平台，手势完成后再切页面。
+ *
+ * 比 `BackHandler` 多的是「手势还没松手时系统就能把上一页露出来」；取消手势不会触发跳转。
+ * 页面状态本身是手写的（没有 Navigation），所以这里只做完成后的状态切换，不做跟手位移。
+ */
+@Composable
+fun SextantPredictiveBackHandler(enabled: Boolean = true, onBack: () -> Unit) {
+  PredictiveBackHandler(enabled = enabled) { progress ->
+    progress.collect { }
+    onBack()
+  }
 }

@@ -8,6 +8,7 @@ import com.sextant.app.ui.components.SextantTonalButton
 import com.sextant.app.ui.components.EmptyCard
 import com.sextant.app.ui.components.SextantHeading
 import com.sextant.app.ui.components.LocalBottomBarInset
+import com.sextant.app.ui.components.LocalSnackbarHostState
 import com.sextant.app.ui.components.SextantIconButton
 import com.sextant.app.ui.components.SextantSwitch
 import com.sextant.app.ui.components.SectionTitle
@@ -47,6 +48,7 @@ import androidx.compose.material3.Text
 import com.sextant.app.ui.components.rememberAutosave
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,11 +99,15 @@ fun AutomationSettingsScreen(
   val scope = rememberCoroutineScope()
   // 这些开关改一下就生效，不该再要求点一次「保存设置」。开关自己就是草稿，改动由这里
   // 合并后落库；界面对成功保持沉默，只有失败才出声。
+  val snackbar = LocalSnackbarHostState.current
   val autosave = rememberAutosave(
     spec = draft,
     load = { repository.loadAutomationSettings() },
     save = { repository.updateAutomationSettings(it as AutomationSettings) },
   )
+  LaunchedEffect(autosave.failure) {
+    autosave.failure?.let { reason -> snackbar.showSnackbar("$reason 再改一次开关会重试。") }
+  }
   val connection = repository.notificationListenerConnection
   val listenerStatus by connection.status.collectAsState()
   val listenerEnabled = listenerStatus.authorized

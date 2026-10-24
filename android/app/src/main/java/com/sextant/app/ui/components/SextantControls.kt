@@ -12,7 +12,9 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -239,12 +243,18 @@ fun SextantOutlinedButton(
 
 /** 文字按钮：无底色，只有内容色。点击高度仍按 48dp 保证可达。 */
 @Composable
-fun SextantTextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable RowScope.() -> Unit) {
+fun SextantTextButton(
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  enabled: Boolean = true,
+  contentColor: Color = SextantColors.AccentStrong,
+  content: @Composable RowScope.() -> Unit,
+) {
   TextButton(onClick = onClick, modifier = modifier.heightIn(min = 48.dp), enabled = enabled,
     shapes = ButtonDefaults.shapesFor(ButtonDefaults.MinHeight),
     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
     colors = ButtonDefaults.textButtonColors(
-      contentColor = SextantColors.AccentStrong,
+      contentColor = contentColor,
       disabledContentColor = SextantColors.TextSubtle,
     ), content = content)
 }
@@ -302,19 +312,43 @@ fun <T> SextantSegmentedButtonGroup(
   label: (T) -> String,
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
+  selectedContainerColor: Color = MaterialTheme.colorScheme.primary,
+  selectedContentColor: Color = MaterialTheme.colorScheme.onPrimary,
+  containerColor: Color = SextantColors.SurfaceContainerHigh,
+  segmentShape: Shape = SextantFullShape,
 ) {
-  ButtonGroup(
-    overflowIndicator = { menuState -> ButtonGroupDefaults.OverflowIndicator(menuState = menuState) },
-    modifier = modifier,
-  ) {
+  Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
     options.forEach { option ->
-      toggleableItem(
-        checked = option == selected,
-        label = label(option),
-        onCheckedChange = { checked -> if (checked) onSelect(option) },
-        weight = 1f,
-        enabled = enabled,
+      val checked = option == selected
+      val container by animateColorAsState(
+        targetValue = if (checked) selectedContainerColor else containerColor,
+        animationSpec = SextantMotion.defaultEffects(),
+        label = "segmentContainer",
       )
+      Box(
+        modifier = Modifier
+          .weight(1f)
+          .heightIn(min = 48.dp)
+          .alpha(if (enabled) 1f else 0.38f)
+          .clip(segmentShape)
+          .background(container)
+          .selectable(
+            selected = checked,
+            enabled = enabled,
+            role = Role.RadioButton,
+            onClick = { if (!checked) onSelect(option) },
+          )
+          .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center,
+      ) {
+        Text(
+          text = label(option),
+          style = MaterialTheme.typography.labelLarge,
+          color = if (checked) selectedContentColor else SextantColors.Text,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
     }
   }
 }
@@ -335,12 +369,14 @@ fun SextantTextField(
   value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier,
   label: (@Composable () -> Unit)? = null, placeholder: (@Composable () -> Unit)? = null,
   prefix: (@Composable () -> Unit)? = null, suffix: (@Composable () -> Unit)? = null,
+  trailingIcon: (@Composable () -> Unit)? = null,
   supportingText: (@Composable () -> Unit)? = null,
   singleLine: Boolean = false, isError: Boolean = false, enabled: Boolean = true,
   keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 ) {
   TextField(value = value, onValueChange = onValueChange, modifier = modifier,
-    label = label, placeholder = placeholder, prefix = prefix, suffix = suffix, supportingText = supportingText,
+    label = label, placeholder = placeholder, prefix = prefix, suffix = suffix, trailingIcon = trailingIcon,
+    supportingText = supportingText,
     singleLine = singleLine, isError = isError, enabled = enabled, keyboardOptions = keyboardOptions,
     shape = SextantFieldShape, textStyle = MaterialTheme.typography.bodyLarge,
     colors = TextFieldDefaults.colors(
@@ -423,6 +459,8 @@ fun SextantSelectableSurface(
   enabled: Boolean = true,
   role: Role = Role.Button,
   onClickLabel: String? = null,
+  activeRadius: Dp = SextantRadius.Large,
+  inactiveRadius: Dp = SextantRadius.Medium,
   content: @Composable () -> Unit,
 ) {
   val container by animateColorAsState(
@@ -433,12 +471,16 @@ fun SextantSelectableSurface(
     targetValue = if (selected) SextantColors.AccentStrong else SextantColors.Text,
     animationSpec = SextantMotion.defaultEffects(), label = "selectableContent",
   )
-  val shape = morphCorner(selected, SextantRadius.Large, SextantRadius.Medium)
+  val shape = morphCorner(selected, activeRadius, inactiveRadius)
   Surface(
     modifier = modifier
       .clip(shape)
-      .semantics { this.selected = selected }
-      .clickable(enabled = enabled, role = role, onClickLabel = onClickLabel, onClick = onClick),
+      .selectable(
+        selected = selected,
+        enabled = enabled,
+        role = role,
+        onClick = onClick,
+      ),
     shape = shape,
     color = container,
     contentColor = contentColor,
@@ -467,10 +509,11 @@ fun SextantDetailTile(
   value: String,
   icon: ImageVector,
   modifier: Modifier = Modifier,
+  enabled: Boolean = true,
   onClick: () -> Unit,
 ) {
   SextantSurface(
-    modifier = modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onClick),
+    modifier = modifier.clip(MaterialTheme.shapes.medium).clickable(enabled = enabled, onClick = onClick),
     color = SextantColors.SurfaceContainer,
     shape = MaterialTheme.shapes.medium,
   ) {
@@ -492,19 +535,19 @@ fun SextantDetailTile(
 // 选择控件
 // ---------------------------------------------------------------------------
 
-/** 筛选 chip 的配色。未选中是凹槽色，选中是铜橙淡底，两者都不描边。 */
+/** 筛选 chip 的配色。未选中是凹槽色，选中用 secondary container，两者都不描边。 */
 @Composable
 fun sextantFilterChipColors() = FilterChipDefaults.filterChipColors(
   containerColor = SextantColors.SurfaceContainer,
   labelColor = SextantColors.Text,
   iconColor = SextantColors.TextMuted,
-  selectedContainerColor = SextantColors.AccentSoft,
-  selectedLabelColor = SextantColors.AccentStrong,
-  selectedLeadingIconColor = SextantColors.AccentStrong,
-  selectedTrailingIconColor = SextantColors.AccentStrong,
+  selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+  selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+  selectedLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+  selectedTrailingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
   disabledContainerColor = SextantColors.SurfaceContainer.copy(alpha = 0.5f),
   disabledLabelColor = SextantColors.Text.copy(alpha = 0.38f),
-  disabledSelectedContainerColor = SextantColors.AccentSoft.copy(alpha = 0.5f),
+  disabledSelectedContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
 )
 
 /**
@@ -594,7 +637,7 @@ fun SextantWavyProgressIndicator(
   trackColor: Color = SextantColors.SurfaceContainerHighest,
 ) {
   LinearWavyProgressIndicator(
-    modifier = modifier,
+    modifier = modifier.semantics { contentDescription = "正在处理" },
     color = color,
     trackColor = trackColor,
   )
@@ -615,7 +658,7 @@ fun SextantLoadingIndicator(
   containerColor: Color = SextantColors.SurfaceContainer,
 ) {
   ContainedLoadingIndicator(
-    modifier = modifier.size(size),
+    modifier = modifier.size(size).semantics { contentDescription = "正在加载" },
     containerColor = containerColor,
     indicatorColor = color,
   )

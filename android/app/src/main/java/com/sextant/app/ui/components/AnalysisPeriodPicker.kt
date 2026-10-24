@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AnalysisPeriod
@@ -126,6 +127,7 @@ fun AnalysisPeriodPicker(
           AnalysisPeriod.Week -> items(analysisWeeksInMonth(YearMonth.from(browsing)), key = { it.start.toEpochDay() }) { week ->
             val checked = selected.start == week.start
             SextantSelectableSurface(selected = checked, onClick = { selectedDay = week.start.toEpochDay() },
+              role = Role.RadioButton,
               modifier = Modifier.fillMaxWidth().semantics {
                 contentDescription = analysisWeekLabel(week) + "，" + analysisWindowLabel(week)
               }) {
@@ -148,7 +150,7 @@ fun AnalysisPeriodPicker(
                 row.forEach { date ->
                   val checked = if (level == AnalysisPeriod.Month) YearMonth.from(selected.start) == YearMonth.from(date)
                     else selected.start.year == date.year
-                  SextantSelectableSurface(selected = checked, modifier = Modifier.weight(1f), onClick = {
+                  SextantSelectableSurface(selected = checked, modifier = Modifier.weight(1f), role = Role.RadioButton, onClick = {
                     if (level == initialLevel) selectedDay = date.toEpochDay()
                     else {
                       browsingDay = date.toEpochDay()

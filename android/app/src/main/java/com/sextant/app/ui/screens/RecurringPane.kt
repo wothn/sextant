@@ -36,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,12 +100,13 @@ fun RecurringPane(
   }
   val editing = state.recurringExpenses.firstOrNull { it.id == editingId }
   var creating by rememberSaveable { mutableStateOf(false) }
-  var pendingDelete by remember { mutableStateOf<RecurringExpense?>(null) }
+  var pendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
+  val pendingDelete = state.recurringExpenses.firstOrNull { it.id == pendingDeleteId }
   // 写周期支出是挂起调用（Room 不允许主线程访问数据库），而编辑器的保存回调不是协程。
   val saveAction = rememberSaveAction("recurring") {
     creating = false
     editingId = null
-    pendingDelete = null
+    pendingDeleteId = null
   }
   val today = LocalDate.now()
 
@@ -147,13 +150,17 @@ fun RecurringPane(
     }
     if (ordered.isEmpty()) {
       item {
-        EmptyCard("还没有周期支出", "添加房租、宽带或会员，提前看看接下来要扣多少。")
+        EmptyCard(
+          title = "还没有周期支出",
+          description = "添加房租、宽带或会员，提前看看接下来要扣多少。",
+          actionLabel = "添加周期支出",
+        ) { creating = true }
       }
     } else {
       groups.forEach { (title, rows) ->
         item(key = "group:$title") {
           Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(title, style = MaterialTheme.typography.titleMedium)
             Text("${rows.size} 笔", style = MaterialTheme.typography.bodyMedium, color = SextantColors.TextMuted)
           }
         }
@@ -169,7 +176,7 @@ fun RecurringPane(
       state = state,
       editing = editing,
       onDismiss = { creating = false; editingId = null },
-      onDelete = editing?.let { { pendingDelete = it } },
+      onDelete = editing?.let { { pendingDeleteId = it.id } },
       onSubmit = { draft: RecurringExpenseDraft ->
         val targetId = editing?.id
         saveAction.launch {
@@ -181,17 +188,20 @@ fun RecurringPane(
 
   pendingDelete?.let { target ->
     SextantAlertDialog(
-      onDismissRequest = { pendingDelete = null },
+      onDismissRequest = { pendingDeleteId = null },
       title = { Text("删除「${target.name}」？") },
       text = { Text("只会删掉这条计划记录，已经记进账本的流水不受影响。") },
       confirmButton = {
-        SextantTextButton(onClick = {
-          saveAction.launch {
-            repository.deleteRecurringExpense(target.id)
-          }
-        }) { Text("删除") }
+        SextantTextButton(
+          onClick = {
+            saveAction.launch {
+              repository.deleteRecurringExpense(target.id)
+            }
+          },
+          contentColor = SextantColors.Danger,
+        ) { Text("删除") }
       },
-      dismissButton = { SextantTextButton(onClick = { pendingDelete = null }) { Text("取消") } },
+      dismissButton = { SextantTextButton(onClick = { pendingDeleteId = null }) { Text("取消") } },
     )
   }
 }
@@ -232,7 +242,7 @@ private fun RecurringOverview(expenses: List<RecurringExpense>, today: LocalDate
           valueColor = if ((budgetShare ?: 0L) > 100L) SextantColors.Danger else SextantColors.Text)
       }
       if (amountByDay.isNotEmpty()) {
-        UpcomingScale(amountByDay, peak)
+        UpcomingScale(amountByDay, peak, today)
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
           Text("今天", color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
           Text(futureDayLabel(today.plusDays(UPCOMING_DAYS - 1).toStartOfDayMillis(), today), color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
@@ -255,10 +265,12 @@ private fun RecurringOverview(expenses: List<RecurringExpense>, today: LocalDate
  * 一天不会矮到看不见，具体数值由上方文字给全，所以这点视觉夸张不会误导读数。
  */
 @Composable
-private fun UpcomingScale(amountByDay: Map<LocalDate, Long>, peakCents: Long) {
-  val today = LocalDate.now()
+private fun UpcomingScale(amountByDay: Map<LocalDate, Long>, peakCents: Long, today: LocalDate) {
   Row(
-    modifier = Modifier.fillMaxWidth().height(56.dp),
+    modifier = Modifier.fillMaxWidth().height(56.dp)
+      .semantics {
+        contentDescription = "未来 30 天扣费分布，共 ${amountByDay.size} 天有扣费，最高一天 ${formatCurrency(peakCents)}"
+      },
     verticalAlignment = Alignment.Bottom,
     horizontalArrangement = Arrangement.spacedBy(2.dp),
   ) {
@@ -319,7 +331,7 @@ private fun RecurringRow(
       Column(columnModifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(amount, style = amountStyle)
         Text(
-          chargeLabel(expense, nextCharge, today),
+          (if (dueSoon) "即将扣费 · " else "") + chargeLabel(expense, nextCharge, today),
           color = if (dueSoon) SextantColors.Warning else SextantColors.TextMuted,
           style = MaterialTheme.typography.bodyMedium,
         )

@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -58,11 +59,14 @@ fun BudgetScale(
   val fraction = progress.coerceIn(0f, 1f)
   val animated by animateFloatAsState(
     targetValue = fraction,
-    animationSpec = SextantMotion.defaultSpatial(),
+    // 进度是「数值」不是「位置」：用临界阻尼的效果弹簧，避免 0.8 阻尼的空间弹簧
+    // 在 100% 附近冲过头再弹回来，看起来像超额。
+    animationSpec = SextantMotion.defaultEffects(),
     label = "budgetScale",
   )
   Canvas(modifier.fillMaxWidth().height(14.dp).semantics {
     progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
+    contentDescription = "预算使用进度"
   }) {
     val thickness = 8.dp.toPx()
     // 圆头会从线段端点再向外画出半个线宽。轨道两端各内缩一个半径，可见范围才正好是画布的

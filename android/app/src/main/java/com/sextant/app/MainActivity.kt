@@ -6,30 +6,42 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.lifecycleScope
 import com.sextant.app.automation.AutomationNotifier
+import com.sextant.app.data.ThemePreference
 import com.sextant.app.ui.SextantApp
 import com.sextant.app.ui.LedgerViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.sextant.app.ui.theme.SextantTheme
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+  private val uiPrefs by lazy { getSharedPreferences(UI_PREFS, MODE_PRIVATE) }
   private var requestedEditTransactionId by mutableStateOf<String?>(null)
   private var widgetDestination by mutableStateOf<String?>(null)
   private var widgetRecurringId by mutableStateOf<String?>(null)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    enableEdgeToEdge()
     requestedEditTransactionId = intent.getStringExtra(AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID)
     readWidgetRequest(intent)
     val sextantApplication = application as SextantApplication
     val repository = sextantApplication.repository
     // 主题必须在第一帧之前定下来，否则会先按系统主题画一帧、读完之后再跳成用户选的那套，
-    // 深色/浅色之间闪一下。这是一次按主键取单值，没有聚合也没有写入队列，代价可以接受；
-    // 其余所有读取都在协程里，不走这条路径。
-    var themePreference by mutableStateOf(runBlocking { repository.loadThemePreference() })
+    // 深色/浅色之间闪一下。SharedPreferences 是同步内存读取，代价远小于在主线程上跑一次
+    // Room 查询；数据库仍是唯一权威，启动后用协程把缓存和数据库对齐。
+    var themePreference by mutableStateOf(
+      ThemePreference.fromStorage(uiPrefs.getString(THEME_PREFERENCE_KEY, null)),
+    )
+    lifecycleScope.launch {
+      val stored = repository.loadThemePreference()
+      uiPrefs.edit().putString(THEME_PREFERENCE_KEY, stored.storageValue).apply()
+      if (stored != themePreference) themePreference = stored
+    }
     val ledgerViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
       override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(LedgerViewModel::class.java))
@@ -44,7 +56,12 @@ class MainActivity : ComponentActivity() {
           viewModel = ledgerViewModel,
           backupCoordinator = sextantApplication.backupCoordinator,
           themePreference = themePreference,
-          onThemePreferenceChanged = { themePreference = it },
+          onThemePreferenceChanged = { preference ->
+            if (preference != themePreference) {
+              themePreference = preference
+              uiPrefs.edit().putString(THEME_PREFERENCE_KEY, preference.storageValue).apply()
+            }
+          },
           requestedEditTransactionId = requestedEditTransactionId,
           onEditRequestConsumed = ::consumeEditRequest,
           widgetDestination = widgetDestination,
@@ -83,5 +100,10 @@ class MainActivity : ComponentActivity() {
   private fun consumeEditRequest() {
     requestedEditTransactionId = null
     intent.removeExtra(AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID)
+  }
+
+  private companion object {
+    const val UI_PREFS = "sextant_ui"
+    const val THEME_PREFERENCE_KEY = "theme_preference"
   }
 }

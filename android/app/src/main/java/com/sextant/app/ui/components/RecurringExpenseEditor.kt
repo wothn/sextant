@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -173,8 +174,13 @@ fun RecurringExpenseEditor(
                 onValueChange = { name = it },
                 label = { Text("名称") },
                 placeholder = { Text("房租、视频会员…") },
-                isError = name.isNotEmpty() && name.isBlank(),
-                supportingText = { Text("名称用于在列表里区分同一分类下的多条支出") },
+                isError = name.isNotEmpty() && name.trim().isEmpty(),
+                supportingText = {
+                  Text(
+                    if (name.isNotEmpty() && name.trim().isEmpty()) "名称不能只由空格组成"
+                    else "名称用于在列表里区分同一分类下的多条支出",
+                  )
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
               )
@@ -183,7 +189,12 @@ fun RecurringExpenseEditor(
                 onValueChange = { amountText = it },
                 label = { Text("每期金额") },
                 isError = amountText.isNotEmpty() && parsedAmount == null,
-                supportingText = { Text("请输入最多两位小数的有效金额") },
+                supportingText = {
+                  Text(
+                    if (amountText.isNotEmpty() && parsedAmount == null) "请输入最多两位小数的有效金额"
+                    else "例如 3500，按周期自动折算每月固定支出",
+                  )
+                },
                 prefix = { Text("¥ ") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -278,12 +289,20 @@ fun RecurringExpenseEditor(
                 modifier = Modifier.fillMaxWidth(),
               )
 
-              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+              Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
+                  value = isActive,
+                  role = Role.Switch,
+                  onValueChange = { isActive = it },
+                ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+              ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                   Text("仍在扣费", fontWeight = FontWeight.Medium)
                   Text("关掉后保留记录，但不再计入每月固定支出", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
                 }
-                SextantSwitch(checked = isActive, onCheckedChange = { isActive = it })
+                SextantSwitch(checked = isActive, onCheckedChange = null)
               }
             }
 

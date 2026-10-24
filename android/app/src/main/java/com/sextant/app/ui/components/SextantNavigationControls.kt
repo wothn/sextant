@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -58,14 +59,10 @@ import com.sextant.app.ui.theme.SextantMotion
 // ---------------------------------------------------------------------------
 
 /**
- * 记账主操作：56dp 起的铜橙胶囊，图标与文字共同说明用途。
- * 按压形变复用官方中号按钮形状，字体放大时允许自然增高。
+ * 记账主操作：M3 Expressive 的 Extended FAB。
  *
- * Sextant 将记账主操作放在独立 FAB 中，让入口易于触达。
- *
- * 没有展开态：Sextant 的记账入口直接进表单，收支方向和类型都在表单里选。把
- * 「记支出 / 记收入」提到 FAB 菜单，只会让高频的记支出每次多一次点击，而且它和表单顶部的
- * 三段选择重复、还少一个转账入口。
+ * 56dp 高、16dp 圆角、`primaryContainer` 底色、6dp 阴影——不是一颗实心主按钮。
+ * 图标与文字共同说明用途；按下走 FAB 自己的 elevation / 形状反馈。
  */
 @Composable
 fun SextantFab(
@@ -73,38 +70,34 @@ fun SextantFab(
   icon: ImageVector,
   contentDescription: String,
   modifier: Modifier = Modifier,
-  containerColor: Color = SextantColors.Accent,
-  contentColor: Color = SextantColors.OnAccent,
+  containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+  contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
 ) {
-  Button(
+  ExtendedFloatingActionButton(
     onClick = onClick,
-    modifier = modifier.heightIn(min = ButtonDefaults.MediumContainerHeight),
-    shapes = ButtonDefaults.shapesFor(ButtonDefaults.MediumContainerHeight),
-    colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = contentColor),
-    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 1.dp),
-    contentPadding = ButtonDefaults.MediumContentPadding,
-  ) {
-    Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.MediumIconSize))
-    Spacer(Modifier.width(ButtonDefaults.MediumIconSpacing))
-    Text(contentDescription, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-  }
+    modifier = modifier,
+    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+    containerColor = containerColor,
+    contentColor = contentColor,
+    elevation = FloatingActionButtonDefaults.elevation(
+      defaultElevation = 6.dp,
+      pressedElevation = 6.dp,
+      focusedElevation = 6.dp,
+      hoveredElevation = 8.dp,
+    ),
+    icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp)) },
+    text = { Text(contentDescription, style = MaterialTheme.typography.labelLarge, maxLines = 1) },
+  )
 }
 
 /**
- * 概览结尾给记账按钮、16dp 下边距与16dp 呼吸留位；按钮高度随字体缩放计算。
+ * 概览结尾给记账按钮预留的高度。
  *
- * 起算点是**底栏上沿**，所以页面把它和 [LocalBottomBarInset] 一起加进 `contentPadding.bottom`：
- * 再加上底栏那一份，最后一行就不会停在 FAB 底下——明细的金额正在右边，也正是 FAB 待的位置。
- * 没有 FAB 的页面只加 [LocalBottomBarInset]。
+ * Extended FAB 固定 56dp，文字放大时最多换到两行；这里按 56dp + 32dp 呼吸计算，
+ * 页面把它和 [LocalBottomBarInset] 一起加进 `contentPadding.bottom`。
  */
 val SextantFabClearance: Dp
-  @Composable get() {
-    val textHeight = with(LocalDensity.current) { MaterialTheme.typography.titleMedium.lineHeight.toDp() }
-    val padding = ButtonDefaults.MediumContentPadding
-    val contentHeight = maxOf(textHeight, ButtonDefaults.MediumIconSize) +
-      padding.calculateTopPadding() + padding.calculateBottomPadding()
-    return maxOf(ButtonDefaults.MediumContainerHeight, contentHeight) + 32.dp
-  }
+  @Composable get() = 56.dp + 40.dp
 
 /**
  * 会随滚动收起的记账 FAB。
@@ -158,13 +151,13 @@ fun SextantCollapsibleFab(
  */
 val LocalBottomBarInset = compositionLocalOf { 0.dp }
 
-/** 悬浮胶囊底栏；选中底块同时包住图标与标签。 */
+/** 悬浮胶囊底栏：80dp 高、56×32 的图标指示器、标签在指示器下方。 */
 @Composable
 fun SextantNavigationBar(
   selectedIndex: Int,
   itemCount: Int,
   modifier: Modifier = Modifier,
-  containerColor: Color = SextantColors.SurfaceContainerLow,
+  containerColor: Color = SextantColors.SurfaceContainer,
   content: @Composable RowScope.() -> Unit,
 ) {
   Surface(
@@ -176,29 +169,31 @@ fun SextantNavigationBar(
     shadowElevation = 2.dp,
   ) {
     BoxWithConstraints(
-      modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
-        .padding(horizontal = 6.dp, vertical = 4.dp),
+      modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)
+        .padding(horizontal = 4.dp, vertical = 6.dp),
     ) {
       val slotWidth = maxWidth / itemCount.coerceAtLeast(1)
       val lastIndex = (itemCount - 1).coerceAtLeast(0)
+      val indicatorWidth = 56.dp
+      val indicatorHeight = 32.dp
       val indicatorOffset by animateDpAsState(
-        targetValue = slotWidth * selectedIndex.coerceIn(0, lastIndex),
+        targetValue = slotWidth * selectedIndex.coerceIn(0, lastIndex) +
+          ((slotWidth - indicatorWidth) / 2).coerceAtLeast(0.dp),
         animationSpec = SextantMotion.fastSpatial(),
         label = "navIndicatorOffset",
       )
       val density = LocalDensity.current
-      // One persistent indicator moves behind the items; it never fades out on release.
       Box(Modifier.matchParentSize()) {
         Box(
           Modifier
             .offset {
-              IntOffset(with(density) {
-                indicatorOffset.coerceIn(0.dp, slotWidth * lastIndex).toPx().roundToInt()
-              }, 0)
+              IntOffset(
+                with(density) { indicatorOffset.toPx().roundToInt() },
+                with(density) { 6.dp.toPx().roundToInt() },
+              )
             }
-            .width(slotWidth)
-            .fillMaxHeight()
-            .background(SextantColors.AccentSoft, SextantFullShape),
+            .size(indicatorWidth, indicatorHeight)
+            .background(MaterialTheme.colorScheme.secondaryContainer, SextantFullShape),
         )
       }
       Row(
@@ -210,7 +205,7 @@ fun SextantNavigationBar(
   }
 }
 
-/** 选中底块由底栏统一移动；按下只轻微缩放内容，键盘聚焦用描边表达。 */
+/** 选中底块由底栏统一移动；条目本身只负责内容、涟漪与键盘聚焦。 */
 @Composable
 fun RowScope.SextantNavigationItem(
   selected: Boolean,
@@ -220,27 +215,36 @@ fun RowScope.SextantNavigationItem(
   modifier: Modifier = Modifier,
 ) {
   val interactionSource = remember { MutableInteractionSource() }
-  val pressed by interactionSource.collectIsPressedAsState()
   val focused by interactionSource.collectIsFocusedAsState()
   val contentScale by animateFloatAsState(
-    targetValue = if (pressed) 0.96f else 1f,
+    targetValue = if (selected) 1f else 1f,
     animationSpec = SextantMotion.fastSpatial(),
     label = "navContentScale",
   )
-  val contentColor by animateColorAsState(
-    targetValue = if (selected) SextantColors.AccentStrong else SextantColors.TextSubtle,
+  val iconColor by animateColorAsState(
+    targetValue = if (selected) {
+      MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+      SextantColors.TextSubtle
+    },
     animationSpec = SextantMotion.defaultEffects(),
-    label = "navContentColor",
+    label = "navIconColor",
+  )
+  val labelColor by animateColorAsState(
+    targetValue = if (selected) SextantColors.Text else SextantColors.TextSubtle,
+    animationSpec = SextantMotion.defaultEffects(),
+    label = "navLabelColor",
   )
   Box(
     modifier = modifier
       .weight(1f)
-      .heightIn(min = 48.dp)
+      .heightIn(min = 68.dp)
       .clip(SextantFullShape)
+      .then(if (focused) Modifier.border(2.dp, SextantColors.Accent, SextantFullShape) else Modifier)
       .selectable(
         selected = selected,
         interactionSource = interactionSource,
-        indication = null,
+        indication = ripple(),
         role = Role.Tab,
         onClick = onClick,
       ),
@@ -249,17 +253,22 @@ fun RowScope.SextantNavigationItem(
     Column(
       modifier = Modifier
         .fillMaxWidth()
-        .clip(SextantFullShape)
-        .then(if (focused) Modifier.border(1.dp, SextantColors.Accent, SextantFullShape) else Modifier)
-        .heightIn(min = 48.dp)
-        .padding(horizontal = 4.dp, vertical = 2.dp)
+        .padding(top = 6.dp, bottom = 4.dp)
         .graphicsLayer { scaleX = contentScale; scaleY = contentScale },
       horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
-      CompositionLocalProvider(LocalContentColor provides contentColor) {
-        icon()
-        label()
+      Box(Modifier.size(width = 56.dp, height = 32.dp), contentAlignment = Alignment.Center) {
+        CompositionLocalProvider(LocalContentColor provides iconColor) { icon() }
+      }
+      Spacer(Modifier.height(2.dp))
+      CompositionLocalProvider(LocalContentColor provides labelColor) {
+        ProvideTextStyle(
+          if (selected) {
+            MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+          } else {
+            MaterialTheme.typography.labelMedium
+          },
+        ) { label() }
       }
     }
   }
@@ -290,11 +299,11 @@ fun SextantFlexibleHeader(
   scrollState: LazyListState,
   modifier: Modifier = Modifier,
   subtitle: String? = null,
-  collapsedHeight: Dp = 60.dp,
-  // 一行标题 48dp（动作按钮撑起来的行高）+ 上下 6dp 内边距 + 每侧 6dp 呼吸 = 72dp；
-  // 有副标题时再加一行 bodyMedium 的 18dp = 90dp。收起高度固定 60dp，正好是
-  // 「48dp 标题行 + 12dp 内边距」，也就是没有空气的一行标题。
-  expandedHeight: Dp = if (subtitle == null) 72.dp else 90.dp,
+  collapsedHeight: Dp = 64.dp,
+  // 收起高度固定 64dp（titleLarge 22sp 一行 + 上下 6dp），展开高度留出 large app bar
+  // 那一档空气：无副标题 100dp、有副标题 116dp。收起距离约 36–52dp，标题不会一滚就「啪」
+  // 地缩到底，符合 M3 flexible app bar 的连续收放。
+  expandedHeight: Dp = if (subtitle == null) 100.dp else 116.dp,
   actions: @Composable RowScope.() -> Unit = {},
 ) {
   val collapseDistance = with(LocalDensity.current) { (expandedHeight - collapsedHeight).toPx() }
@@ -306,7 +315,7 @@ fun SextantFlexibleHeader(
   val height = expandedHeight - (expandedHeight - collapsedHeight) * collapse
   val titleStyle: TextStyle = lerp(
     MaterialTheme.typography.headlineMedium.sextantEmphasized(),
-    MaterialTheme.typography.titleMedium,
+    MaterialTheme.typography.titleLarge,
     collapse,
   )
   val markAlpha = (1f - collapse * 1.6f).coerceIn(0f, 1f)
@@ -333,6 +342,7 @@ fun SextantFlexibleHeader(
         }
         Text(
           text = title,
+          modifier = Modifier.semantics { heading() },
           style = titleStyle,
           color = SextantColors.Text,
           maxLines = 1,

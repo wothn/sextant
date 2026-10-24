@@ -52,6 +52,7 @@ abstract class SextantDatabase : RoomDatabase() {
     private const val DATABASE_NAME = "sextant.db"
     const val THEME_PREFERENCE_KEY = "theme_preference"
     const val MONTHLY_BUDGET_KEY = "monthly_budget_cents"
+    const val LAST_PAYMENT_METHOD_KEY = "last_payment_method_id"
 
     @Volatile
     private var instance: SextantDatabase? = null

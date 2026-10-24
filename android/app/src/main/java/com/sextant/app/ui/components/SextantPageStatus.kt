@@ -15,22 +15,15 @@ import androidx.compose.ui.unit.dp
 import com.sextant.app.ui.theme.SextantColors
 import kotlinx.coroutines.delay
 
-/** 首次读取保留页面标题与中性骨架；短查询不闪动指示器，也不把空数据当成零值。 */
+/** 首次读取保留页面标题与中性骨架；骨架本身不进读屏树，只用一条 liveRegion 文案说明状态。 */
 @Composable
 fun SextantPagePlaceholder(title: String, error: String?, onRetry: () -> Unit) {
-  var showProgress by remember { mutableStateOf(false) }
-  LaunchedEffect(error) {
-    showProgress = false
-    if (error == null) {
-      delay(180)
-      showProgress = true
-    }
-  }
   Column(Modifier.fillMaxSize()) {
     SextantFlexibleHeader(title = title, scrollState = rememberLazyListState(),
       modifier = Modifier.padding(horizontal = 20.dp))
     if (error != null) {
-      Column(Modifier.fillMaxWidth().weight(1f).padding(20.dp),
+      Column(Modifier.fillMaxWidth().weight(1f).padding(20.dp)
+        .semantics { liveRegion = LiveRegionMode.Polite },
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(error, color = SextantColors.TextMuted)
         SextantTextButton(onClick = onRetry) { Text("重试") }
@@ -47,12 +40,13 @@ fun SextantPagePlaceholder(title: String, error: String?, onRetry: () -> Unit) {
             }
           }
         }
-        if (showProgress) {
-          Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            SextantLoadingIndicator()
-            Text("正在读取", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
-          }
-        }
+        Text(
+          "正在读取…",
+          modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+          color = SextantColors.TextMuted,
+          style = MaterialTheme.typography.bodyMedium,
+        )
       }
     }
   }

@@ -1,7 +1,9 @@
 package com.sextant.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -12,6 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -30,9 +33,12 @@ import com.sextant.app.ui.util.calendarAmount
 import com.sextant.app.ui.util.expensePointLabel
 import com.sextant.app.data.AnalysisMetric
 import com.sextant.app.ui.util.analysisMetricLabel
+import com.sextant.app.ui.util.formatCompactCurrency
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.spendingChartIndex
 import java.time.LocalDate
+
+private val weekdayShortLabels = listOf("一", "二", "三", "四", "五", "六", "日")
 
 /** 折线点落在真实日期上；直线连接避免曲线插值制造不存在的峰谷。 */
 @Composable
@@ -43,6 +49,7 @@ fun SpendingTrendChart(allPoints: List<ExpenseTrendPoint>, period: AnalysisPerio
   val points = allPoints.take(allPoints.indexOfLast { it.date <= today || it.amountCents > 0 }.coerceAtLeast(0) + 1)
   val lastRecorded = points.lastIndex
   var selection by rememberSaveable(points.first().date.toString(), period, metric) { mutableStateOf<Int?>(null) }
+  var focused by remember { mutableStateOf(false) }
   val selected = (selection ?: points.take(lastRecorded + 1).indices.maxBy { points[it].amountCents }).coerceIn(0, points.lastIndex)
   val point = points[selected]
   val dateLabel = expensePointLabel(point.date, period)
@@ -52,7 +59,7 @@ fun SpendingTrendChart(allPoints: List<ExpenseTrendPoint>, period: AnalysisPerio
   val grid = SextantColors.SurfaceContainerHighest
   val surface = SextantColors.SurfaceContainerLow
   val axisStyle = MaterialTheme.typography.labelSmall
-  val labels = listOf("¥" + calendarAmount(maxAmount), "¥" + calendarAmount(maxAmount / 2), "¥0")
+  val labels = listOf(formatCompactCurrency(maxAmount), formatCompactCurrency(maxAmount / 2), "¥0")
   val measurer = rememberTextMeasurer()
   val axisWidth = with(LocalDensity.current) { labels.maxOf { measurer.measure(it, style = axisStyle).size.width }.toDp() }
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -88,6 +95,11 @@ fun SpendingTrendChart(allPoints: List<ExpenseTrendPoint>, period: AnalysisPerio
           }
           if (next == null) false else { selection = next.coerceIn(0, points.lastIndex); true }
         }
+        .onFocusChanged { focused = it.isFocused }
+        .then(
+          if (focused) Modifier.border(2.dp, SextantColors.Accent, RoundedCornerShape(8.dp))
+          else Modifier,
+        )
         .focusable()
         .clearAndSetSemantics {
           contentDescription = analysisMetricLabel(metric) + "趋势折线图，单位元"
@@ -129,10 +141,17 @@ fun SpendingTrendChart(allPoints: List<ExpenseTrendPoint>, period: AnalysisPerio
       }
     }
     Row(Modifier.fillMaxWidth().padding(start = axisWidth + 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-      val ticks = if (period == AnalysisPeriod.Week) points.indices.toList() else listOf(0, points.size / 2, points.lastIndex).distinct()
+      val ticks = when (period) {
+        // 周视图通常 7 个点；跨周边界时可能多出一天，标签按真实日期取星期，
+        // 并且超过 7 个点时只标首/中/尾，避免挤成一排。
+        AnalysisPeriod.Week ->
+          if (points.size <= 7) points.indices.toList()
+          else listOf(0, points.size / 2, points.lastIndex).distinct()
+        else -> listOf(0, points.size / 2, points.lastIndex).distinct()
+      }
       ticks.forEach { index ->
         val text = when (period) {
-          AnalysisPeriod.Week -> listOf("一", "二", "三", "四", "五", "六", "日")[index]
+          AnalysisPeriod.Week -> weekdayShortLabels[points[index].date.dayOfWeek.value - 1]
           AnalysisPeriod.Month -> points[index].date.dayOfMonth.toString() + "日"
           AnalysisPeriod.Year -> points[index].date.monthValue.toString() + "月"
         }

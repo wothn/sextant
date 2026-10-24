@@ -1,0 +1,6 @@
+<resources>
+  <style name="Theme.Sextant" parent="android:style/Theme.Material.NoActionBar">
+    <item name="android:windowBackground">#181512</item>
+    <item name="android:windowLightStatusBar">false</item>
+  </style>
+</resources>

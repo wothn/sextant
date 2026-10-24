@@ -13,8 +13,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
@@ -30,6 +32,7 @@ import com.sextant.app.ui.theme.SextantColors
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.analysisMetricLabel
 import com.sextant.app.ui.util.calendarAmount
+import com.sextant.app.ui.util.formatCompactCurrency
 import com.sextant.app.ui.util.formatCurrency
 import com.sextant.app.ui.util.pieLabelCenters
 import com.sextant.app.ui.util.pieSliceAt
@@ -54,7 +57,7 @@ fun ExpensePieChart(
   }
   val selectedIndex = selected?.let(items::indexOf) ?: -1
   val slices = pieSlices(items.map { it.amountCents }, total)
-  val colors = items.map { argbColor(it.color) }
+  val colors = sliceColors(items)
   val shares = items.map { spendingShareLabel(it.amountCents, total) }
   val surface = SextantColors.SurfaceContainerLow
   val textColor = SextantColors.Text
@@ -98,7 +101,7 @@ fun ExpensePieChart(
       }
       val centerWidth = diameter * .66f
       val compact = measurer.measure(exactAmount, style = amountStyle).size.width > with(density) { centerWidth.toPx() }
-      val centerAmount = if (compact) "¥" + calendarAmount(amount) else exactAmount
+      val centerAmount = if (compact) formatCompactCurrency(amount) else exactAmount
       val centerAmountStyle = if (measurer.measure(centerAmount, style = amountStyle).size.width > with(density) { centerWidth.toPx() })
         MaterialTheme.typography.titleMedium else amountStyle
       val centerLabelStyle = MaterialTheme.typography.labelSmall
@@ -200,5 +203,26 @@ fun ExpensePieChart(
         }
       }
     }
+  }
+}
+
+/**
+ * 分类色在种子数据里可能重复（生活服务 / 兼职 / 储蓄都是同一个青色）。同色扇区挨在一起
+ * 会读成一块，所以遇到已用颜色时把色相推开 29°，既保留分类原色的识别度，又保证相邻扇区可分。
+ */
+private fun sliceColors(items: List<com.sextant.app.data.CategoryBreakdown>): List<Color> {
+  val used = HashSet<Int>()
+  val hsv = FloatArray(3)
+  return items.map { item ->
+    val base = argbColor(item.color)
+    var color = base
+    var shift = 0
+    while (!used.add(color.toArgb()) && shift < 12) {
+      shift++
+      android.graphics.Color.colorToHSV(base.toArgb(), hsv)
+      hsv[0] = (hsv[0] + 29f * shift) % 360f
+      color = Color(android.graphics.Color.HSVToColor(hsv))
+    }
+    color
   }
 }

@@ -5,13 +5,13 @@ import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.ui.components.SextantFlexibleHeader
 import com.sextant.app.ui.components.LocalBottomBarInset
-import com.sextant.app.ui.components.SextantLoadingIndicator
 import com.sextant.app.ui.components.SextantWavyProgressIndicator
 import com.sextant.app.ui.components.SextantSegmentedButtonGroup
 import com.sextant.app.ui.components.SextantSurface
 import com.sextant.app.ui.components.SextantTextButton
 
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,9 +49,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import com.sextant.app.ui.components.SextantPageContent
+import com.sextant.app.ui.components.SextantPredictiveBackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.BackupCoordinator
@@ -96,7 +100,7 @@ fun SettingsScreen(
   ) { uri -> pendingRestoreUri = uri }
 
   if (destination != SettingsDestination.Overview) {
-    BackHandler { destination = SettingsDestination.Overview }
+    SextantPredictiveBackHandler { destination = SettingsDestination.Overview }
   }
 
   SextantPageContent(targetState = destination, depth = { if (it == SettingsDestination.Overview) 0 else 1 }) { visibleDestination ->
@@ -145,7 +149,7 @@ fun SettingsScreen(
         SextantTextButton(onClick = {
           pendingRestoreUri = null
           backupCoordinator.restore(uri)
-        }) { Text("覆盖并恢复") }
+        }) { Text("覆盖并恢复", color = SextantColors.Danger) }
       },
       dismissButton = { SextantTextButton(onClick = { pendingRestoreUri = null }) { Text("取消") } },
       title = { Text("恢复这份备份？") },
@@ -213,7 +217,7 @@ private fun SettingsOverview(
       }
       item {
         SettingsSection("外观") {
-          Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
               SettingsIcon(Icons.Outlined.Palette)
               Spacer(Modifier.width(12.dp))
@@ -223,7 +227,12 @@ private fun SettingsOverview(
               }
             }
             SextantSegmentedButtonGroup(
-              options = listOf(ThemePreference.Light, ThemePreference.Dark, ThemePreference.System),
+              options = buildList {
+                add(ThemePreference.Light)
+                add(ThemePreference.Dark)
+                add(ThemePreference.System)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(ThemePreference.Dynamic)
+              },
               selected = themePreference,
               onSelect = onThemePreferenceChanged,
               label = { it.label() },
@@ -235,15 +244,23 @@ private fun SettingsOverview(
       item {
         SettingsSection("数据") {
           // 备份读写没有可报的百分比，用波浪进度条说明「还在动」，而不是假装有进度。
+          // 同一个操作只保留这一处指示，并让读屏能播报当前状态。
           if (isBusy) {
-            SextantWavyProgressIndicator(modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
+            Row(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              SextantWavyProgressIndicator(modifier = Modifier.weight(1f))
+              Text("正在处理备份…", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
+            }
           }
           SettingsEntry(
             title = "导出备份",
             description = "保存完整账本与设置",
             icon = Icons.Outlined.ArrowDownward,
             enabled = !isBusy,
-            trailing = if (isBusy) { { SextantLoadingIndicator(size = 22.dp) } } else null,
             trailingLabel = if (isBusy) null else "导出",
             onClick = onBackupExport,
           )
@@ -266,8 +283,8 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Text(
       title,
-      color = SextantColors.TextSubtle,
-      style = MaterialTheme.typography.titleSmall,
+      color = SextantColors.TextMuted,
+      style = MaterialTheme.typography.titleSmall.sextantEmphasized(),
     )
     SextantSurface(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
       Column(content = content)
@@ -408,12 +425,14 @@ private fun ThemePreference.label(): String = when (this) {
   ThemePreference.Light -> "浅色"
   ThemePreference.Dark -> "深色"
   ThemePreference.System -> "系统"
+  ThemePreference.Dynamic -> "壁纸"
 }
 
 private fun ThemePreference.description(): String = when (this) {
   ThemePreference.Light -> "始终使用明亮界面"
   ThemePreference.Dark -> "始终使用深色界面"
   ThemePreference.System -> "跟随手机的系统设置"
+  ThemePreference.Dynamic -> "跟随壁纸取色，需要 Android 12 及以上"
 }
 
 private fun BackupSummary.restoreMessage(): String =

@@ -46,6 +46,8 @@ data class AnalysisReport(
   val trend: List<ExpenseTrendPoint>,
   val incomeTrend: List<ExpenseTrendPoint> = emptyList(),
   val incomeBreakdown: List<CategoryBreakdown> = emptyList(),
+  /** 这份报告是按哪个周期算出来的；界面在切周期的过渡帧里靠它解释 trend，而不是当前选择。 */
+  val period: AnalysisPeriod = AnalysisPeriod.Month,
 )
 
 internal fun expenseTrend(items: List<TransactionListItem>, window: AnalysisWindow,

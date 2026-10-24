@@ -62,25 +62,32 @@ internal fun LedgerCalendarPanel(
         CalendarLevel.Year -> date.plusYears(12)
       }) }) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "下一${if (level == CalendarLevel.Day) "月" else if (level == CalendarLevel.Month) "年" else "组"}") }
     }
-    SextantTextButton(onClick = { onDate(LocalDate.now()); onLevel(CalendarLevel.Day) }) { Text("回到今天") }
+    SextantTextButton(
+      onClick = { onDate(LocalDate.now()); onLevel(CalendarLevel.Day) },
+      enabled = level != CalendarLevel.Day || date != LocalDate.now(),
+    ) { Text("回到今天") }
     if (!filter.isAllTime || filter.hasConditions) {
       Text("仅统计筛选内记录 · ${filter.rangeLabel()}", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
     }
     CalendarTotals(summary)
-    Text("金额单位：元 · 收入 + / 支出 − · 格内金额为简写", style = MaterialTheme.typography.labelSmall, color = SextantColors.TextSubtle)
+    Text("金额单位：元 · 收入 + / 支出 − · 格内金额为简写", style = MaterialTheme.typography.bodySmall, color = SextantColors.TextSubtle)
     if (level == CalendarLevel.Day) {
       Row(Modifier.fillMaxWidth()) {
         listOf("一", "二", "三", "四", "五", "六", "日").forEach {
-          Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text(it, color = SextantColors.TextMuted) }
+          Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Text(it, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelMedium)
+          }
         }
       }
       calendarDays(month).chunked(7).forEach { week ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
           week.forEach { day ->
             if (day == null) Spacer(Modifier.weight(1f))
             else CalendarCell(
-              label = if (day == LocalDate.now()) "今天" else day.dayOfMonth.toString(),
-              description = day.toString(), summary = calendar.summaries[day], selected = day == date,
+              label = day.dayOfMonth.toString(),
+              description = day.toString(),
+              summary = calendar.summaries[day], selected = day == date,
+              isToday = day == LocalDate.now(),
               modifier = Modifier.weight(1f), onClick = { onDate(day) },
             )
           }
@@ -98,7 +105,9 @@ internal fun LedgerCalendarPanel(
               label = if (level == CalendarLevel.Month) "${index + 1}月" else "${target.year}年",
               description = calendarDateLabel(target),
               summary = if (level == CalendarLevel.Month) calendar.months[YearMonth.from(target)] else calendar.years[target.year],
-              selected = false, modifier = Modifier.weight(1f),
+              selected = if (level == CalendarLevel.Month) target.year == date.year && target.month == date.month
+              else target.year == date.year,
+              modifier = Modifier.weight(1f),
               onClick = { onDate(target); onLevel(if (level == CalendarLevel.Month) CalendarLevel.Day else CalendarLevel.Month) },
             )
           }
@@ -119,12 +128,26 @@ private fun CalendarTotals(summary: Summary) {
 }
 
 @Composable
-private fun CalendarCell(label: String, description: String, summary: Summary?, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-  SextantSelectableSurface(selected, onClick, modifier.heightIn(min = 72.dp).semantics {
-    contentDescription = "$description，${if (summary == null) "无收支记录" else "收入 ${formatCurrency(summary.incomeCents)}，支出 ${formatCurrency(summary.expenseCents)}"}"
-  }) {
+private fun CalendarCell(
+  label: String,
+  description: String,
+  summary: Summary?,
+  selected: Boolean,
+  modifier: Modifier,
+  isToday: Boolean = false,
+  onClick: () -> Unit,
+) {
+  SextantSelectableSurface(
+    selected,
+    onClick,
+    modifier.heightIn(min = 72.dp).semantics {
+      contentDescription = "${if (isToday) "今天，" else ""}$description，${if (summary == null) "无收支记录" else "收入 ${formatCurrency(summary.incomeCents)}，支出 ${formatCurrency(summary.expenseCents)}"}"
+    },
+    activeRadius = 10.dp,
+    inactiveRadius = 8.dp,
+  ) {
     Column(Modifier.padding(horizontal = 2.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-      CalendarCellText(label, MaterialTheme.typography.labelMedium)
+      CalendarCellText(label, MaterialTheme.typography.labelMedium, if (isToday) SextantColors.AccentStrong else Color.Unspecified)
       if (summary == null) CalendarCellText("—", MaterialTheme.typography.labelSmall, SextantColors.TextSubtle)
       else {
         CalendarCellText("+${calendarAmount(summary.incomeCents)}", MaterialTheme.typography.labelSmall, SextantColors.Success)
@@ -161,4 +184,4 @@ private fun CalendarCellText(text: String, style: TextStyle, color: Color = Colo
   )
 }
 
-private val MIN_CELL_FONT_SIZE = 7.sp
+private val MIN_CELL_FONT_SIZE = 11.sp

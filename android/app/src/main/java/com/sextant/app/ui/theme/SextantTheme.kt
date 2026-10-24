@@ -2,7 +2,11 @@
 
 package com.sextant.app.ui.theme
 
-import android.app.Activity
+import android.content.ContextWrapper
+import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +18,8 @@ import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
@@ -23,6 +29,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -35,6 +42,7 @@ import com.sextant.app.data.ThemePreference
  * 这个 palette 供 `SextantColors` 按语义读取，页面不直接碰色值。
  */
 private data class SextantPalette(
+  val isDark: Boolean,
   val accent: Color,
   val accentStrong: Color,
   val accentSoft: Color,
@@ -63,59 +71,61 @@ private data class SextantPalette(
 )
 
 private val LightPalette = SextantPalette(
+  isDark = false,
   accent = Color(0xFFA6532D),
   accentStrong = Color(0xFF874023),
   accentSoft = Color(0xFFF3E7DF),
   accentMuted = Color(0xFFD9B49F),
   onAccent = Color.White,
-  secondary = Color(0xFF666666),
-  secondaryStrong = Color(0xFF424242),
-  secondarySoft = Color(0xFFEEEEEE),
+  secondary = Color(0xFF7A6A60),
+  secondaryStrong = Color(0xFF4E4038),
+  secondarySoft = Color(0xFFEFE1D8),
   tertiary = Color(0xFF8B6B43),
   tertiaryStrong = Color(0xFF654A2D),
   tertiarySoft = Color(0xFFF3ECE3),
-  surface = Color(0xFFF7F7F7),
-  surfaceAlt = Color(0xFFF0F0F0),
-  surfaceStrong = Color(0xFFDADADA),
-  background = Color.White,
-  backgroundSoft = Color(0xFFE8E8E8),
+  surface = Color(0xFFF8F2EE),
+  surfaceAlt = Color(0xFFF2E9E3),
+  surfaceStrong = Color(0xFFDFD1C7),
+  background = Color(0xFFFFFBF9),
+  backgroundSoft = Color(0xFFEBDFD8),
   text = Color(0xFF262626),
   textMuted = Color(0xFF595959),
   textSubtle = Color(0xFF616161),
-  border = Color(0xFFDADADA),
+  border = Color(0xFF8A7F78),
   success = Color(0xFF2F7D5B),
   danger = Color(0xFFB64B45),
   warning = Color(0xFF865B18),
   info = Color(0xFF3E708F),
-  tabInactive = Color(0xFF757575),
+  tabInactive = Color(0xFF6B6B6B),
 )
 
 private val DarkPalette = SextantPalette(
+  isDark = true,
   accent = Color(0xFFE6A078),
   accentStrong = Color(0xFFF0B895),
   accentSoft = Color(0xFF352A24),
   accentMuted = Color(0xFF80543B),
   onAccent = Color(0xFF241B16),
-  secondary = Color(0xFFB9B7AF),
-  secondaryStrong = Color(0xFFDBD8D0),
-  secondarySoft = Color(0xFF32332F),
+  secondary = Color(0xFFD6C3B8),
+  secondaryStrong = Color(0xFFF2E2D7),
+  secondarySoft = Color(0xFF4A3B33),
   tertiary = Color(0xFFC1A27A),
   tertiaryStrong = Color(0xFFE1C7A5),
   tertiarySoft = Color(0xFF493C2E),
-  surface = Color(0xFF20211F),
-  surfaceAlt = Color(0xFF292B27),
-  surfaceStrong = Color(0xFF3B3D37),
-  background = Color(0xFF171815),
-  backgroundSoft = Color(0xFF242621),
+  surface = Color(0xFF221E1B),
+  surfaceAlt = Color(0xFF2B2622),
+  surfaceStrong = Color(0xFF403831),
+  background = Color(0xFF181512),
+  backgroundSoft = Color(0xFF332C27),
   text = Color(0xFFEEECE5),
   textMuted = Color(0xFFC4C5BC),
-  textSubtle = Color(0xFFA0A398),
-  border = Color(0xFF383B33),
+  textSubtle = Color(0xFFB3ACA6),
+  border = Color(0xFF8E847D),
   success = Color(0xFF70B493),
   danger = Color(0xFFD88079),
   warning = Color(0xFFD0A660),
   info = Color(0xFF78A8C3),
-  tabInactive = Color(0xFFA0A398),
+  tabInactive = Color(0xFFB3ACA6),
 )
 
 /**
@@ -177,10 +187,10 @@ object SextantColors {
   val SurfaceContainerLow @Composable @ReadOnlyComposable get() = palette.surface
 
   /** 卡片内部的凹槽：输入框、chip、图标底块所在的层级。 */
-  val SurfaceContainer @Composable @ReadOnlyComposable get() = if (palette == DarkPalette) palette.backgroundSoft else palette.surfaceAlt
+  val SurfaceContainer @Composable @ReadOnlyComposable get() = if (palette.isDark) palette.backgroundSoft else palette.surfaceAlt
 
   /** 凹槽里的凹槽：嵌套分组、备注行。 */
-  val SurfaceContainerHigh @Composable @ReadOnlyComposable get() = if (palette == DarkPalette) palette.surfaceAlt else palette.backgroundSoft
+  val SurfaceContainerHigh @Composable @ReadOnlyComposable get() = if (palette.isDark) palette.surfaceAlt else palette.backgroundSoft
 
   /** 最重的一级：轨道、进度槽、装饰条。 */
   val SurfaceContainerHighest @Composable @ReadOnlyComposable get() = palette.surfaceStrong
@@ -198,8 +208,7 @@ private val SextantLightScheme: ColorScheme = lightColorScheme(
   secondary = LightPalette.secondary,
   onSecondary = Color.White,
   secondaryContainer = LightPalette.secondarySoft,
-  onSecondaryContainer = LightPalette.secondaryStrong,
-  tertiary = LightPalette.tertiary,
+  onSecondaryContainer = LightPalette.secondaryStrong,  tertiary = LightPalette.tertiary,
   onTertiary = Color.White,
   tertiaryContainer = LightPalette.tertiarySoft,
   onTertiaryContainer = LightPalette.tertiaryStrong,
@@ -226,6 +235,18 @@ private val SextantLightScheme: ColorScheme = lightColorScheme(
   surfaceContainerLow = LightPalette.surface,
   surfaceContainerLowest = LightPalette.background,
   surfaceDim = LightPalette.surfaceStrong,
+  primaryFixed = LightPalette.accentSoft,
+  primaryFixedDim = LightPalette.accentMuted,
+  onPrimaryFixed = LightPalette.accentStrong,
+  onPrimaryFixedVariant = LightPalette.accentStrong,
+  secondaryFixed = LightPalette.secondarySoft,
+  secondaryFixedDim = LightPalette.secondary.copy(alpha = 0.6f),
+  onSecondaryFixed = LightPalette.secondaryStrong,
+  onSecondaryFixedVariant = LightPalette.secondaryStrong,
+  tertiaryFixed = LightPalette.tertiarySoft,
+  tertiaryFixedDim = LightPalette.tertiary.copy(alpha = 0.6f),
+  onTertiaryFixed = LightPalette.tertiaryStrong,
+  onTertiaryFixedVariant = LightPalette.tertiaryStrong,
 )
 
 private val SextantDarkScheme: ColorScheme = darkColorScheme(
@@ -235,11 +256,11 @@ private val SextantDarkScheme: ColorScheme = darkColorScheme(
   onPrimaryContainer = DarkPalette.accentStrong,
   inversePrimary = DarkPalette.accentMuted,
   secondary = DarkPalette.secondary,
-  onSecondary = Color(0xFF003733),
+  onSecondary = Color(0xFF2A1F19),
   secondaryContainer = DarkPalette.secondarySoft,
   onSecondaryContainer = DarkPalette.secondaryStrong,
   tertiary = DarkPalette.tertiary,
-  onTertiary = Color(0xFF422006),
+  onTertiary = Color(0xFF2B1B0E),
   tertiaryContainer = DarkPalette.tertiarySoft,
   onTertiaryContainer = DarkPalette.tertiaryStrong,
   error = DarkPalette.danger,
@@ -265,26 +286,94 @@ private val SextantDarkScheme: ColorScheme = darkColorScheme(
   surfaceContainerLow = DarkPalette.surface,
   surfaceContainerLowest = DarkPalette.background,
   surfaceDim = DarkPalette.background,
+  primaryFixed = DarkPalette.accentSoft,
+  primaryFixedDim = DarkPalette.accentMuted,
+  onPrimaryFixed = DarkPalette.accentStrong,
+  onPrimaryFixedVariant = DarkPalette.accentStrong,
+  secondaryFixed = DarkPalette.secondarySoft,
+  secondaryFixedDim = DarkPalette.secondary.copy(alpha = 0.6f),
+  onSecondaryFixed = DarkPalette.secondaryStrong,
+  onSecondaryFixedVariant = DarkPalette.secondaryStrong,
+  tertiaryFixed = DarkPalette.tertiarySoft,
+  tertiaryFixedDim = DarkPalette.tertiary.copy(alpha = 0.6f),
+  onTertiaryFixed = DarkPalette.tertiaryStrong,
+  onTertiaryFixedVariant = DarkPalette.tertiaryStrong,
 )
+
+/**
+ * 动态取色时的语义色板。
+ *
+ * 页面只认 `SextantColors` 的语义名，所以这里把 Wallpaper 生成的 `ColorScheme` 映射回同一组
+ * 角色；成功/警告/信息仍用固定的语义色，避免「收入是绿的」这类含义随壁纸漂移。
+ */
+private fun paletteFromScheme(scheme: ColorScheme, dark: Boolean): SextantPalette {
+  val semantic = if (dark) DarkPalette else LightPalette
+  return SextantPalette(
+    isDark = dark,
+    accent = scheme.primary,
+    accentStrong = scheme.onPrimaryContainer,
+    accentSoft = scheme.primaryContainer,
+    accentMuted = scheme.primaryFixedDim,
+    onAccent = scheme.onPrimary,
+    secondary = scheme.secondary,
+    secondaryStrong = scheme.onSecondaryContainer,
+    secondarySoft = scheme.secondaryContainer,
+    tertiary = scheme.tertiary,
+    tertiaryStrong = scheme.onTertiaryContainer,
+    tertiarySoft = scheme.tertiaryContainer,
+    surface = scheme.surfaceContainerLow,
+    surfaceAlt = scheme.surfaceContainer,
+    surfaceStrong = scheme.surfaceContainerHighest,
+    background = scheme.surface,
+    backgroundSoft = scheme.surfaceContainerHigh,
+    text = scheme.onSurface,
+    textMuted = scheme.onSurfaceVariant,
+    textSubtle = scheme.onSurfaceVariant,
+    border = scheme.outline,
+    success = semantic.success,
+    danger = scheme.error,
+    warning = semantic.warning,
+    info = semantic.info,
+    tabInactive = scheme.onSurfaceVariant,
+  )
+}
 
 @Composable
 fun SextantTheme(
   themePreference: ThemePreference = ThemePreference.System,
   content: @Composable () -> Unit,
 ) {
+  val context = LocalContext.current
+  val useDynamic = themePreference == ThemePreference.Dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
   val isDarkTheme = when (themePreference) {
-    ThemePreference.System -> isSystemInDarkTheme()
+    ThemePreference.System, ThemePreference.Dynamic -> isSystemInDarkTheme()
     ThemePreference.Light -> false
     ThemePreference.Dark -> true
   }
-  val colorScheme = if (isDarkTheme) SextantDarkScheme else SextantLightScheme
+  val colorScheme = when {
+    useDynamic && isDarkTheme -> dynamicDarkColorScheme(context)
+    useDynamic -> dynamicLightColorScheme(context)
+    isDarkTheme -> SextantDarkScheme
+    else -> SextantLightScheme
+  }
+  val palette = when {
+    useDynamic -> paletteFromScheme(colorScheme, isDarkTheme)
+    isDarkTheme -> DarkPalette
+    else -> LightPalette
+  }
   val view = LocalView.current
 
   SideEffect {
-    val activity = view.context as? Activity
+    var context = view.context
+    while (context is ContextWrapper && context !is ComponentActivity) context = context.baseContext
+    val activity = context as? ComponentActivity
     if (activity != null) {
-      activity.window.statusBarColor = colorScheme.background.toArgb()
-      activity.window.navigationBarColor = colorScheme.surface.toArgb()
+      // 系统栏完全交给 edge-to-edge：颜色是在布局阶段画的，不再用已废弃的
+      // `window.statusBarColor`。auto(...) 同时负责图标明暗，切换主题立刻生效。
+      activity.enableEdgeToEdge(
+        statusBarStyle = SystemBarStyle.auto(Color.Transparent.toArgb(), Color.Transparent.toArgb()) { isDarkTheme },
+        navigationBarStyle = SystemBarStyle.auto(Color.Transparent.toArgb(), Color.Transparent.toArgb()) { isDarkTheme },
+      )
       WindowCompat.getInsetsController(activity.window, view).apply {
         isAppearanceLightStatusBars = !isDarkTheme
         isAppearanceLightNavigationBars = !isDarkTheme
@@ -292,7 +381,7 @@ fun SextantTheme(
     }
   }
 
-  CompositionLocalProvider(LocalSextantPalette provides if (isDarkTheme) DarkPalette else LightPalette) {
+  CompositionLocalProvider(LocalSextantPalette provides palette) {
     MaterialExpressiveTheme(
       colorScheme = colorScheme,
       typography = SextantTypography,
@@ -410,24 +499,44 @@ object SextantMotion {
   fun <T> slowEffects(): FiniteAnimationSpec<T> = MaterialTheme.motionScheme.slowEffectsSpec()
 }
 
-/** 手机上的紧凑排版阶梯；保留系统字体缩放、常规字重和等宽数字。 */
+/**
+ * 排版阶梯：回到 M3 基线，只把金额用的 `headlineLarge` 提到 36sp。
+ *
+ * `*Emphasized` 必须和对应的基础样式一起覆盖：Material 组件读的是 emphasized 角色，
+ * 只改基础字号会让两套阶梯失配。所有样式保留 `tnum`，金额列才能逐位对齐。
+ */
 private val SextantTypography: Typography = Typography().let { base ->
   Typography(
     displayLarge = base.displayLarge.tnum(),
     displayMedium = base.displayMedium.tnum(),
     displaySmall = base.displaySmall.tnum(),
-    headlineLarge = base.headlineLargeEmphasized.tnum().copy(fontSize = 36.sp, lineHeight = 44.sp),
-    headlineMedium = base.headlineMedium.tnum().copy(fontSize = 28.sp, lineHeight = 36.sp),
-    headlineSmall = base.headlineSmall.tnum().copy(fontSize = 22.sp, lineHeight = 28.sp),
-    titleLarge = base.titleLarge.tnum().copy(fontSize = 18.sp, lineHeight = 24.sp),
-    titleMedium = base.titleMedium.tnum().copy(fontSize = 15.sp, lineHeight = 22.sp),
+    headlineLarge = base.headlineLarge.copy(fontSize = 36.sp, lineHeight = 44.sp).tnum(),
+    headlineMedium = base.headlineMedium.copy(fontSize = 28.sp, lineHeight = 36.sp).tnum(),
+    headlineSmall = base.headlineSmall.copy(fontSize = 24.sp, lineHeight = 32.sp).tnum(),
+    titleLarge = base.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp).tnum(),
+    titleMedium = base.titleMedium.copy(fontSize = 16.sp, lineHeight = 24.sp).tnum(),
     titleSmall = base.titleSmall.tnum(),
-    bodyLarge = base.bodyLarge.tnum().copy(fontSize = 15.sp, lineHeight = 22.sp),
-    bodyMedium = base.bodyMedium.tnum().copy(fontSize = 13.sp, lineHeight = 18.sp),
+    bodyLarge = base.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp).tnum(),
+    bodyMedium = base.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp).tnum(),
     bodySmall = base.bodySmall.tnum(),
-    labelLarge = base.labelLarge.tnum().copy(fontSize = 13.sp, lineHeight = 18.sp),
+    labelLarge = base.labelLarge.copy(fontSize = 14.sp, lineHeight = 20.sp).tnum(),
     labelMedium = base.labelMedium.tnum(),
     labelSmall = base.labelSmall.tnum(),
+    displayLargeEmphasized = base.displayLargeEmphasized.tnum(),
+    displayMediumEmphasized = base.displayMediumEmphasized.tnum(),
+    displaySmallEmphasized = base.displaySmallEmphasized.tnum(),
+    headlineLargeEmphasized = base.headlineLargeEmphasized.copy(fontSize = 36.sp, lineHeight = 44.sp).tnum(),
+    headlineMediumEmphasized = base.headlineMediumEmphasized.copy(fontSize = 28.sp, lineHeight = 36.sp).tnum(),
+    headlineSmallEmphasized = base.headlineSmallEmphasized.copy(fontSize = 24.sp, lineHeight = 32.sp).tnum(),
+    titleLargeEmphasized = base.titleLargeEmphasized.copy(fontSize = 22.sp, lineHeight = 28.sp).tnum(),
+    titleMediumEmphasized = base.titleMediumEmphasized.copy(fontSize = 16.sp, lineHeight = 24.sp).tnum(),
+    titleSmallEmphasized = base.titleSmallEmphasized.tnum(),
+    bodyLargeEmphasized = base.bodyLargeEmphasized.copy(fontSize = 16.sp, lineHeight = 24.sp).tnum(),
+    bodyMediumEmphasized = base.bodyMediumEmphasized.copy(fontSize = 14.sp, lineHeight = 20.sp).tnum(),
+    bodySmallEmphasized = base.bodySmallEmphasized.tnum(),
+    labelLargeEmphasized = base.labelLargeEmphasized.copy(fontSize = 14.sp, lineHeight = 20.sp).tnum(),
+    labelMediumEmphasized = base.labelMediumEmphasized.tnum(),
+    labelSmallEmphasized = base.labelSmallEmphasized.tnum(),
   )
 }
 

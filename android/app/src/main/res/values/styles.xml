@@ -1,7 +1,10 @@
 <resources>
+  <!--
+    启动窗口底色必须和 Compose 的 background 一致，否则深色主题会先闪一帧白屏。
+    edge-to-edge 之后系统栏颜色由 SextantTheme 里的 enableEdgeToEdge 管理，这里不再写死。
+  -->
   <style name="Theme.Sextant" parent="android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:windowBackground">#FFFBF9</item>
     <item name="android:windowLightStatusBar">true</item>
-    <item name="android:statusBarColor">#F8FAFC</item>
-    <item name="android:navigationBarColor">#FFFFFF</item>
   </style>
 </resources>

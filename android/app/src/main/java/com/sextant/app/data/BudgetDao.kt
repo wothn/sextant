@@ -24,6 +24,12 @@ internal interface BudgetDao {
   @Query("UPDATE budgets SET amountCents = :amountCents, isActive = 1 WHERE id = :id")
   suspend fun updateAmount(id: String, amountCents: Long)
 
+  /** 清除分类预算：只停用当月那一行，历史月份保留。 */
+  @Query(
+    "UPDATE budgets SET isActive = 0 WHERE categoryId = :categoryId AND period = 'month' AND startDate = :startDate",
+  )
+  suspend fun deactivateForCategoryMonth(categoryId: String, startDate: Long)
+
   /**
    * 本月生效的分类预算，连带分类的展示信息。
    *

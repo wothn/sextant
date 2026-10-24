@@ -167,6 +167,8 @@ data class BudgetProgress(
   val color: Long,
   val amountCents: Long,
   val spentCents: Long,
+  /** 用于从列表行直接打开编辑；预览数据可以留空。 */
+  val categoryId: String = "",
 )
 
 data class LedgerFilter(

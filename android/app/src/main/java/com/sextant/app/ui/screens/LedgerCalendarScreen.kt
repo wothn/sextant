@@ -49,14 +49,22 @@ fun LedgerCalendarScreen(
         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回概览")
       }
       Text("收支日历", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, color = SextantColors.Text)
-      SextantIconButton(onClick = { showFilters = true }) {
-        Icon(Icons.Outlined.Tune, contentDescription = "筛选")
+      Box(contentAlignment = Alignment.TopEnd) {
+        SextantIconButton(onClick = { showFilters = true }) {
+          Icon(
+            Icons.Outlined.Tune,
+            contentDescription = if (filter.hasConditions) "筛选，已启用 ${filter.conditionCount} 项条件" else "筛选",
+          )
+        }
+        if (filter.hasConditions) {
+          Box(Modifier.padding(top = 1.dp, end = 1.dp)) { SextantBadge(filter.conditionCount) }
+        }
       }
     }
     LazyColumn(
       state = listState,
       modifier = Modifier.fillMaxSize(),
-      contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+      contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 24.dp),
     ) {
       item {
         LedgerCalendarPanel(calendar, filter, level, date,

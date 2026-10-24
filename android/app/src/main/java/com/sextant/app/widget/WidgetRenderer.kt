@@ -177,7 +177,8 @@ internal object WidgetRenderer {
       WidgetAppearance.App -> when (theme) {
         ThemePreference.Dark -> true
         ThemePreference.Light -> false
-        ThemePreference.System -> context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        ThemePreference.System, ThemePreference.Dynamic ->
+          context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
       }
     }
     return sextantWidgetPalette(dark)

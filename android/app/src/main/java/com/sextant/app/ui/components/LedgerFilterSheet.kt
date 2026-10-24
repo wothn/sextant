@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.data.AppState
 import com.sextant.app.data.LedgerFilter
 import com.sextant.app.data.TransactionType
@@ -105,12 +106,20 @@ fun LedgerFilterSheet(
   onApply: (LedgerFilter) -> Unit,
   onDismiss: () -> Unit,
 ) {
-  var draft by remember(filter) { mutableStateOf(filter) }
-  var queryText by remember(filter) { mutableStateOf(filter.query) }
-  var minAmountText by remember(filter) { mutableStateOf(filter.minAmountCents.toAmountText()) }
-  var maxAmountText by remember(filter) { mutableStateOf(filter.maxAmountCents.toAmountText()) }
+  var draft by remember { mutableStateOf(filter) }
+  var queryText by remember { mutableStateOf(filter.query) }
+  var minAmountText by remember { mutableStateOf(filter.minAmountCents.toAmountText()) }
+  var maxAmountText by remember { mutableStateOf(filter.maxAmountCents.toAmountText()) }
   var picking by remember { mutableStateOf<DateField?>(null) }
   var choosingCategory by remember { mutableStateOf(false) }
+  var showDiscard by remember { mutableStateOf(false) }
+  val dirty = draft != filter
+  val requestDismiss = {
+    if (dirty) showDiscard = true else onDismiss()
+  }
+  val minAmount = draft.minAmountCents
+  val maxAmount = draft.maxAmountCents
+  val amountRangeInvalid = minAmount != null && maxAmount != null && minAmount > maxAmount
 
   val focus = LocalFocusManager.current
   val scrollState = rememberScrollState()
@@ -128,7 +137,7 @@ fun LedgerFilterSheet(
   }
 
   SextantBottomSheet(
-    onDismissRequest = onDismiss,
+    onDismissRequest = requestDismiss,
     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
   ) {
     if (choosingCategory) {
@@ -150,6 +159,9 @@ fun LedgerFilterSheet(
           verticalAlignment = Alignment.CenterVertically,
         ) {
           SextantHeading("筛选流水", modifier = Modifier.weight(1f))
+          SextantIconButton(onClick = requestDismiss) {
+            Icon(Icons.Outlined.Close, contentDescription = "关闭筛选")
+          }
           SextantTextButton(onClick = { resetConditions() }) { Text("清除条件") }
         }
 
@@ -306,8 +318,8 @@ fun LedgerFilterSheet(
                 draft = draft.copy(maxAmountCents = parseAmountCents(maxAmountText))
               }
             }
-            val min = draft.minAmountCents
-            val max = draft.maxAmountCents
+            val min = minAmount
+            val max = maxAmount
             Text(
               text = when {
                 min != null && max != null && min > max -> "最低金额比最高金额还大，将查不到记录"
@@ -316,7 +328,7 @@ fun LedgerFilterSheet(
                 max != null -> "只看 ${formatAmountPlain(max)} 元以下"
                 else -> "留空表示不限金额"
               },
-              color = if (min != null && max != null && min > max) SextantColors.Danger else SextantColors.TextSubtle,
+              color = if (amountRangeInvalid) SextantColors.Danger else SextantColors.TextSubtle,
               style = MaterialTheme.typography.bodySmall,
             )
           }
@@ -329,19 +341,37 @@ fun LedgerFilterSheet(
         Row(
           Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 16.dp),
           horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-          SextantOutlinedButton(onClick = { resetConditions() },
+          SextantOutlinedButton(onClick = requestDismiss,
             modifier = Modifier.weight(1f),
-          ) { Text("重置筛选") }
+          ) { Text("取消") }
           SextantButton(onClick = { onApply(draft) },
+            enabled = !amountRangeInvalid,
             modifier = Modifier.weight(1.6f),
           ) { Text("查看结果") }
         }
       }
     }
+  }
+
+  if (showDiscard) {
+    SextantAlertDialog(
+      onDismissRequest = { showDiscard = false },
+      title = { Text("放弃筛选条件？") },
+      text = { Text("刚才的修改还没有应用。") },
+      confirmButton = {
+        SextantTextButton(
+          onClick = {
+            showDiscard = false
+            onDismiss()
+          },
+          contentColor = SextantColors.Danger,
+        ) { Text("放弃") }
+      },
+      dismissButton = { SextantTextButton(onClick = { showDiscard = false }) { Text("继续编辑") } },
+    )
   }
 
   when (picking) {
@@ -441,16 +471,17 @@ private fun ActiveFilterChips(
 private fun ActiveFilterChip(label: String, onClick: () -> Unit) {
   Row(
     modifier = Modifier
+      .heightIn(min = 48.dp)
       .clip(SextantChipShape)
       .background(SextantColors.AccentSoft)
       .clickable(onClickLabel = "清除条件 $label", onClick = onClick)
-      .padding(horizontal = 10.dp, vertical = 6.dp),
+      .padding(horizontal = 12.dp, vertical = 6.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     Text(
       text = label,
-      fontSize = 12.sp,
+      style = MaterialTheme.typography.labelMedium,
       maxLines = 1,
       overflow = TextOverflow.Ellipsis,
       fontWeight = FontWeight.SemiBold,

@@ -89,7 +89,7 @@ fun sextantTimePickerColors() = TimePickerDefaults.colors(
 
 /** [SextantDatePickerDialog] 的日历主体。调用方仍然持有 picker state。 */
 @Composable
-fun SextantDatePicker(state: DatePickerState, modifier: Modifier = Modifier, showModeToggle: Boolean = false) {
+fun SextantDatePicker(state: DatePickerState, modifier: Modifier = Modifier, showModeToggle: Boolean = true) {
   DatePicker(state = state, modifier = modifier, showModeToggle = showModeToggle,
     colors = sextantDatePickerColors())
 }

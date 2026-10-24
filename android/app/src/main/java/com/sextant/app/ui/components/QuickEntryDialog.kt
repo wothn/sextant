@@ -4,9 +4,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.*
@@ -46,6 +51,7 @@ import com.sextant.app.ui.util.parseAmountCents
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 private enum class EntryPanel { Form, Category, Source }
 
@@ -64,7 +70,13 @@ fun QuickEntryDialog(
   var type by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.type ?: TransactionType.Expense) }
   var amountText by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.amountCents?.let(::formatAmountPlain).orEmpty()) }
   var categoryId by rememberSaveable(editing?.transaction?.id) { mutableStateOf(if (editing != null) editing.transaction.categoryId else state.categories.firstOrNull { it.type == TransactionType.Expense }?.id) }
-  var paymentMethodId by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.paymentMethodId ?: initialPaymentMethodId ?: state.paymentMethods.firstOrNull()?.id) }
+  var paymentMethodId by rememberSaveable(editing?.transaction?.id) {
+    val requested = editing?.transaction?.paymentMethodId ?: initialPaymentMethodId
+    mutableStateOf(
+      requested?.takeIf { id -> state.paymentMethods.any { it.id == id } }
+        ?: state.paymentMethods.firstOrNull()?.id,
+    )
+  }
   var description by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.description.orEmpty()) }
   var transactionDate by rememberSaveable(editing?.transaction?.id) { mutableStateOf(editing?.transaction?.transactionDate ?: System.currentTimeMillis()) }
   var rememberMerchant by rememberSaveable(editing?.transaction?.id) { mutableStateOf(false) }
@@ -73,8 +85,33 @@ fun QuickEntryDialog(
     editing.transaction.automationKind == com.sextant.app.data.AutomationKind.Purchase && selectedExpenseCategory(state, categoryId)
   var showDatePicker by rememberSaveable { mutableStateOf(false) }
   var showTimePicker by rememberSaveable { mutableStateOf(false) }
+  var showDiscard by rememberSaveable { mutableStateOf(false) }
   var amountError by rememberSaveable { mutableStateOf(false) }
+  var amountFocused by remember { mutableStateOf(false) }
   var panel by rememberSaveable { mutableStateOf(EntryPanel.Form) }
+  val amountFocus = remember { FocusRequester() }
+  val focus = LocalFocusManager.current
+  val initialFields = remember(editing?.transaction?.id) {
+    listOf(
+      type.name, amountText, categoryId, paymentMethodId, description, transactionDate, rememberMerchant,
+    )
+  }
+  val dirty = listOf(
+    type.name, amountText, categoryId, paymentMethodId, description, transactionDate, rememberMerchant,
+  ) != initialFields
+  val requestDismiss = {
+    if (!saving) {
+      if (dirty) showDiscard = true else onDismiss()
+    }
+  }
+  val submit = {
+    val cents = parseAmountCents(amountText)
+    amountError = cents == null
+    if (cents != null) {
+      focus.clearFocus()
+      onSubmit(type, cents, categoryId, paymentMethodId, description.trim(), transactionDate, rememberMerchant && canRememberMerchant)
+    }
+  }
   // 分类面板浏览到的父分类。打开面板时回到一级，重新进来不会停在上次钻进去的那一层。
   var browsingParentId by rememberSaveable { mutableStateOf<String?>(null) }
   val typeCategories = state.categories.filter { it.type == type }
@@ -96,7 +133,7 @@ fun QuickEntryDialog(
   }
 
   SextantBottomSheet(
-    onDismissRequest = { if (!saving) onDismiss() },
+    onDismissRequest = requestDismiss,
     sheetState = rememberModalBottomSheetState(
       skipPartiallyExpanded = true,
       confirmValueChange = { it != SheetValue.Hidden || !currentSaving },
@@ -104,8 +141,12 @@ fun QuickEntryDialog(
     // Keep boundary flings inside selection lists instead of moving the sheet.
     sheetGesturesEnabled = panel == EntryPanel.Form && !saving,
   ) {
-    val focus = LocalFocusManager.current
-    BackHandler(enabled = panel != EntryPanel.Form || saving) { if (!saving) returnOneLevel() }
+    LaunchedEffect(Unit) {
+      // 等 sheet 落位再抢焦点，否则第一帧的窗口焦点还没建立，键盘不会弹出来。
+      delay(180)
+      amountFocus.requestFocus()
+    }
+    SextantPredictiveBackHandler(enabled = panel != EntryPanel.Form || saving) { if (!saving) returnOneLevel() }
     val panelHeight = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
     Column(
       Modifier.fillMaxWidth()
@@ -131,7 +172,7 @@ fun QuickEntryDialog(
         if (panel == EntryPanel.Form && onDelete != null) {
           SextantTextButton(onClick = onDelete, enabled = !saving) { Text("删除", color = SextantColors.Danger) }
         }
-        SextantIconButton(onClick = { if (panel == EntryPanel.Form) onDismiss() else panel = EntryPanel.Form }, enabled = !saving) {
+        SextantIconButton(onClick = { if (panel == EntryPanel.Form) requestDismiss() else panel = EntryPanel.Form }, enabled = !saving) {
           Icon(Icons.Outlined.Close, contentDescription = if (panel == EntryPanel.Form) "关闭记账" else "关闭选择",
             modifier = Modifier.size(20.dp))
         }
@@ -153,7 +194,7 @@ fun QuickEntryDialog(
           when (visiblePanel) {
             EntryPanel.Form -> {
               SextantSegmentedButtonGroup(
-                options = TransactionType.entries,
+                options = TransactionType.entries.filter { it != TransactionType.Transfer || type == TransactionType.Transfer },
                 selected = type,
                 onSelect = { option ->
                   if (!saving) {
@@ -172,11 +213,18 @@ fun QuickEntryDialog(
                   BasicTextField(
                     value = amountText,
                     readOnly = saving,
-                    onValueChange = { amountText = it; amountError = false },
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { contentDescription = "金额" },
+                    onValueChange = { amountText = sanitizeAmountInput(it); amountError = false },
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                      .focusRequester(amountFocus)
+                      .onFocusChanged { amountFocused = it.isFocused }
+                      .semantics { contentDescription = "金额" },
                     textStyle = MaterialTheme.typography.headlineLarge.copy(
                       fontWeight = FontWeight.SemiBold, color = SextantColors.Text),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                      keyboardType = KeyboardType.Decimal,
+                      imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
                     cursorBrush = SolidColor(SextantColors.Accent),
                     singleLine = true,
                     decorationBox = { inner ->
@@ -189,21 +237,25 @@ fun QuickEntryDialog(
                     },
                   )
                 }
-                SextantDivider(color = if (amountError) SextantColors.Danger else SextantColors.SurfaceContainerHighest)
+                SextantDivider(
+                  color = when {
+                    amountError -> SextantColors.Danger
+                    amountFocused -> SextantColors.Accent
+                    else -> SextantColors.SurfaceContainerHighest
+                  },
+                )
                 if (amountError) Text("请输入最多两位小数的有效金额", color = SextantColors.Danger,
                   style = MaterialTheme.typography.bodySmall)
               }
               Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SextantDetailTile("分类", selectedCategory?.displayName(state.categories) ?: "选择分类",
-                  categoryIcon(selectedCategory?.name.orEmpty()), Modifier.weight(1f)) {
-                  if (saving) return@SextantDetailTile
+                  categoryIcon(selectedCategory?.name.orEmpty()), Modifier.weight(1f), enabled = !saving) {
                   focus.clearFocus()
                   browsingParentId = null
                   panel = EntryPanel.Category
                 }
                 SextantDetailTile("来源", selectedMethod?.name ?: "选择来源", Icons.Outlined.AccountBalanceWallet,
-                  Modifier.weight(1f)) {
-                  if (saving) return@SextantDetailTile
+                  Modifier.weight(1f), enabled = !saving) {
                   focus.clearFocus()
                   panel = EntryPanel.Source
                 }
@@ -298,12 +350,7 @@ fun QuickEntryDialog(
           if (panel != EntryPanel.Form) {
             panel = EntryPanel.Form
           } else {
-            val cents = parseAmountCents(amountText)
-            amountError = cents == null
-            if (cents != null) {
-              focus.clearFocus()
-              onSubmit(type, cents, categoryId, paymentMethodId, description.trim(), transactionDate, rememberMerchant && canRememberMerchant)
-            }
+            submit()
           }
         },
         size = SextantButtonSize.Medium,
@@ -311,13 +358,30 @@ fun QuickEntryDialog(
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 20.dp),
       ) {
         if (saving) {
-          SextantLoadingIndicator(size = 24.dp, color = SextantColors.TextMuted,
+          SextantLoadingIndicator(size = 22.dp, color = SextantColors.TextMuted,
             containerColor = SextantColors.SurfaceContainerHighest)
           Spacer(Modifier.width(8.dp))
         }
-        Text(if (saving) "正在保存" else if (panel != EntryPanel.Form) "返回记账" else if (editing == null) "记好了" else "保存修改")
+        Text(if (saving) "保存中" else if (panel != EntryPanel.Form) "返回记账" else if (editing == null) "记好了" else "保存修改")
       }
     }
+  }
+  if (showDiscard) {
+    SextantAlertDialog(
+      onDismissRequest = { showDiscard = false },
+      title = { Text("放弃这笔记录？") },
+      text = { Text("已经填写的内容不会保存。") },
+      confirmButton = {
+        SextantTextButton(
+          onClick = {
+            showDiscard = false
+            onDismiss()
+          },
+          contentColor = SextantColors.Danger,
+        ) { Text("放弃") }
+      },
+      dismissButton = { SextantTextButton(onClick = { showDiscard = false }) { Text("继续编辑") } },
+    )
   }
   if (showDatePicker) {
     val pickerState = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = transactionDate)
@@ -356,6 +420,28 @@ fun QuickEntryDialog(
       },
       dismissButton = { SextantTextButton(onClick = { showTimePicker = false }) { Text("取消") } },
     ) { SextantTimePicker(state = timeState) }
+  }
+}
+
+/** 金额输入只允许数字和一个小数点，小数最多两位；逗号按小数点处理。 */
+private fun sanitizeAmountInput(input: String): String {
+  val filtered = buildString {
+    var hasDot = false
+    input.forEach { char ->
+      when {
+        char.isDigit() -> append(char)
+        (char == '.' || char == ',') && !hasDot -> {
+          append('.')
+          hasDot = true
+        }
+      }
+    }
+  }
+  val dotIndex = filtered.indexOf('.')
+  return if (dotIndex >= 0 && filtered.length - dotIndex > 3) {
+    filtered.substring(0, dotIndex + 3)
+  } else {
+    filtered
   }
 }
 

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -80,10 +82,11 @@ import com.sextant.app.ui.util.analysisPeriodLabel
 import com.sextant.app.ui.util.analysisComparisonNote
 import com.sextant.app.ui.components.categoryIcon
 import com.sextant.app.ui.theme.SextantColors
+import com.sextant.app.ui.theme.sextantEmphasized
 import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.displayDescription
 import com.sextant.app.ui.util.formatCurrency
-import com.sextant.app.ui.util.signedAmountPlain
+import com.sextant.app.ui.util.signedAmountGrouped
 import com.sextant.app.ui.util.timestampLabel
 import com.sextant.app.ui.util.spendingShareLabel
 import com.sextant.app.ui.util.spendingChangeLabel
@@ -129,9 +132,20 @@ private fun AnalyticsOverview(
   onMetricChanged: (AnalysisMetric) -> Unit,
   onCategoryClick: (CategoryBreakdown) -> Unit,
 ) {
-  val report = state.analysisReport ?: return
+  val report = state.analysisReport
+  if (report == null) {
+    Column(Modifier.fillMaxSize()) {
+      SextantFlexibleHeader(title = "分析", scrollState = listState,
+        subtitle = "按日期查看收支趋势与分类", modifier = Modifier.padding(horizontal = 20.dp))
+      Box(Modifier.fillMaxWidth().weight(1f).padding(20.dp), contentAlignment = Alignment.Center) {
+        EmptyCard("暂无分析数据", "这个时间范围还没有可统计的流水，换个周期或先记一笔。")
+      }
+    }
+    return
+  }
   val label = analysisMetricLabel(metric)
   val total = metric.amount(report.summary)
+  val reportPeriod = report.period
   val breakdown = if (metric == AnalysisMetric.Expense) state.categoryBreakdown else report.incomeBreakdown
   val trend = if (metric == AnalysisMetric.Expense) report.trend else report.incomeTrend
   var selectedCategory by rememberSaveable(window, metric) { mutableStateOf<String?>(null) }
@@ -154,14 +168,14 @@ private fun AnalyticsOverview(
           }
         }
       }
-      item(key = "summary") { AnalysisSummary(state, window, metric) }
+      item(key = "summary") { AnalysisSummary(state, window, metric, reportPeriod) }
       item(key = "trend") {
-        AnalyticsSection(label + "趋势", if (window.period == AnalysisPeriod.Year) "按月汇总 · 单位：元" else "按日汇总 · 单位：元") {
+        AnalyticsSection(label + "趋势", if (reportPeriod == AnalysisPeriod.Year) "按月汇总 · 单位：元" else "按日汇总 · 单位：元") {
           if (total == 0L) {
             EmptyCard("暂无" + label + "趋势", "这个时间范围还没有计入统计的" + label + "，可以切换时间查看。")
           } else {
             SextantSurface(Modifier.fillMaxWidth(), color = SextantColors.SurfaceContainerLow) {
-              Box(Modifier.padding(20.dp)) { SpendingTrendChart(trend, window.period, metric) }
+              Box(Modifier.padding(16.dp)) { SpendingTrendChart(trend, reportPeriod, metric) }
             }
           }
         }
@@ -177,7 +191,7 @@ private fun AnalyticsOverview(
         }
       }
       items(breakdown, key = { "category:" + it.memberCategoryIds.sorted() }) { category ->
-        CategorySpendingRow(category, total, window.period, metric, onCategoryClick)
+        CategorySpendingRow(category, total, reportPeriod, metric, onCategoryClick)
       }
     }
   }
@@ -199,21 +213,33 @@ private fun AnalysisDateAndMetric(
   val tabTextWidth = AnalysisMetric.entries.maxOf {
     textMeasurer.measure(analysisMetricLabel(it), style = tabStyle).size.width
   }
-  val tabsWidth = with(density) { tabTextWidth.toDp() + 16.dp }.coerceAtLeast(48.dp) * 2
+  val tabsWidth = ((with(density) { tabTextWidth.toDp() } + 28.dp).coerceAtLeast(52.dp) * 2)
   val dateWidth = with(density) { textMeasurer.measure(dateLabel, style = dateStyle).size.width.toDp() }
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     if (maxWidth >= dateWidth + 124.dp + tabsWidth + 4.dp) {
       Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         AnalysisDateSelector(window, onWindowChanged, Modifier.weight(1f))
-        SextantTabRow(options = AnalysisMetric.entries, selected = metric, onSelect = onMetricChanged,
-          label = { analysisMetricLabel(it) }, modifier = Modifier.width(tabsWidth))
+        // 收支是「看哪一面」，不是筛选条件；用文字页签，避免和上面的周期分段按钮
+        // 抢同一档视觉重量。
+        SextantTabRow(
+          options = AnalysisMetric.entries,
+          selected = metric,
+          onSelect = onMetricChanged,
+          label = { analysisMetricLabel(it) },
+          modifier = Modifier.width(tabsWidth),
+        )
       }
     } else {
       Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         AnalysisDateSelector(window, onWindowChanged, Modifier.fillMaxWidth())
-        SextantTabRow(options = AnalysisMetric.entries, selected = metric, onSelect = onMetricChanged,
-          label = { analysisMetricLabel(it) })
+        SextantTabRow(
+          options = AnalysisMetric.entries,
+          selected = metric,
+          onSelect = onMetricChanged,
+          label = { analysisMetricLabel(it) },
+          modifier = Modifier.fillMaxWidth(),
+        )
       }
     }
   }
@@ -319,9 +345,9 @@ private fun CategoryDetailSummary(
   val label = analysisMetricLabel(metric)
   val share = if (periodTotalCents <= 0) null else spendingShareLabel(category.amountCents, periodTotalCents)
   SextantSurface(modifier = Modifier.fillMaxWidth(), color = SextantColors.SurfaceContainer) {
-    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
       Text(scope + label, color = SextantColors.TextMuted, style = MaterialTheme.typography.labelLarge)
-      Text(formatCurrency(category.amountCents), style = MaterialTheme.typography.headlineLarge)
+      Text(formatCurrency(category.amountCents), style = MaterialTheme.typography.headlineLarge.sextantEmphasized())
       Text(
         buildString {
           append("共 ").append(count).append(" 笔")
@@ -367,7 +393,7 @@ private fun CategoryDetailRow(
           overflow = TextOverflow.Ellipsis,
         )
         Text(
-          text = signedAmountPlain(item),
+          text = signedAmountGrouped(item),
           color = SextantColors.Text,
           style = MaterialTheme.typography.titleMedium,
           softWrap = true,
@@ -391,14 +417,19 @@ private fun detailMetadata(item: TransactionListItem): String = listOf(
 ).filter { it.isNotBlank() }.joinToString("  ·  ")
 
 @Composable
-private fun AnalysisSummary(state: AppState, window: AnalysisWindow, metric: AnalysisMetric) {
+private fun AnalysisSummary(
+  state: AppState,
+  window: AnalysisWindow,
+  metric: AnalysisMetric,
+  period: AnalysisPeriod,
+) {
   val report = state.analysisReport ?: return
   val label = analysisMetricLabel(metric)
-  val previousLabel = "上" + analysisPeriodLabel(window.period)
+  val previousLabel = "上" + analysisPeriodLabel(period)
   SextantSurface(Modifier.fillMaxWidth(), color = SextantColors.SurfaceContainerLow) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       SextantMetric(label = "总" + label, value = formatCurrency(metric.amount(report.summary)), primary = true,
-        valueStyle = MaterialTheme.typography.headlineLarge)
+        valueStyle = MaterialTheme.typography.headlineLarge.sextantEmphasized())
       FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(32.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (metric == AnalysisMetric.Expense) SextantMetric(label = "收入", value = formatCurrency(report.summary.incomeCents))
@@ -407,7 +438,7 @@ private fun AnalysisSummary(state: AppState, window: AnalysisWindow, metric: Ana
       }
       Text(spendingChangeLabel(metric.amount(report.summary), metric.amount(report.previousSummary), previousLabel, label),
         color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
-      analysisComparisonNote(window, metric = metric)?.let {
+      analysisComparisonNote(AnalysisWindow(period, window.anchor), metric = metric)?.let {
         Text(it, color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
       }
     }
@@ -450,9 +481,15 @@ private fun CategorySpendingRow(
         textAlign = TextAlign.End,
       )
     }
-    Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(SextantColors.SurfaceContainerHighest)) {
-      Box(Modifier.fillMaxWidth(ratio.coerceIn(0f, 1f)).height(4.dp).clip(CircleShape).background(color))
-    }
+    // 占比条是静态读数，不用波浪进度：波浪会持续重绘，屏幕上有五六个时滚动会掉帧，
+    // 而且波形会让「占比」本身更难读。
+    LinearProgressIndicator(
+      progress = { ratio.coerceIn(0f, 1f) },
+      modifier = Modifier.fillMaxWidth(),
+      color = color,
+      trackColor = SextantColors.SurfaceContainerHighest,
+      strokeCap = StrokeCap.Round,
+    )
   }
 }
 

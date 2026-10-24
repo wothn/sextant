@@ -45,6 +45,29 @@ fun signedAmountPlain(item: TransactionListItem): String {
   return sign + formatAmountPlain(item.transaction.amountCents)
 }
 
+/** 列表行金额：保留正负号，但带千分位，右对齐的金额列才能逐行扫读。 */
+fun signedAmountGrouped(item: TransactionListItem): String {
+  val sign = if (item.transaction.type == TransactionType.Expense) "-" else "+"
+  return sign + formatAmountGrouped(item.transaction.amountCents)
+}
+
+fun formatAmountGrouped(valueCents: Long): String =
+  NumberFormat.getNumberInstance(Locale.CHINA).apply {
+    minimumFractionDigits = 2
+    maximumFractionDigits = 2
+  }.format(valueCents / 100.0)
+
+/** 图表轴/圆心用的紧凑金额；仍带货币符号，避免手写 "¥"。 */
+fun formatCompactCurrency(valueCents: Long): String {
+  val yuan = valueCents / 100.0
+  val absolute = kotlin.math.abs(yuan)
+  return when {
+    absolute >= 10000 -> "¥%.1f万".format(Locale.CHINA, yuan / 10000)
+    absolute >= 1000 -> "¥%.1f千".format(Locale.CHINA, yuan / 1000)
+    else -> formatCurrency(valueCents)
+  }
+}
+
 fun transactionSubtitle(item: TransactionListItem): String {
   val time = SimpleDateFormat("HH:mm", Locale.CHINA).format(item.transaction.transactionDate)
   return listOf(time, item.paymentMethodName)

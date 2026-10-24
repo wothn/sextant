@@ -67,14 +67,7 @@ fun rememberSaveAction(key: String, showFeedback: Boolean = true, onSuccess: () 
       action.acknowledge()
     }
   }
-  if (showFeedback && action.busy) {
-    SextantAlertDialog(
-      onDismissRequest = {},
-      title = { Text("正在保存") },
-      text = { SextantWavyProgressIndicator() },
-      confirmButton = {},
-    )
-  }
+  // 写入通常只有几十毫秒，不再为它弹一个不可取消的模态框；调用方用 `busy` 禁用按钮即可。
   action.error?.takeIf { showFeedback }?.let { message ->
     SextantAlertDialog(
       onDismissRequest = action::dismissError,

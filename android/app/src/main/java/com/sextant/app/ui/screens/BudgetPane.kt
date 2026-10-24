@@ -3,10 +3,12 @@ package com.sextant.app.ui.screens
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.sextant.app.ui.components.SextantBottomSheet
+import com.sextant.app.ui.components.SextantAlertDialog
 import com.sextant.app.ui.components.SextantButton
 import com.sextant.app.ui.components.SextantTonalButton
 import com.sextant.app.ui.components.SextantTextField
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.FlowRow
@@ -82,6 +84,8 @@ fun BudgetPane(
 ) {
   var editingTotal by rememberSaveable { mutableStateOf(false) }
   var editingCategory by rememberSaveable { mutableStateOf(false) }
+  var editingCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
+  var pendingClear by rememberSaveable { mutableStateOf(false) }
   var totalText by rememberSaveable(state.monthlyBudgetCents) { mutableStateOf(state.monthlyBudgetCents?.let(::formatAmountPlain).orEmpty()) }
   var selectedCategoryId by rememberSaveable { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }?.id) }
   var categoryAmountText by rememberSaveable { mutableStateOf("") }
@@ -89,9 +93,19 @@ fun BudgetPane(
   val saveAction = rememberSaveAction("budget") {
     editingTotal = false
     editingCategory = false
+    editingCategoryId = null
     categoryAmountText = ""
   }
   val expenseCategories = state.categories.filter { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }
+  val editingBudget = editingCategoryId?.let { id ->
+    state.budgets.firstOrNull { it.categoryId == id }
+  }
+  val openCategoryEditor: (BudgetProgress?) -> Unit = { budget ->
+    selectedCategoryId = budget?.categoryId ?: expenseCategories.firstOrNull()?.id
+    categoryAmountText = budget?.amountCents?.let(::formatAmountPlain).orEmpty()
+    editingCategoryId = budget?.categoryId
+    editingCategory = true
+  }
 
   LazyColumn(
     state = listState,
@@ -115,10 +129,16 @@ fun BudgetPane(
     }
     if (state.budgets.isEmpty()) {
       item {
-        EmptyCard("还没有分类预算", "为餐饮、购物等消费分配额度，看看每一类还可以花多少。")
+        EmptyCard(
+          title = "还没有分类预算",
+          description = "为餐饮、购物等消费分配额度，看看每一类还可以花多少。",
+          actionLabel = "添加分类预算",
+        ) { openCategoryEditor(null) }
       }
     } else {
-      items(state.budgets) { CategoryBudgetRow(it) }
+      items(state.budgets, key = { it.categoryId }) { budget ->
+        CategoryBudgetRow(budget) { openCategoryEditor(budget) }
+      }
     }
   }
 
@@ -142,22 +162,29 @@ fun BudgetPane(
   if (editingCategory) {
     SextantBottomSheet(onDismissRequest = { editingCategory = false }) {
       Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
       ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          SextantHeading("添加分类预算")
-          Text("为波动较大的消费设置单独额度", color = SextantColors.TextSubtle)
+          SextantHeading(if (editingBudget != null) "编辑分类预算" else "添加分类预算")
+          Text(
+            if (editingBudget != null) "修改额度，或清除这项预算" else "为波动较大的消费设置单独额度",
+            color = SextantColors.TextSubtle,
+          )
         }
-        Text("消费分类", style = MaterialTheme.typography.labelLarge)
-        FlowChips(
-          items = expenseCategories,
-          selectedId = selectedCategoryId,
-          label = { it.displayName(state.categories) },
-          color = { argbColor(it.color) },
-          icon = { categoryIcon(it.name) },
-          onSelect = { selectedCategoryId = it.id },
-        )
+        if (editingBudget != null) {
+          Text(editingBudget.categoryName, style = MaterialTheme.typography.titleMedium)
+        } else {
+          Text("消费分类", style = MaterialTheme.typography.labelLarge)
+          FlowChips(
+            items = expenseCategories,
+            selectedId = selectedCategoryId,
+            label = { it.displayName(state.categories) },
+            color = { argbColor(it.color) },
+            icon = { categoryIcon(it.name) },
+            onSelect = { selectedCategoryId = it.id },
+          )
+        }
         SextantTextField(
           value = categoryAmountText,
           onValueChange = { categoryAmountText = it },
@@ -170,7 +197,7 @@ fun BudgetPane(
           modifier = Modifier.fillMaxWidth(),
         )
         SextantButton(onClick = {
-            val categoryId = selectedCategoryId
+            val categoryId = editingCategoryId ?: selectedCategoryId
             val amount = parseAmountCents(categoryAmountText)
             if (categoryId != null && amount != null) {
               saveAction.launch {
@@ -178,11 +205,41 @@ fun BudgetPane(
               }
             }
           },
-          enabled = selectedCategoryId != null && parseAmountCents(categoryAmountText) != null,
+          enabled = (editingCategoryId != null || selectedCategoryId != null) && parseAmountCents(categoryAmountText) != null && !saveAction.busy,
           modifier = Modifier.fillMaxWidth(),
-        ) { Text("保存分类预算") }
+        ) { Text(if (editingBudget != null) "保存修改" else "保存分类预算") }
+        if (editingBudget != null) {
+          SextantTextButton(
+            onClick = { pendingClear = true },
+            enabled = !saveAction.busy,
+            contentColor = SextantColors.Danger,
+          ) { Text("清除这项预算") }
+        }
       }
     }
+  }
+
+  if (pendingClear) {
+    val categoryId = editingCategoryId
+    SextantAlertDialog(
+      onDismissRequest = { pendingClear = false },
+      title = { Text("清除这项预算？") },
+      text = { Text("本月不再显示该分类的预算；已经记录的历史流水不受影响。") },
+      confirmButton = {
+        SextantTextButton(
+          onClick = {
+            pendingClear = false
+            if (categoryId != null) {
+              saveAction.launch { repository.clearBudget(categoryId) }
+            }
+          },
+          contentColor = SextantColors.Danger,
+        ) { Text("清除") }
+      },
+      dismissButton = {
+        SextantTextButton(onClick = { pendingClear = false }) { Text("取消") }
+      },
+    )
   }
 }
 
@@ -236,7 +293,7 @@ private fun BudgetOverview(state: AppState, onEdit: () -> Unit) {
 @Composable
 private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (String) -> Unit, onSave: () -> Unit) {
   Column(
-    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
     verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     SextantHeading(title)
@@ -260,11 +317,16 @@ private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (St
 }
 
 @Composable
-private fun CategoryBudgetRow(item: BudgetProgress) {
+private fun CategoryBudgetRow(item: BudgetProgress, onClick: () -> Unit) {
   val percent = if (item.amountCents <= 0) 0f else (item.spentCents.toFloat() / item.amountCents).coerceIn(0f, 1f)
   val overspent = item.spentCents > item.amountCents
   val color = if (overspent) SextantColors.Danger else if (percent >= 0.8f) SextantColors.Warning else argbColor(item.color)
-  Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+  Column(
+    Modifier.fillMaxWidth()
+      .clickable(onClickLabel = "编辑${item.categoryName}的预算", onClick = onClick)
+      .padding(vertical = 4.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CategoryIcon(categoryIcon(item.categoryName), argbColor(item.color), size = 40.dp, iconSize = 22.dp)

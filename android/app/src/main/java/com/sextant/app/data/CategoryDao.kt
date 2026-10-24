@@ -63,6 +63,10 @@ internal interface CategoryDao {
   @Query("UPDATE categories SET isActive = 0 WHERE id = :id OR parentCategoryId = :id")
   suspend fun archive(id: String)
 
+  /** 撤销停用：与 [archive] 同范围恢复，保证父分类回来时子分类也回来。 */
+  @Query("UPDATE categories SET isActive = 1 WHERE id = :id OR parentCategoryId = :id")
+  suspend fun unarchive(id: String)
+
   @Query("SELECT COUNT(*) FROM categories")
   suspend fun count(): Long
 

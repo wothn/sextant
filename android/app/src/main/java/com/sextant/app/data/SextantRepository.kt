@@ -101,7 +101,9 @@ class SextantRepository(context: Context) {
           incomeTrend = expenseTrend(rows, window, AnalysisMetric.Income),
           incomeBreakdown = LedgerCalculations.breakdown(rows.filter(AnalysisMetric.Income::includes), categories).map {
             it.copy(previousAmountCents = previousIncome[it.categoryName]?.amountCents ?: 0L)
-          }),
+          },
+          period = analysisPeriod,
+        ),
       )
     }
     val transactions = listTransactions(categories, allPaymentMethods, filter)
@@ -177,6 +179,16 @@ class SextantRepository(context: Context) {
     if (loadThemePreference() == preference) return
     database.appSettingDao().upsert(AppSettingEntity(SextantDatabase.THEME_PREFERENCE_KEY, preference.storageValue))
     notifyChanged()
+  }
+
+  /** 上次使用的支付来源，跨进程保留；仍以来源是否启用为准，停用后由 QuickEntry 回落到第一个可用来源。 */
+  suspend fun loadLastPaymentMethodId(): String? =
+    database.appSettingDao().findValue(SextantDatabase.LAST_PAYMENT_METHOD_KEY)?.takeIf { it.isNotBlank() }
+
+  suspend fun setLastPaymentMethodId(id: String?) {
+    database.appSettingDao().upsert(
+      AppSettingEntity(SextantDatabase.LAST_PAYMENT_METHOD_KEY, id.orEmpty()),
+    )
   }
 
   suspend fun addTransaction(
@@ -272,6 +284,29 @@ class SextantRepository(context: Context) {
     notifyChanged()
   }
 
+  /** 删除后的撤销：把原记录按原 id 写回，统计和详情会立刻恢复。 */
+  suspend fun restoreTransaction(transaction: Transaction) {
+    database.transactionDao().insert(
+      TransactionEntity(
+        id = transaction.id,
+        categoryId = transaction.categoryId,
+        paymentMethodId = transaction.paymentMethodId,
+        amountCents = transaction.amountCents,
+        type = transaction.type,
+        description = transaction.description,
+        transactionDate = transaction.transactionDate,
+        createdAt = transaction.createdAt,
+        updatedAt = transaction.updatedAt,
+        entryOrigin = transaction.entryOrigin,
+        automationKind = transaction.automationKind,
+        sourceEventId = null,
+        isUserEdited = transaction.isUserEdited,
+        merchantName = transaction.merchantName,
+      ),
+    )
+    notifyChanged()
+  }
+
   suspend fun loadAutomationSettings(): AutomationSettings = automationStore.loadSettings()
 
   suspend fun updateAutomationSettings(settings: AutomationSettings) {
@@ -326,6 +361,13 @@ class SextantRepository(context: Context) {
     notifyChanged()
   }
 
+  /** 清除某分类本月的预算；历史月份的行保留，避免回看旧账时莫名其妙少一项。 */
+  suspend fun clearBudget(categoryId: String) {
+    require(categoryId.isNotBlank()) { "预算分类不能为空" }
+    val startDate = LedgerFilter.currentMonth().rangeStart
+    database.budgetDao().deactivateForCategoryMonth(categoryId, startDate)
+    notifyChanged()
+  }
   /**
    * 新增（[id] 为 null）或更新一笔周期支出，返回它的 id。
    *
@@ -454,6 +496,12 @@ class SextantRepository(context: Context) {
 
   suspend fun archiveCategory(id: String) {
     database.categoryDao().archive(id)
+    notifyChanged()
+  }
+
+  /** 撤销停用；父分类停用时会连带子分类，恢复也按同一范围还原。 */
+  suspend fun restoreCategory(id: String) {
+    database.categoryDao().unarchive(id)
     notifyChanged()
   }
 
@@ -616,7 +664,7 @@ class SextantRepository(context: Context) {
       val spent = transactions
         .filter { it.transaction.categoryId in budgetCategoryIds && it.transaction.type == TransactionType.Expense }
         .sumOf { it.transaction.amountCents }
-      BudgetProgress(category.displayName(categoryById), category.color, budget.amountCents, spent)
+      BudgetProgress(category.displayName(categoryById), category.color, budget.amountCents, spent, category.id)
     }
   }
 

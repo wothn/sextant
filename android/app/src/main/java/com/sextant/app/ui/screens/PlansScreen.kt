@@ -3,7 +3,10 @@ package com.sextant.app.ui.screens
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -14,7 +17,8 @@ import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.ui.components.SextantFlexibleHeader
-import com.sextant.app.ui.components.SextantTabRow
+import com.sextant.app.ui.components.SextantPageContent
+import com.sextant.app.ui.components.SextantSegmentedButtonGroup
 
 /** 「计划」页里的两个一级视图。 */
 enum class PlanSection(val title: String, val subtitle: String) {
@@ -48,16 +52,19 @@ fun PlansScreen(state: AppState, repository: SextantRepository,
       subtitle = section.subtitle,
       modifier = Modifier.padding(horizontal = 20.dp),
     )
-    SextantTabRow(
+    SextantSegmentedButtonGroup(
       options = PlanSection.entries,
       selected = section,
       onSelect = onSectionChanged,
       label = { it.title },
-      modifier = Modifier.padding(horizontal = 20.dp),
+      modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
     )
-    when (section) {
-      PlanSection.Budget -> BudgetPane(budgetListState, state, repository)
-      PlanSection.Recurring -> RecurringPane(recurringListState, state, repository, requestedRecurringId, onRecurringRequestConsumed)
+    Spacer(Modifier.height(4.dp))
+    SextantPageContent(targetState = section, depth = { 0 }, modifier = Modifier.weight(1f)) { visible ->
+      when (visible) {
+        PlanSection.Budget -> BudgetPane(budgetListState, state, repository)
+        PlanSection.Recurring -> RecurringPane(recurringListState, state, repository, requestedRecurringId, onRecurringRequestConsumed)
+      }
     }
   }
 }

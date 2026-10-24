@@ -7,23 +7,29 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
@@ -36,6 +42,7 @@ import com.sextant.app.ui.theme.argbColor
 import com.sextant.app.ui.util.categoryColorOptions
 import com.sextant.app.ui.util.displayName
 import com.sextant.app.ui.util.label
+import kotlinx.coroutines.launch
 
 @Composable
 fun CategoryManagement(
@@ -45,6 +52,11 @@ fun CategoryManagement(
 ) {
   var editingCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
   val editingCategory = categories.firstOrNull { it.id == editingCategoryId }
+  var pendingArchiveId by rememberSaveable { mutableStateOf<String?>(null) }
+  val pendingArchive = categories.firstOrNull { it.id == pendingArchiveId }
+  val snackbar = LocalSnackbarHostState.current
+  val scope = rememberCoroutineScope()
+  val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
   var parentForNewChildId by rememberSaveable { mutableStateOf<String?>(null) }
   val parentForNewChild = categories.firstOrNull { it.id == parentForNewChildId }
   var showAddRoot by rememberSaveable { mutableStateOf(false) }
@@ -101,7 +113,7 @@ fun CategoryManagement(
                         CategoryActions(category, categories,
                           onAddChild = { parentForNewChildId = category.id },
                           onEdit = { editingCategoryId = category.id },
-                          onArchive = { saveAction.launch { repository.archiveCategory(category.id) } })
+                          onArchive = { pendingArchiveId = category.id })
                       },
                     )
                   }
@@ -119,6 +131,7 @@ fun CategoryManagement(
       categories = categories,
       initial = null,
       fixedParent = null,
+      saving = saveAction.busy,
       onDismiss = { showAddRoot = false },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
         saveAction.launch {
@@ -133,6 +146,7 @@ fun CategoryManagement(
       categories = categories,
       initial = null,
       fixedParent = parent,
+      saving = saveAction.busy,
       onDismiss = { parentForNewChildId = null },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
         saveAction.launch {
@@ -147,11 +161,43 @@ fun CategoryManagement(
       categories = categories,
       initial = category,
       fixedParent = null,
+      saving = saveAction.busy,
       onDismiss = { editingCategoryId = null },
       onSubmit = { name, type, color, includeInSpending, parentCategoryId ->
         saveAction.launch {
           repository.updateCategory(category.id, name, type, color, includeInSpending, parentCategoryId)
         }
+      },
+    )
+  }
+
+  pendingArchive?.let { category ->
+    SextantAlertDialog(
+      onDismissRequest = { pendingArchiveId = null },
+      title = { Text("停用「${category.name}」？") },
+      text = { Text("停用后它和它的子分类不再出现在记账与预算里。可以立刻撤销，也可以之后通过备份恢复。") },
+      confirmButton = {
+        SextantTextButton(
+          onClick = {
+            pendingArchiveId = null
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
+            saveAction.launch { repository.archiveCategory(category.id) }
+            scope.launch {
+              val result = snackbar.showSnackbar(
+                message = "已停用「${category.name}」",
+                actionLabel = "撤销",
+                duration = SnackbarDuration.Long,
+              )
+              if (result == SnackbarResult.ActionPerformed) {
+                repository.restoreCategory(category.id)
+              }
+            }
+          },
+          contentColor = SextantColors.Danger,
+        ) { Text("停用") }
+      },
+      dismissButton = {
+        SextantTextButton(onClick = { pendingArchiveId = null }) { Text("取消") }
       },
     )
   }
@@ -185,6 +231,7 @@ private fun CategoryDialog(
   categories: List<Category>,
   initial: Category?,
   fixedParent: Category?,
+  saving: Boolean = false,
   onDismiss: () -> Unit,
   onSubmit: (String, TransactionType, Long, Boolean, String?) -> Unit,
 ) {
@@ -202,11 +249,15 @@ private fun CategoryDialog(
   SextantAlertDialog(
     onDismissRequest = onDismiss,
     confirmButton = {
-      SextantButton(enabled = name.isNotBlank(), onClick = {
+      SextantButton(enabled = name.isNotBlank() && !saving, onClick = {
         if (name.isNotBlank()) {
           onSubmit(name, type, color, includeInSpending, fixedParent?.id ?: parentCategoryId)
         }
       }) {
+        if (saving) {
+          SextantLoadingIndicator(size = 18.dp, color = SextantColors.TextMuted,
+            containerColor = SextantColors.SurfaceContainerHighest)
+        }
         Text("保存")
       }
     },
@@ -249,15 +300,20 @@ private fun CategoryDialog(
           Text("上级分类：${fixedParent.name}", color = SextantColors.TextMuted)
         }
         Row(
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(
+            value = includeInSpending,
+            enabled = !saving,
+            role = Role.Switch,
+            onValueChange = { includeInSpending = it },
+          ),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween,
         ) {
           Text("计入支出统计")
           SextantSwitch(
-            modifier = Modifier.semantics { contentDescription = "计入支出统计" },
             checked = includeInSpending,
-            onCheckedChange = { includeInSpending = it },
+            onCheckedChange = null,
+            enabled = !saving,
           )
         }
       }

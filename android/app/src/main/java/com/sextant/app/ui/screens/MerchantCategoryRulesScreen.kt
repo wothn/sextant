@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
 import com.sextant.app.data.SextantRepository
@@ -28,6 +31,7 @@ import com.sextant.app.ui.util.displayName
 @Composable
 fun MerchantCategoryRulesScreen(state: AppState, repository: SextantRepository, onNavigateBack: () -> Unit) {
   var query by rememberSaveable { mutableStateOf("") }
+  var showExplanation by rememberSaveable { mutableStateOf(false) }
   val rules = state.merchantCategoryRules.filter { it.merchantName.contains(query.trim(), ignoreCase = true) }
   var editingKey by rememberSaveable { mutableStateOf<String?>(null) }
   var deletingKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -47,6 +51,15 @@ fun MerchantCategoryRulesScreen(state: AppState, repository: SextantRepository, 
       onValueChange = { query = it },
       label = { Text("搜索商户") },
       singleLine = true,
+      trailingIcon = if (query.isNotEmpty()) {
+        {
+          SextantIconButton(onClick = { query = "" }) {
+            Icon(Icons.Outlined.Close, contentDescription = "清空搜索")
+          }
+        }
+      } else {
+        null
+      },
       modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
     )
     LazyColumn(
@@ -56,10 +69,18 @@ fun MerchantCategoryRulesScreen(state: AppState, repository: SextantRepository, 
     ) {
       item(key = "explanation") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text("消费入账时优先使用你记住的分类，其次匹配常见商户。无法确定时保留未分类。", color = SextantColors.TextMuted)
-          Text("内置：星巴克、瑞幸等 → 奶茶咖啡；肯德基、麦当劳等 → 正餐；滴滴出行等 → 打车。", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
-          Text("编辑有已识别商户的消费记录时，可选择「以后该商户也使用此分类」。规则按完整商户名匹配，不合并不同门店。", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
-          Text("修改或删除规则只影响以后的消费，不会改动已有流水。", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("规则说明", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            SextantTextButton(onClick = { showExplanation = !showExplanation }) {
+              Text(if (showExplanation) "收起" else "展开")
+            }
+          }
+          if (showExplanation) {
+            Text("消费入账时优先使用你记住的分类，其次匹配常见商户。无法确定时保留未分类。", color = SextantColors.TextMuted)
+            Text("内置：星巴克、瑞幸等 → 奶茶咖啡；肯德基、麦当劳等 → 正餐；滴滴出行等 → 打车。", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+            Text("编辑有已识别商户的消费记录时，可选择「以后该商户也使用此分类」。规则按完整商户名匹配，不合并不同门店。", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+            Text("修改或删除规则只影响以后的消费，不会改动已有流水。", color = SextantColors.TextMuted, style = MaterialTheme.typography.bodySmall)
+          }
         }
       }
       item(key = "count") {
@@ -76,16 +97,23 @@ fun MerchantCategoryRulesScreen(state: AppState, repository: SextantRepository, 
       items(rules, key = { it.merchantKey }) { rule ->
         SextantCard {
           Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(rule.merchantName, style = MaterialTheme.typography.titleSmall)
+            Text(rule.merchantName, style = MaterialTheme.typography.titleMedium)
             Text(state.categories.firstOrNull { it.id == rule.categoryId && it.type == TransactionType.Expense }
               ?.displayName(state.categories) ?: "分类已停用或变更，请重新选择", color = SextantColors.TextMuted)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              SextantTextButton(onClick = {
-                selectedCategoryId = rule.categoryId
-                parentId = null
-                editingKey = rule.merchantKey
-              }) { Text("修改分类") }
-              SextantTextButton(onClick = { deletingKey = rule.merchantKey }) { Text("删除规则", color = SextantColors.Danger) }
+              SextantTextButton(
+                onClick = {
+                  selectedCategoryId = rule.categoryId
+                  parentId = null
+                  editingKey = rule.merchantKey
+                },
+                modifier = Modifier.semantics { contentDescription = "修改${rule.merchantName}的分类" },
+              ) { Text("修改分类") }
+              SextantTextButton(
+                onClick = { deletingKey = rule.merchantKey },
+                contentColor = SextantColors.Danger,
+                modifier = Modifier.semantics { contentDescription = "删除${rule.merchantName}的规则" },
+              ) { Text("删除规则") }
             }
           }
         }
@@ -105,8 +133,8 @@ fun MerchantCategoryRulesScreen(state: AppState, repository: SextantRepository, 
         }
         SextantButton(onClick = {
           selectedCategoryId?.let { id -> save.launch { repository.updateMerchantCategoryRule(key, id) } }
-        }, enabled = state.categories.any { it.id == selectedCategoryId && it.type == TransactionType.Expense }, modifier = Modifier.fillMaxWidth()) {
-          Text("保存分类")
+        }, enabled = state.categories.any { it.id == selectedCategoryId && it.type == TransactionType.Expense } && !save.busy, modifier = Modifier.fillMaxWidth()) {
+          Text(if (save.busy) "保存中" else "保存分类")
         }
       }
     }
@@ -114,7 +142,12 @@ fun MerchantCategoryRulesScreen(state: AppState, repository: SextantRepository, 
   deletingKey?.let { key ->
     SextantAlertDialog(onDismissRequest = { deletingKey = null }, title = { Text("删除商户规则？") },
       text = { Text("仅删除记住的分类，已有流水不变。今后该商户将重新使用内置规则，无法匹配时保留未分类。") },
-      confirmButton = { SextantTextButton(onClick = { delete.launch { repository.deleteMerchantCategoryRule(key) } }) { Text("删除") } },
+      confirmButton = {
+        SextantTextButton(
+          onClick = { delete.launch { repository.deleteMerchantCategoryRule(key) } },
+          contentColor = SextantColors.Danger,
+        ) { Text("删除") }
+      },
       dismissButton = { SextantTextButton(onClick = { deletingKey = null }) { Text("取消") } })
   }
 }

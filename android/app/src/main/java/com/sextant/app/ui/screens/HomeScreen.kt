@@ -1,5 +1,6 @@
 package com.sextant.app.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,11 +33,13 @@ import com.sextant.app.ui.components.SextantFabClearance
 import com.sextant.app.ui.components.SextantHeading
 import com.sextant.app.ui.components.SextantMetric
 import com.sextant.app.ui.components.SextantSurface
+import com.sextant.app.ui.components.SextantTextButton
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,7 +64,7 @@ import com.sextant.app.ui.util.dayGroupLabel
 import com.sextant.app.ui.util.displayDescription
 import com.sextant.app.ui.util.isCurrentMonth
 import com.sextant.app.ui.util.monthLabel
-import com.sextant.app.ui.util.signedAmountPlain
+import com.sextant.app.ui.util.signedAmountGrouped
 import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -71,6 +74,7 @@ import com.sextant.app.ui.theme.sextantEmphasized
 
 private val ScreenPadding = PaddingValues(start = 20.dp, end = 20.dp)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
   state: AppState,
@@ -78,10 +82,19 @@ fun HomeScreen(
   onFilterChanged: (LedgerFilter) -> Unit,
   onTransactionClick: (TransactionListItem) -> Unit,
   onOpenCalendar: () -> Unit,
+  onCreateEntry: () -> Unit = {},
 ) {
   var showFilters by rememberSaveable { mutableStateOf(false) }
   val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
   val listState = rememberLazyListState()
+  var lastAppliedFilter by remember { mutableStateOf(filter) }
+  LaunchedEffect(filter) {
+    // 只有筛选条件真的变了才回到顶部；从别的 Tab 切回来时保留原来的滚动位置。
+    if (filter != lastAppliedFilter) {
+      lastAppliedFilter = filter
+      listState.scrollToItem(0)
+    }
+  }
 
   Column(Modifier.fillMaxSize()) {
     // 标题固定在列表之外：它随内容滚动收起，但不会跟着滚出屏幕，
@@ -115,14 +128,33 @@ fun HomeScreen(
           RecentLedgerHeader(state.transactions.size, filter)
         }
       }
+      if (filter.hasConditions) {
+        item(key = "filterSummary") {
+          Row(
+            Modifier.fillMaxWidth().padding(ScreenPadding).padding(bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Text(
+              "已启用 ${filter.conditionCount} 项筛选",
+              color = SextantColors.TextMuted,
+              style = MaterialTheme.typography.bodyMedium,
+              modifier = Modifier.weight(1f),
+            )
+            SextantTextButton(onClick = { onFilterChanged(LedgerFilter.allTime()) }) { Text("清除") }
+          }
+        }
+      }
       if (state.groups.isEmpty()) {
         item {
-          Column(Modifier.padding(ScreenPadding)) { EmptyLedgerCard(filter) }
+          Column(Modifier.padding(ScreenPadding)) {
+            EmptyLedgerCard(filter, onCreateEntry) { onFilterChanged(LedgerFilter.allTime()) }
+          }
         }
       }
       state.groups.forEach { group ->
         item(key = "day:${group.dayStartMillis}", contentType = "dayHeader") {
-          Column(Modifier.padding(ScreenPadding)) { DailyLedgerHeader(group) }
+          Column(Modifier.background(SextantColors.Background).padding(ScreenPadding)) { DailyLedgerHeader(group) }
         }
         items(group.items, key = { it.transaction.id }, contentType = { "transaction" }) { item ->
           val category = categoriesById[item.transaction.categoryId]
@@ -153,11 +185,21 @@ fun HomeScreen(
 }
 
 @Composable
-private fun EmptyLedgerCard(filter: LedgerFilter) {
+private fun EmptyLedgerCard(filter: LedgerFilter, onCreateEntry: () -> Unit, onClearFilter: () -> Unit) {
   if (filter.hasConditions) {
-    EmptyCard("这个条件下还没有记录", "换个时间范围，或清除筛选条件后再看看。")
+    EmptyCard(
+      title = "这个条件下还没有记录",
+      description = "换个时间范围，或清除筛选条件后再看看。",
+      actionLabel = "清除筛选",
+      onAction = onClearFilter,
+    )
   } else {
-    EmptyCard("还没有记录", "记一笔后，这里会按日期排好最近的明细。")
+    EmptyCard(
+      title = "还没有记录",
+      description = "记一笔后，这里会按日期排好最近的明细。",
+      actionLabel = "记一笔",
+      onAction = onCreateEntry,
+    )
   }
 }
 
@@ -321,7 +363,7 @@ internal fun LedgerTransactionRow(
   onClick: (TransactionListItem) -> Unit,
 ) {
   Row(
-    Modifier.fillMaxWidth().clickable { onClick(item) }.padding(vertical = 8.dp),
+    Modifier.fillMaxWidth().clickable(onClickLabel = "编辑这笔记录") { onClick(item) }.padding(vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor), size = 40.dp, iconSize = 22.dp)
@@ -360,7 +402,7 @@ internal fun LedgerTransactionRow(
         Text(
           // 明细行只留正负号：汇总和日小计已经承担了货币符号，每一行再重复一个 ¥ 只会把
           // 数字往左推、离右缘更远。方向仍由符号表达，格式仍走共享函数。
-          text = signedAmountPlain(item),
+          text = signedAmountGrouped(item),
           color = SextantColors.Text,
           style = MaterialTheme.typography.titleMedium.sextantEmphasized(),
           textAlign = TextAlign.End,
