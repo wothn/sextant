@@ -26,6 +26,18 @@ class NotificationParsersTest {
   }
 
   @Test
+  fun recipientLabelDoesNotTurnAnExpenseIntoAReceipt() {
+    for (source in listOf(WECHAT_PACKAGE, ALIPAY_PACKAGE)) {
+      val candidate = (NotificationParserRegistry.parse(
+        notification(source, "支付通知", "支付成功￥12.00，收款方：街角咖啡"),
+      ) as LocalParseOutcome.Parsed).candidate
+      assertEquals(TransactionType.Expense, candidate.direction)
+      assertEquals(AutomationKind.Purchase, candidate.kind)
+      assertEquals("街角咖啡", candidate.merchant)
+    }
+  }
+
+  @Test
   fun parsesCurrentWechatPaymentPhrasesLocally() {
     val paid = NotificationParserRegistry.parse(
       notification(WECHAT_PACKAGE, "微信支付", "已支付¥16.00"),
@@ -211,15 +223,14 @@ class NotificationParsersTest {
   }
 
   @Test
-  fun parsesLatestGroupedChildAndNormalizesFullWidthDigits() {
+  fun normalizesFullWidthDigitsInNotificationText() {
     val result = NotificationParserRegistry.parse(
       CapturedNotification(
         sourcePackage = WECHAT_PACKAGE,
         notificationKey = "summary",
         postedAt = System.currentTimeMillis(),
         title = "微信支付",
-        text = "[2条]",
-        groupChildText = "微信支付：已支付￥１６.００",
+        text = "微信支付：已支付￥１６.００",
       ),
     ) as LocalParseOutcome.Parsed
 

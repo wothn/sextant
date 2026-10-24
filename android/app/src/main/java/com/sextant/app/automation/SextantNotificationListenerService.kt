@@ -26,12 +26,35 @@ class SextantNotificationListenerService : NotificationListenerService() {
   override fun onNotificationPosted(sbn: StatusBarNotification?) {
     val posted = sbn ?: return
     if (posted.packageName != WECHAT_PACKAGE && posted.packageName != ALIPAY_PACKAGE) return
-    val notification = posted.notification
+    val captured = notificationsForCapture(posted) { activeNotifications }
+    captured.forEach {
+      (application as SextantApplication).automationCoordinator.capture(it)
+    }
+  }
+}
+
+/** A group summary describes its children, not another payment. Keep each child's identity and time. */
+internal fun notificationsForCapture(
+  posted: StatusBarNotification,
+  activeNotifications: () -> Array<StatusBarNotification>,
+): List<CapturedNotification> {
+  val notifications = if (posted.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
+    runCatching {
+      activeNotifications().filter {
+        it.key != posted.key && it.packageName == posted.packageName && it.groupKey == posted.groupKey &&
+          it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0
+      }
+    }.getOrDefault(emptyList())
+  } else {
+    listOf(posted)
+  }
+  return notifications.map { child ->
+    val notification = child.notification
     val extras = notification.extras
-    val captured = CapturedNotification(
-      sourcePackage = posted.packageName,
-      notificationKey = posted.key,
-      postedAt = posted.postTime,
+    CapturedNotification(
+      sourcePackage = child.packageName,
+      notificationKey = child.key,
+      postedAt = child.postTime,
       title = extras.charSequence(Notification.EXTRA_TITLE),
       titleBig = extras.charSequence(Notification.EXTRA_TITLE_BIG),
       text = extras.charSequence(Notification.EXTRA_TEXT),
@@ -41,43 +64,8 @@ class SextantNotificationListenerService : NotificationListenerService() {
       subText = extras.charSequence(Notification.EXTRA_SUB_TEXT),
       summaryText = extras.charSequence(Notification.EXTRA_SUMMARY_TEXT),
       tickerText = notification.tickerText?.toString().orEmpty(),
-      groupChildText = latestGroupChildText(posted),
+      notificationWhen = notification.`when`.takeIf { it > 0 },
     )
-    (application as SextantApplication).automationCoordinator.capture(captured)
-  }
-
-  private fun latestGroupChildText(summary: StatusBarNotification): String {
-    if (summary.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0) return ""
-    return runCatching {
-      activeNotifications
-        .asSequence()
-        .filter { it.key != summary.key && it.packageName == summary.packageName && it.groupKey == summary.groupKey }
-        .filter { it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 }
-        .sortedByDescending { it.postTime }
-        .map(::notificationText)
-        .firstOrNull(String::isNotBlank)
-        .orEmpty()
-    }.getOrDefault("")
-  }
-
-  private fun notificationText(posted: StatusBarNotification): String {
-    val notification = posted.notification
-    val extras = notification.extras
-    return buildList {
-      add(extras.charSequence(Notification.EXTRA_TITLE))
-      add(extras.charSequence(Notification.EXTRA_TITLE_BIG))
-      add(extras.charSequence(Notification.EXTRA_TEXT))
-      add(extras.charSequence(Notification.EXTRA_BIG_TEXT))
-      addAll(extras.charSequenceArray(Notification.EXTRA_TEXT_LINES))
-      add(extras.charSequence(Notification.EXTRA_INFO_TEXT))
-      add(extras.charSequence(Notification.EXTRA_SUB_TEXT))
-      add(extras.charSequence(Notification.EXTRA_SUMMARY_TEXT))
-      add(notification.tickerText?.toString().orEmpty())
-    }.asSequence()
-      .map(String::trim)
-      .filter(String::isNotBlank)
-      .distinct()
-      .joinToString("\n")
   }
 }
 

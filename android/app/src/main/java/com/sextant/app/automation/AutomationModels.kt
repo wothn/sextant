@@ -21,8 +21,11 @@ data class CapturedNotification(
   val subText: String = "",
   val summaryText: String = "",
   val tickerText: String = "",
+  // Read compatibility for old encrypted payloads; new captures expand child notifications.
   val groupChildText: String = "",
   val pageCandidate: ParsedTransactionCandidate? = null,
+  // Notification.when identifies the original notification across reposts; postTime changes on updates.
+  val notificationWhen: Long? = null,
 ) {
   fun normalizedText(): String = buildList {
     add(title)

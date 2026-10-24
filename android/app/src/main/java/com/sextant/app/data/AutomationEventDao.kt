@@ -23,6 +23,36 @@ internal interface AutomationEventDao {
   @Query("SELECT * FROM automation_events WHERE sourcePackage = :sourcePackage AND providerReference = :reference AND id != :eventId AND status IN ('posted', 'duplicate', 'undone') ORDER BY createdAt ASC LIMIT 1")
   suspend fun findByReference(sourcePackage: String, reference: String, eventId: String): AutomationEventEntity?
 
+  @Query(
+    """
+    SELECT matched.* FROM automation_events AS matched
+    WHERE (matched.eventKey LIKE :identityPattern OR matched.eventKey = :legacyIdentity
+      OR (length(matched.eventKey) = 64 AND matched.sourcePackage = :sourcePackage
+        AND matched.notificationKey = :notificationKey
+        AND matched.postedAt BETWEEN :originalTime AND :deliveryTime))
+      AND matched.parsedSummary IN (:summary, :legacySummary) AND matched.id != :eventId
+      AND matched.status IN ('posted', 'duplicate', 'undone')
+      AND (:reference IS NULL OR NOT EXISTS (
+        SELECT 1 FROM automation_events AS known
+        WHERE (known.id = matched.id OR known.transactionId = matched.transactionId)
+          AND known.providerReference IS NOT NULL AND known.providerReference != :reference
+      ))
+    ORDER BY matched.createdAt ASC LIMIT 1
+    """,
+  )
+  suspend fun findByNotificationIdentity(
+    identityPattern: String,
+    legacyIdentity: String,
+    summary: String,
+    legacySummary: String,
+    sourcePackage: String,
+    notificationKey: String,
+    originalTime: Long,
+    deliveryTime: Long,
+    reference: String?,
+    eventId: String,
+  ): AutomationEventEntity?
+
   @Query("UPDATE automation_events SET providerReference = :reference WHERE id = :id AND providerReference IS NULL")
   suspend fun attachReference(id: String, reference: String)
 

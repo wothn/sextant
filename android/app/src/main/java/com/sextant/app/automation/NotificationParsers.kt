@@ -110,7 +110,7 @@ object NotificationParserRegistry {
     content.contains("转账") || content.contains("转入") || content.contains("转出") -> {
       if (direction == TransactionType.Income) AutomationKind.TransferIn else AutomationKind.TransferOut
     }
-    content.contains("收款") || content.contains("到账") -> AutomationKind.Receipt
+    direction == TransactionType.Income && (content.contains("收款") || content.contains("到账")) -> AutomationKind.Receipt
     direction == TransactionType.Expense && content.contains("提现") -> AutomationKind.Withdrawal
     else -> AutomationKind.Purchase
   }

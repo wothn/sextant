@@ -1,7 +1,10 @@
 package com.sextant.app.data
 
+import android.app.Notification
 import android.content.Context
 import android.database.Cursor
+import android.os.UserHandle
+import android.service.notification.StatusBarNotification
 import androidx.sqlite.db.SimpleSQLiteQuery
 import kotlinx.coroutines.runBlocking
 import com.sextant.app.automation.CapturedNotification
@@ -10,6 +13,11 @@ import com.sextant.app.automation.PaymentPageParser
 import com.sextant.app.automation.EncryptedValue
 import com.sextant.app.automation.ParsedTransactionCandidate
 import com.sextant.app.automation.WECHAT_PACKAGE
+import com.sextant.app.automation.LocalParseOutcome
+import com.sextant.app.automation.NotificationParserRegistry
+import com.sextant.app.automation.notificationsForCapture
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -59,6 +67,179 @@ class AutomationStoreTest {
     assertNotNull(store.capture(notification, encrypted()))
     assertNull(store.capture(notification, encrypted()))
     assertEquals(1, store.listRecentEvents().size)
+  }
+
+  @Test
+  fun wechatChildSummaryAndUpdatesPostOnlyOneNotificationTransactionInEitherOrder() = runBlocking {
+    for (summaryFirst in listOf(false, true)) {
+      val before = database.count("transactions")
+      val time = if (summaryFirst) 1_000_000L else 1_000L
+      @Suppress("DEPRECATION")
+      fun posted(id: Int, postTime: Long, summary: Boolean = false): StatusBarNotification {
+        val notification = Notification.Builder(context, "payments")
+          .setSmallIcon(android.R.drawable.ic_dialog_info)
+          .setContentTitle("微信支付")
+          .setContentText("已支付￥12.00")
+          .setWhen(time)
+          .setGroup("payments-$time")
+          .setGroupSummary(summary)
+          .build()
+        return StatusBarNotification(WECHAT_PACKAGE, WECHAT_PACKAGE, id, null, 1000, 0, 0,
+          notification, UserHandle.getUserHandleForUid(1000), postTime)
+      }
+      val child = posted(1, time)
+      val summary = posted(2, time + 1_000, summary = true)
+      val deliveries = if (summaryFirst) listOf(summary, child) else listOf(child, summary)
+      for (delivery in deliveries + posted(1, time + 2_000) + posted(2, time + 3_000, summary = true)) {
+        for (captured in notificationsForCapture(delivery) { arrayOf(child, summary) }) {
+          val event = store.capture(captured, encrypted()) ?: continue
+          val parsed = (NotificationParserRegistry.parse(captured) as LocalParseOutcome.Parsed).candidate
+          store.postCandidate(event, WECHAT_PACKAGE, parsed)
+        }
+      }
+      assertEquals(before + 1, database.count("transactions"))
+    }
+    assertEquals(2, store.listRecentEvents().size)
+    assertTrue(store.listRecentEvents().all {
+      it.status == AutomationEventStatus.Posted && it.parser == "wechat-local-v1"
+    })
+    database.read("SELECT entryOrigin FROM transactions").use { cursor ->
+      while (cursor.moveToNext()) assertEquals("notification", cursor.getString(0))
+    }
+  }
+
+  @Test
+  fun repostedNotificationWithNewDeliveryTimeCreatesOnlyOneBill() = runBlocking {
+    for (source in listOf(WECHAT_PACKAGE, ALIPAY_PACKAGE)) {
+      val original = notification("reposted").copy(sourcePackage = source, notificationWhen = 900)
+      val event = store.capture(original, encrypted())!!
+      val candidate = (NotificationParserRegistry.parse(original) as LocalParseOutcome.Parsed).candidate
+      val posted = store.postCandidate(event, source, candidate)!!
+      assertNull(store.capture(original.copy(postedAt = 2_000), encrypted()))
+      // Suppression survives payload cleanup, process restarts and undo.
+      database.close()
+      database = SextantDatabase.createForTests(context)
+      store = AutomationStore(database)
+      assertNull(store.capture(original.copy(postedAt = 3_000), encrypted()))
+      assertTrue(store.undoAutomatedTransaction(posted.id, posted.updatedAt))
+      assertNull(store.capture(original.copy(postedAt = 4_000), encrypted()))
+    }
+    assertEquals(0L, database.count("transactions"))
+    assertEquals(2L, database.count("automation_events"))
+  }
+
+  @Test
+  fun concurrentUpdatesAreCapturedOnceBeforeWorkersRun() = runBlocking {
+    val original = notification("concurrent").copy(notificationWhen = 900)
+    val captured = (1..10).map { offset ->
+      async { store.capture(original.copy(postedAt = 1_000L + offset), encrypted()) }
+    }.awaitAll().filterNotNull()
+    assertEquals(1, captured.size)
+    assertNotNull(store.postCandidate(captured.single(), WECHAT_PACKAGE, candidate()))
+    assertEquals(1L, database.count("transactions"))
+  }
+
+  @Test
+  fun separateIdenticalPurchasesStillPostWhenKeyIsReusedOrKeysDiffer() = runBlocking {
+    for (source in listOf(WECHAT_PACKAGE, ALIPAY_PACKAGE)) {
+      for ((key, time) in listOf("reused" to 900L, "reused" to 901L, "another" to 901L)) {
+        val notice = notification(key).copy(sourcePackage = source, postedAt = time + 100, notificationWhen = time)
+        val event = store.capture(notice, encrypted())!!
+        val parsed = (NotificationParserRegistry.parse(notice) as LocalParseOutcome.Parsed).candidate
+        assertNotNull(store.postCandidate(event, source, parsed))
+      }
+    }
+    assertEquals(6L, database.count("transactions"))
+  }
+
+  @Test
+  fun missingOrInvalidOriginalTimeFallsBackToDeliveryTime() = runBlocking {
+    val notice = notification("no-original-time")
+    assertNotNull(store.capture(notice, encrypted()))
+    assertNull(store.capture(notice.copy(notificationWhen = 0), encrypted()))
+    assertNull(store.capture(notice.copy(notificationWhen = -1), encrypted()))
+    assertNotNull(store.capture(notice.copy(postedAt = 2_000, notificationWhen = 0), encrypted()))
+  }
+
+  @Test
+  fun richerPayloadAfterInsufficientNotificationCanPostAndFurtherUpdatesMerge() = runBlocking {
+    val initial = notification("updating").copy(notificationWhen = 900, text = "支付成功")
+    val incomplete = store.capture(initial, encrypted())!!
+    assertTrue(NotificationParserRegistry.parse(initial) is LocalParseOutcome.Insufficient)
+    store.markFailed(incomplete, "amount_missing")
+
+    val complete = initial.copy(postedAt = 2_000, text = "已支付￥12.00")
+    val event = store.capture(complete, encrypted())!!
+    val candidate = (NotificationParserRegistry.parse(complete) as LocalParseOutcome.Parsed).candidate
+    val posted = store.postCandidate(event, WECHAT_PACKAGE, candidate)!!
+    for (offset in 1..2) {
+      val updated = complete.copy(postedAt = 2_000L + offset, subText = "状态更新 $offset")
+      val updateEvent = store.capture(updated, encrypted())!!
+      assertNull(store.postCandidate(updateEvent, WECHAT_PACKAGE,
+        (NotificationParserRegistry.parse(updated) as LocalParseOutcome.Parsed).candidate))
+      assertEquals(AutomationEventStatus.Duplicate, store.getEvent(updateEvent)!!.status)
+    }
+    assertEquals(1L, database.count("transactions"))
+    assertTrue(store.undoAutomatedTransaction(posted.id, posted.updatedAt))
+    val afterUndo = complete.copy(postedAt = 5_000, subText = "撤销后更新")
+    val undoneEvent = store.capture(afterUndo, encrypted())!!
+    assertNull(store.postCandidate(undoneEvent, WECHAT_PACKAGE, candidate))
+    assertEquals(AutomationEventStatus.Duplicate, store.getEvent(undoneEvent)!!.status)
+    assertEquals(0L, database.count("transactions"))
+  }
+
+  @Test
+  fun notificationUpdatesAfterPageMergeStayDuplicate() = runBlocking {
+    val page = pageCandidate()
+    val pageEvent = store.capture(pageNotification("stable-page", page), encrypted())!!
+    store.postCandidate(pageEvent, WECHAT_PACKAGE, page)
+    val notice = notification("stable-notification").copy(notificationWhen = 900)
+    for (offset in 1..3) {
+      val updated = notice.copy(postedAt = 1_000L + offset, subText = "状态更新 $offset")
+      val event = store.capture(updated, encrypted())!!
+      assertNull(store.postCandidate(event, WECHAT_PACKAGE, candidate().copy(description = "")))
+      assertEquals(AutomationEventStatus.Duplicate, store.getEvent(event)!!.status)
+    }
+    assertEquals(1L, database.count("transactions"))
+  }
+
+  @Test
+  fun reusedNotificationTimeDoesNotMergeDifferentAmountsOrReferences() = runBlocking {
+    val notice = notification("reused-time").copy(notificationWhen = 900)
+    for ((index, text) in listOf(
+      "已支付￥12.00 订单号：order111111",
+      "已支付￥12.00", // A variant without a reference must still refer to the first bill.
+      "已支付￥12.00 订单号：order222222",
+      "已支付￥13.00 订单号：order333333",
+    ).withIndex()) {
+      val updated = notice.copy(postedAt = 1_000L + index, text = text)
+      val event = store.capture(updated, encrypted())!!
+      store.postCandidate(event, WECHAT_PACKAGE,
+        (NotificationParserRegistry.parse(updated) as LocalParseOutcome.Parsed).candidate)
+    }
+    assertEquals(3L, database.count("transactions"))
+  }
+
+  @Test
+  fun upgradedNotificationRecognizesLegacyDeliveryTimeAndReceiptSummary() = runBlocking {
+    for (legacyKind in listOf(AutomationKind.Purchase, AutomationKind.Receipt)) {
+      val before = database.count("transactions")
+      val original = notification("legacy-$legacyKind")
+      val event = store.capture(original, encrypted())!!
+      val candidate = (NotificationParserRegistry.parse(original) as LocalParseOutcome.Parsed).candidate
+      store.postCandidate(event, WECHAT_PACKAGE, candidate.copy(kind = legacyKind))
+      val update = original.copy(notificationWhen = 900, postedAt = 2_000, subText = "状态更新")
+      val updated = store.capture(update, encrypted())!!
+      assertNull(store.postCandidate(updated, WECHAT_PACKAGE, candidate, update.notificationWhen))
+      assertEquals(AutomationEventStatus.Duplicate, store.getEvent(updated)!!.status)
+      assertEquals(before + 1, database.count("transactions"))
+      // A genuinely new payment may reuse both key and text, but starts after the old delivery.
+      val next = original.copy(notificationWhen = 3_000, postedAt = 4_000)
+      val nextEvent = store.capture(next, encrypted())!!
+      assertNotNull(store.postCandidate(nextEvent, WECHAT_PACKAGE,
+        candidate.copy(occurredAt = next.postedAt), next.notificationWhen))
+      assertEquals(before + 2, database.count("transactions"))
+    }
   }
 
   @Test
@@ -122,6 +303,28 @@ class AutomationStoreTest {
   }
 
   @Test
+  fun wechatPaymentWithRecipientLabelMergesPageInEitherOrder() = runBlocking {
+    for (pageFirst in listOf(true, false)) {
+      val before = database.count("transactions")
+      val time = if (pageFirst) 1_000L else 1_000_000L
+      val notice = notification("recipient-$time").copy(
+        postedAt = time, text = "支付成功￥12.00，收款方：街角咖啡",
+      )
+      val noticeCandidate = (NotificationParserRegistry.parse(notice) as LocalParseOutcome.Parsed).candidate
+      val page = PaymentPageParser.parse(WECHAT_PACKAGE,
+        listOf("支付成功", "街角咖啡", "￥12.00", "完成"), time + 1_000)!!
+      val pageCapture = pageNotification("recipient-$time", page)
+      val firstEvent = store.capture(if (pageFirst) pageCapture else notice, encrypted())!!
+      store.postCandidate(firstEvent, WECHAT_PACKAGE, if (pageFirst) page else noticeCandidate)
+      val secondEvent = store.capture(if (pageFirst) notice else pageCapture, encrypted())!!
+      store.postCandidate(secondEvent, WECHAT_PACKAGE, if (pageFirst) noticeCandidate else page)
+
+      assertEquals(AutomationEventStatus.Duplicate, store.getEvent(secondEvent)!!.status)
+      assertEquals(before + 1, database.count("transactions"))
+    }
+  }
+
+  @Test
   fun pageEnrichesNotificationWithoutAddingTransactionAndRefreshesUndoVersion() = runBlocking {
     val event = store.capture(notification("notification-first"), encrypted())!!
     val posted = store.postCandidate(event, WECHAT_PACKAGE, candidate().copy(description = ""))!!
@@ -154,6 +357,7 @@ class AutomationStoreTest {
   @Test
   fun alipayMerchantlessSuccessMergesNotificationInEitherOrder() = runBlocking {
     for (pageFirst in listOf(true, false)) {
+      val before = database.count("transactions")
       val time = if (pageFirst) 1_000L else 1_000_000L
       val page = alipayMerchantlessPage(time)
       val notice = candidate().copy(amountCents = 7720, occurredAt = time, merchant = "便利店", description = "便利店")
@@ -176,6 +380,7 @@ class AutomationStoreTest {
       assertEquals("便利店", row.description)
       assertEquals("便利店", row.merchantName)
       assertEquals(AutomationEventStatus.Duplicate, store.getEvent(secondEvent)!!.status)
+      assertEquals(before + 1, database.count("transactions"))
     }
     assertEquals(2L, database.count("transactions"))
   }

@@ -95,7 +95,7 @@ class AutomationCoordinator(
         ProcessingResult.Success
       }
       is LocalParseOutcome.Parsed -> {
-        val posted = repository.automationStore.postCandidate(eventId, stored.sourcePackage, outcome.candidate)
+        val posted = repository.automationStore.postCandidate(eventId, stored.sourcePackage, outcome.candidate, notification.notificationWhen)
         onPosted(posted)
         ProcessingResult.Success
       }

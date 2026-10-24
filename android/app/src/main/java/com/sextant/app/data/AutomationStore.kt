@@ -44,7 +44,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
   }
 
   /**
-   * 记下一条通知，返回事件 id；同一条通知重复投递时返回 null。
+   * 记下一条通知，返回事件 id；同一身份、相同内容的通知重复投递时返回 null。
    *
    * 幂等靠 `eventKey` 上的唯一索引加 `INSERT OR IGNORE`，而不是「先查再插」：
    * 监听服务可能在短时间内被系统连着重启，先查再插会在这两步之间漏进第二行。
@@ -52,13 +52,20 @@ internal class AutomationStore(private val database: SextantDatabase) {
   suspend fun capture(notification: CapturedNotification, encrypted: EncryptedValue): String? {
     val id = UUID.randomUUID().toString()
     val page = notification.pageCandidate
+    val payloadHash = sha256(notification.normalizedText())
+    val originalTime = notification.notificationWhen?.takeIf { it > 0 }
     val eventKey = when {
       page?.providerReference != null -> sha256("${notification.sourcePackage}|${notification.notificationKey}")
       page?.hasExactTime == true -> sha256("${notification.sourcePackage}|page|${page.occurredAt}|${page.amountCents}|${page.description}")
       page != null -> sha256("${notification.sourcePackage}|${notification.notificationKey}")
-      else -> sha256("${notification.sourcePackage}|${notification.notificationKey}|${notification.postedAt}")
+      else -> {
+        val notificationTime = originalTime ?: notification.postedAt
+        val identity = sha256("${notification.sourcePackage}|${notification.notificationKey}|$notificationTime")
+        // Let richer updates be parsed even if an earlier payload was missing its amount.
+        // Successfully parsed variants are merged by this stable identity in postCandidate.
+        if (originalTime != null) "$identity:$payloadHash" else identity
+      }
     }
-    val payloadHash = sha256(notification.normalizedText())
     val inserted = database.automationEventDao().insertIgnoringDuplicates(
       AutomationEventEntity(
         id = id,
@@ -105,8 +112,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
   /**
    * 把已解析的通知落成一笔流水。
    *
-   * 三道闸门顺序固定：先按支付平台的交易号去重，再看这个事件是否已经出过流水，最后才插入。
-   * 前两道任意一道命中都只把事件标记成对应状态，不会重复记账。
+   * 先按交易号和通知原始身份去重，再尝试支付页面匹配；事件和流水的写入都在同一事务内。
    *
    * 返回 null 表示「这次没有新增流水」（重复或已处理），调用方据此决定要不要发结果通知。
    */
@@ -114,6 +120,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
     eventId: String,
     sourcePackage: String,
     candidate: ParsedTransactionCandidate,
+    originalNotificationTime: Long? = null,
   ): PostedTransaction? = database.withTransaction {
     val events = database.automationEventDao()
     val now = System.currentTimeMillis()
@@ -123,7 +130,20 @@ internal class AutomationStore(private val database: SextantDatabase) {
     val summary = "${candidate.direction.storageValue()}|${candidate.kind.storageValue()}|${candidate.amountCents}"
     val isPage = candidate.parser.contains("-page-")
     val referenceMatch = candidate.providerReference?.let { events.findByReference(sourcePackage, it, eventId) }
-    val matches = if (referenceMatch != null) listOf(referenceMatch) else {
+    val notificationMatch = if (!isPage && ':' in event.eventKey) {
+      val identity = event.eventKey.substringBefore(':')
+      // v13 had only delivery time and could classify an expense's recipient as Receipt.
+      // Match differing legacy times only with the same key/summary and within this notification's
+      // lifetime, including richer payload updates. A later purchase reusing the same key starts after the old delivery time.
+      val legacySummary = if (candidate.direction == TransactionType.Expense && candidate.kind == AutomationKind.Purchase)
+        "expense|receipt|${candidate.amountCents}" else summary
+      val originalTime = originalNotificationTime?.takeIf { it > 0 } ?: event.postedAt
+      events.findByNotificationIdentity("$identity:%", identity, summary, legacySummary,
+        sourcePackage, event.notificationKey, originalTime, event.postedAt,
+        candidate.providerReference, eventId)
+    } else null
+    val identityMatch = referenceMatch ?: notificationMatch
+    val matches = if (identityMatch != null) listOf(identityMatch) else {
       events.findNearby(sourcePackage, candidate.occurredAt - 90_000, candidate.occurredAt + 90_000, summary, eventId)
         .filter { previous ->
           val previousPage = previous.notificationKey.startsWith("payment-page:")
@@ -144,11 +164,11 @@ internal class AutomationStore(private val database: SextantDatabase) {
       return@withTransaction null
     }
     matches.singleOrNull()?.let { previous ->
-      if (referenceMatch == null && events.hasMergedChannel(previous.transactionId, if (isPage) "payment-page:%" else "%", isPage)) {
+      if (identityMatch == null && events.hasMergedChannel(previous.transactionId, if (isPage) "payment-page:%" else "%", isPage)) {
         updateEvent(eventId, AutomationEventStatus.Failed, candidate.parser, "payment_match_ambiguous", clearPayload = true)
         return@withTransaction null
       }
-      if (referenceMatch == null && isPage && previous.notificationKey.startsWith("payment-page:") &&
+      if (identityMatch == null && isPage && previous.notificationKey.startsWith("payment-page:") &&
         !(candidate.hasExactTime && previous.postedAt == candidate.occurredAt)) {
         updateEvent(eventId, AutomationEventStatus.Failed, candidate.parser, "payment_match_ambiguous", clearPayload = true)
         return@withTransaction null
