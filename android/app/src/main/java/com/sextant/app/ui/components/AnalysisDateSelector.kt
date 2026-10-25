@@ -51,12 +51,12 @@ fun AnalysisDateSelector(
         .semantics { contentDescription = analysisWindowLabel(window) },
       color = Color.Transparent, shape = SextantFullShape,
     ) {
-      Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 4.dp),
+      Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(analysisDateSelectorLabel(window), Modifier.weight(1f, fill = false),
-          style = MaterialTheme.typography.titleMedium)
-        Icon(Icons.Outlined.ExpandMore, contentDescription = null, modifier = Modifier.size(16.dp))
+          style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+        Icon(Icons.Outlined.ExpandMore, contentDescription = null, modifier = Modifier.size(12.dp))
       }
     }
     SextantIconButton(onClick = { onWindowChanged(window.move(1)) }, modifier = Modifier.size(48.dp)) {

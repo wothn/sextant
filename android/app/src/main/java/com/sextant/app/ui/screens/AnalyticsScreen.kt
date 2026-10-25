@@ -197,7 +197,7 @@ private fun AnalyticsOverview(
   }
 }
 
-/** 先确定日期，再选择该周期内的收支；长周区间或大字体下按此顺序分行。 */
+/** 日期与收支紧凑并排；窄屏或大字体下按此顺序分行，保留完整日期。 */
 @Composable
 private fun AnalysisDateAndMetric(
   window: AnalysisWindow,
@@ -208,15 +208,16 @@ private fun AnalysisDateAndMetric(
   val textMeasurer = rememberTextMeasurer()
   val density = LocalDensity.current
   val tabStyle = MaterialTheme.typography.titleSmall
-  val dateStyle = MaterialTheme.typography.titleMedium
+  val dateStyle = MaterialTheme.typography.bodyMedium
   val dateLabel = analysisDateSelectorLabel(window)
   val tabTextWidth = AnalysisMetric.entries.maxOf {
     textMeasurer.measure(analysisMetricLabel(it), style = tabStyle).size.width
   }
-  val tabsWidth = ((with(density) { tabTextWidth.toDp() } + 28.dp).coerceAtLeast(52.dp) * 2)
+  val tabsWidth = ((with(density) { tabTextWidth.toDp() } + 16.dp).coerceAtLeast(48.dp) * 2)
   val dateWidth = with(density) { textMeasurer.measure(dateLabel, style = dateStyle).size.width.toDp() }
   BoxWithConstraints(Modifier.fillMaxWidth()) {
-    if (maxWidth >= dateWidth + 124.dp + tabsWidth + 4.dp) {
+    // 两个 48dp 箭头 + 日期入口的 4dp 内边距、2dp 间距和 12dp 展开图标。
+    if (maxWidth >= dateWidth + 114.dp + tabsWidth + 4.dp) {
       Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         AnalysisDateSelector(window, onWindowChanged, Modifier.weight(1f))
