@@ -27,6 +27,8 @@ class SextantApplication : Application() {
     private set
   lateinit var diagnosticExporter: DiagnosticExportCoordinator
     private set
+  lateinit var agentCoordinator: com.sextant.app.agent.AgentCoordinator
+    private set
 
   private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -36,6 +38,7 @@ class SextantApplication : Application() {
   override fun onCreate() {
     super.onCreate()
     repository = SextantRepository(this)
+    agentCoordinator = com.sextant.app.agent.AgentCoordinator(this, repository, appScope)
     automationCoordinator = AutomationCoordinator(this, repository, appScope)
     notificationListenerConnection = repository.notificationListenerConnection
     // 备份读写挂在应用级作用域上：它要比设置页活得久，旋转或分屏重建界面时不能把正在

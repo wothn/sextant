@@ -1,17 +1,20 @@
 package com.sextant.app.data
 
+@kotlinx.serialization.Serializable
 enum class TransactionType {
   Expense,
   Income,
   Transfer,
 }
 
+@kotlinx.serialization.Serializable
 enum class EntryOrigin {
   Manual,
   Notification,
   Accessibility,
 }
 
+@kotlinx.serialization.Serializable
 enum class AutomationKind {
   Purchase,
   Refund,
@@ -43,6 +46,7 @@ data class PaymentMethod(
   val transactionCount: Long = 0,
 )
 
+@kotlinx.serialization.Serializable
 data class Transaction(
   val id: String,
   val categoryId: String?,

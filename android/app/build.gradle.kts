@@ -35,7 +35,7 @@ fun versionCodeFrom(name: String): Int {
  * 保持为「最后一个已发布版本」：派生出的 versionCode 就总是比下一个发布版本小 1，本地包装
  * 在设备上不会挡住随后的正式更新。
  */
-val localVersionName = "0.4.16"
+val localVersionName = "0.5.0"
 val resolvedVersionName = providers.environmentVariable("VERSION_NAME").orNull ?: localVersionName
 
 // VERSION_CODE 只留作逃生口（例如修复性重发同一版本号时需要手动抬高）。CI 不再传它。
@@ -150,9 +150,16 @@ dependencies {
   implementation("androidx.compose.material:material-icons-extended")
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.ui:ui-tooling-preview")
+  implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.40.2")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
   implementation("androidx.work:work-runtime:2.11.2")
+  // 只引入运行循环与 DeepSeek，避免完整聚合包把端侧模型和其它供应商一起打包。
+  implementation("ai.koog:agents-core:1.3.0")
+  implementation("ai.koog:agents-features-event-handler:1.3.0")
+  implementation("ai.koog:prompt-executor-deepseek-client:1.3.0-beta")
+  implementation("ai.koog:http-client-ktor:1.3.0")
+  implementation("io.ktor:ktor-client-okhttp:3.3.3")
 
   // Room 取代了原来的 SQLiteOpenHelper：实体/DAO/迁移都由编译期校验，
   // 表结构写错会在构建时就报出来，而不是等到用户打开某个页面才崩。
@@ -165,4 +172,5 @@ dependencies {
   testImplementation("junit:junit:4.13.2")
   testImplementation("org.robolectric:robolectric:4.16")
   testImplementation("androidx.work:work-testing:2.11.2")
+  testImplementation("io.ktor:ktor-client-mock:3.3.3")
 }

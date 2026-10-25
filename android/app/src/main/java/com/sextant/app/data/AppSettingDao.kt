@@ -12,7 +12,7 @@ internal interface AppSettingDao {
   @Query("SELECT * FROM app_settings WHERE key LIKE 'automation_%'")
   suspend fun listAutomationSettings(): List<AppSettingEntity>
 
-  @Query("SELECT * FROM app_settings WHERE key NOT LIKE 'automation_%' ORDER BY key ASC")
+  @Query("SELECT * FROM app_settings WHERE key NOT LIKE 'automation_%' AND key NOT LIKE 'agent_operation_%' ORDER BY key ASC")
   suspend fun listBackupSettings(): List<AppSettingEntity>
 
   @Query("SELECT * FROM app_settings ORDER BY key ASC")

@@ -23,12 +23,14 @@ class MainActivity : ComponentActivity() {
   private var requestedEditTransactionId by mutableStateOf<String?>(null)
   private var widgetDestination by mutableStateOf<String?>(null)
   private var widgetRecurringId by mutableStateOf<String?>(null)
+  private var openAgent by mutableStateOf(false)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     requestedEditTransactionId = intent.getStringExtra(AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID)
     readWidgetRequest(intent)
+    openAgent = intent.getBooleanExtra("openAgent", false)
     val sextantApplication = application as SextantApplication
     val repository = sextantApplication.repository
     // 主题必须在第一帧之前定下来，否则会先按系统主题画一帧、读完之后再跳成用户选的那套，
@@ -72,6 +74,8 @@ class MainActivity : ComponentActivity() {
             intent.removeExtra(com.sextant.app.widget.WidgetNavigation.EXTRA_DESTINATION)
             intent.removeExtra(com.sextant.app.widget.WidgetNavigation.EXTRA_RECURRING_ID)
           },
+          openAgent = openAgent,
+          onAgentRequestConsumed = { openAgent = false; intent.removeExtra("openAgent") },
         )
       }
     }
@@ -82,6 +86,7 @@ class MainActivity : ComponentActivity() {
     setIntent(intent)
     requestedEditTransactionId = intent.getStringExtra(AutomationNotifier.EXTRA_EDIT_TRANSACTION_ID)
     readWidgetRequest(intent)
+    openAgent = intent.getBooleanExtra("openAgent", false)
   }
 
   private fun readWidgetRequest(intent: Intent) {

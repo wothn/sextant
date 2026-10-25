@@ -2,6 +2,7 @@
 
 # AI / local assistant artifacts
 .agents/
+.review/
 memories/
 AGENTS.md
 skills-lock.json

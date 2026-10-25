@@ -99,8 +99,13 @@ fun SextantApp(
   widgetDestination: String? = null,
   widgetRecurringId: String? = null,
   onWidgetRequestConsumed: () -> Unit = {},
+  openAgent: Boolean = false,
+  onAgentRequestConsumed: () -> Unit = {},
 ) {
   var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+  LaunchedEffect(openAgent) {
+    if (openAgent) { tab = Tab.Chat; onAgentRequestConsumed() }
+  }
   var showCalendar by rememberSaveable { mutableStateOf(false) }
   val calendarOpen = tab == Tab.Home && showCalendar
   SextantPredictiveBackHandler(enabled = calendarOpen) { showCalendar = false }
@@ -124,6 +129,7 @@ fun SextantApp(
   val projection = when (tab) {
     Tab.Discover -> StateProjection.Plans
     Tab.Settings -> StateProjection.Settings
+    Tab.Chat -> StateProjection.Settings
     Tab.Analytics -> StateProjection.Analytics
     else -> StateProjection.Ledger
   }
@@ -271,6 +277,7 @@ fun SextantApp(
               Tab.Analytics -> StateProjection.Analytics
               Tab.Discover -> StateProjection.Plans
               Tab.Settings -> StateProjection.Settings
+              Tab.Chat -> StateProjection.Settings
             },
             if (pageTab == Tab.Analytics) analysisPeriod else AnalysisPeriod.Month,
           )
@@ -328,6 +335,10 @@ fun SextantApp(
                     onThemePreferenceChanged = { preference ->
                       themeSaveAction.launch { repository.setThemePreference(preference) }
                     },
+                  )
+                  Tab.Chat -> com.sextant.app.ui.screens.AgentChatScreen(
+                    (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.sextant.app.SextantApplication).agentCoordinator,
+                    repository,
                   )
                 }
               }

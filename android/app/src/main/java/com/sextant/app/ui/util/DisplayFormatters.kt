@@ -14,6 +14,12 @@ import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.Locale
 
+fun agentDraftDate(millis: Long): String = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(millis))
+
+fun agentConversationDate(millis: Long): String = SimpleDateFormat("MM月dd日 HH:mm", Locale.CHINA).format(Date(millis))
+
+fun agentElapsedTime(millis: Long): String = if (millis < 1000) "${millis} ms" else String.format(Locale.CHINA, "%.1f 秒", millis / 1000.0)
+
 val TransactionType.label: String
   get() = when (this) {
     TransactionType.Expense -> "支出"
