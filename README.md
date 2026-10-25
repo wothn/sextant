@@ -36,4 +36,4 @@ macOS / Linux 使用 `./gradlew`。应用模块为 `android/app`，主要代码�
 - `agent/`：模型接入、工具执行和会话管理。
 - `ui/`：Compose 页面与组件。
 
-提交到 `main` 或创建 PR 时，CI 会运行单元测试和 Debug 构建。
+提交到 `main` 或创建 PR 时，CI 会运行单元测试。
