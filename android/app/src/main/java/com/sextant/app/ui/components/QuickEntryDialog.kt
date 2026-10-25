@@ -8,8 +8,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.Icons
@@ -51,7 +49,6 @@ import com.sextant.app.ui.util.parseAmountCents
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import kotlinx.coroutines.delay
 
 private enum class EntryPanel { Form, Category, Source }
 
@@ -89,7 +86,6 @@ fun QuickEntryDialog(
   var amountError by rememberSaveable { mutableStateOf(false) }
   var amountFocused by remember { mutableStateOf(false) }
   var panel by rememberSaveable { mutableStateOf(EntryPanel.Form) }
-  val amountFocus = remember { FocusRequester() }
   val focus = LocalFocusManager.current
   val initialFields = remember(editing?.transaction?.id) {
     listOf(
@@ -141,11 +137,6 @@ fun QuickEntryDialog(
     // Keep boundary flings inside selection lists instead of moving the sheet.
     sheetGesturesEnabled = panel == EntryPanel.Form && !saving,
   ) {
-    LaunchedEffect(Unit) {
-      // 等 sheet 落位再抢焦点，否则第一帧的窗口焦点还没建立，键盘不会弹出来。
-      delay(180)
-      amountFocus.requestFocus()
-    }
     SextantPredictiveBackHandler(enabled = panel != EntryPanel.Form || saving) { if (!saving) returnOneLevel() }
     val panelHeight = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
     Column(
@@ -215,7 +206,6 @@ fun QuickEntryDialog(
                     readOnly = saving,
                     onValueChange = { amountText = sanitizeAmountInput(it); amountError = false },
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                      .focusRequester(amountFocus)
                       .onFocusChanged { amountFocused = it.isFocused }
                       .semantics { contentDescription = "金额" },
                     textStyle = MaterialTheme.typography.headlineLarge.copy(
