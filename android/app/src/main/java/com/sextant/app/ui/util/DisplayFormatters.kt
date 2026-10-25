@@ -33,6 +33,11 @@ val categoryColorOptions = listOf(
   0xFF66BB6AL to "绿",
   0xFF26A69AL to "青",
   0xFFD97706L to "金",
+  0xFFAB47BCL to "紫",
+  0xFF5C6BC0L to "靛蓝",
+  0xFFEC407AL to "粉",
+  0xFF0F9F9AL to "蓝绿",
+  0xFFEF5350L to "红",
 )
 
 fun signedAmount(item: TransactionListItem): String {
