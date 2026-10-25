@@ -38,7 +38,10 @@ class SextantApplication : Application() {
   override fun onCreate() {
     super.onCreate()
     repository = SextantRepository(this)
-    agentCoordinator = com.sextant.app.agent.AgentCoordinator(this, repository, appScope)
+    agentCoordinator = com.sextant.app.agent.AgentCoordinator(this, repository, appScope,
+      store = com.sextant.app.data.AgentConversationStore(this),
+      settings = com.sextant.app.data.AgentSettingsStore(this),
+      images = com.sextant.app.data.AgentImageStore(this))
     automationCoordinator = AutomationCoordinator(this, repository, appScope)
     notificationListenerConnection = repository.notificationListenerConnection
     // 备份读写挂在应用级作用域上：它要比设置页活得久，旋转或分屏重建界面时不能把正在

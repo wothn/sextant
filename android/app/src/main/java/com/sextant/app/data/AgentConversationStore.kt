@@ -10,8 +10,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Required
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class AgentMessage(val id: String, val role: String, val text: String, val runId: String? = null,
@@ -54,6 +56,16 @@ data class AgentDraft(
 )
 
 @Serializable
+data class AgentTurnTranscript(
+  val userMessageId: String,
+  val runId: String,
+  val messages: List<JsonElement> = emptyList(),
+  val draftIds: List<String> = emptyList(),
+  val completed: Boolean = false,
+  @Required val formatVersion: Int = 1,
+)
+
+@Serializable
 data class AgentConversation(
   val messages: List<AgentMessage> = emptyList(),
   val drafts: List<AgentDraft> = emptyList(),
@@ -62,8 +74,11 @@ data class AgentConversation(
   val activity: String = "",
   val error: String? = null,
   val trace: List<AgentTraceEntry> = emptyList(),
+  val transcript: List<AgentTurnTranscript> = emptyList(),
+  val attemptId: String? = null,
 ) {
   val running: Boolean get() = status == "running"
+  fun ownsRun(run: String, attempt: String?): Boolean = runId == run && attemptId == attempt && running
 }
 
 data class AgentConversationSummary(val id: String, val title: String, val preview: String, val updatedAt: Long)
@@ -79,9 +94,18 @@ private data class SavedAgentConversation(
 @Serializable
 private data class AgentConversationArchive(val activeId: String, val conversations: List<SavedAgentConversation>)
 
-/** 对话不进入账本备份；活动会话和历史在同一文件中原子提交。 */
+@Serializable
+private data class AgentConversationRef(val id: String, val updatedAt: Long, val title: String?, val revision: String)
+
+@Serializable
+private data class AgentConversationIndex(val storageVersion: Int, val activeId: String, val conversations: List<AgentConversationRef>)
+
+/** 正文按会话写入不可变版本，原子替换索引作为提交点；失败时保留旧版本。 */
 class AgentConversationStore(context: Context, fileName: String = "agent-conversation.json") {
   private val file = AgentAtomicFile(File(context.noBackupFilesDir, fileName))
+  private val directory = File(context.noBackupFilesDir, "$fileName.sessions")
+  private var revisions = emptyMap<String, String>()
+  private var persistedBodies = emptyMap<String, AgentConversation>()
   private val mutex = Mutex()
   private val json = Json { ignoreUnknownKeys = true }
   private val mutable = MutableStateFlow(AgentConversation())
@@ -98,7 +122,8 @@ class AgentConversationStore(context: Context, fileName: String = "agent-convers
       if (!loaded) {
         val saved = if (file.exists()) {
           val source = String(file.read(), Charsets.UTF_8)
-          if ("activeId" in json.parseToJsonElement(source).jsonObject) json.decodeFromString<AgentConversationArchive>(source)
+          if ("storageVersion" in json.parseToJsonElement(source).jsonObject) readIndex(source)
+          else if ("activeId" in json.parseToJsonElement(source).jsonObject) json.decodeFromString<AgentConversationArchive>(source)
           else newArchive(json.decodeFromString<AgentConversation>(source))
         } else newArchive(AgentConversation())
         publish(saved)
@@ -113,13 +138,17 @@ class AgentConversationStore(context: Context, fileName: String = "agent-convers
     return mutex.withLock {
       withContext(Dispatchers.IO) {
         val next = change(mutable.value)
+        if (next == mutable.value) return@withContext next
         val current = requireNotNull(archive)
         val saved = current.copy(conversations = current.conversations.map {
           if (it.id == current.activeId) it.copy(conversation = next,
             updatedAt = if (persist) System.currentTimeMillis() else it.updatedAt) else it
         })
         if (persist) write(saved)
-        publish(saved)
+        if (persist) publish(saved) else {
+          archive = saved
+          mutable.value = next
+        }
         next
       }
     }
@@ -187,7 +216,44 @@ class AgentConversationStore(context: Context, fileName: String = "agent-convers
   }
 
   private fun write(saved: AgentConversationArchive) {
-    file.write(json.encodeToString(AgentConversationArchive.serializer(), saved).toByteArray(Charsets.UTF_8))
+    val created = mutableListOf<File>()
+    try {
+      val refs = saved.conversations.map { entry ->
+        val revision = revisions[entry.id]?.takeIf { persistedBodies[entry.id] == entry.conversation } ?: run {
+          val name = "${UUID.randomUUID()}.json"
+          val body = File(directory, name)
+          created += body
+          AgentAtomicFile(body).write(json.encodeToString(AgentConversation.serializer(), entry.conversation).toByteArray(Charsets.UTF_8))
+          name
+        }
+        AgentConversationRef(entry.id, entry.updatedAt, entry.title, revision)
+      }
+      val index = AgentConversationIndex(2, saved.activeId, refs)
+      file.write(json.encodeToString(AgentConversationIndex.serializer(), index).toByteArray(Charsets.UTF_8))
+      val old = revisions.values.toSet()
+      revisions = refs.associate { it.id to it.revision }
+      persistedBodies = saved.conversations.associate { it.id to it.conversation }
+      (old - revisions.values.toSet()).forEach { runCatching { File(directory, it).delete() } }
+    } catch (error: Exception) {
+      created.forEach { it.delete() }
+      throw error
+    }
+  }
+
+  private fun readIndex(source: String): AgentConversationArchive {
+    val index = json.decodeFromString<AgentConversationIndex>(source)
+    require(index.storageVersion == 2) { "对话存储版本不受支持" }
+    val conversations = index.conversations.map { ref ->
+      require(Regex("[0-9a-f-]{36}\\.json").matches(ref.revision)) { "无效的对话文件" }
+      val body = json.decodeFromString<AgentConversation>(File(directory, ref.revision).readText(Charsets.UTF_8))
+      SavedAgentConversation(ref.id, ref.updatedAt, body, ref.title)
+    }
+    revisions = index.conversations.associate { it.id to it.revision }
+    persistedBodies = conversations.associate { it.id to it.conversation }
+    // 进程可能在写完正文、替换索引之前退出；完整读取索引后再清理这些未提交版本。
+    directory.listFiles()?.filter { Regex("[0-9a-f-]{36}\\.json").matches(it.name) && it.name !in revisions.values }
+      ?.forEach { runCatching { it.delete() } }
+    return AgentConversationArchive(index.activeId, conversations)
   }
 
   private fun publish(saved: AgentConversationArchive) {

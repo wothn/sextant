@@ -22,6 +22,14 @@ class AgentLedgerQuery private constructor(private val file: File, val capturedA
   private val database = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY)
   private val lock = Any()
 
+  suspend fun transactionVersion(id: String): Long? = withContext(Dispatchers.IO) {
+    synchronized(lock) {
+      database.rawQuery("SELECT updatedAt FROM transactions WHERE id = ?", arrayOf(id)).use {
+        if (it.moveToFirst()) it.getLong(0) else null
+      }
+    }
+  }
+
   fun schema(): String = synchronized(lock) {
     val definitions = database.rawQuery("SELECT sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'", null)
       .use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
@@ -104,6 +112,9 @@ class AgentLedgerQuery private constructor(private val file: File, val capturedA
                     }
                     target.insertOrThrow(table, null, values)
                   }
+                }
+                source.query("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", arrayOf(table)).use { indexes ->
+                  while (indexes.moveToNext()) target.execSQL(indexes.getString(0))
                 }
               }
               target.execSQL("CREATE TABLE ledger_metadata (key TEXT PRIMARY KEY, value TEXT)")

@@ -148,7 +148,7 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
       }
       if (conversation.status in setOf("failed", "interrupted", "cancelled")) item {
         Text(conversation.error ?: conversation.activity, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = coordinator::retry) { Text("重新分析") }
+        TextButton(onClick = coordinator::retry) { Text("继续分析") }
       }
       commandError?.let { error -> item {
         Text(error, color = MaterialTheme.colorScheme.error)

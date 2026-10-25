@@ -4,6 +4,7 @@ import android.content.Context
 import com.sextant.app.agent.ChangeArgs
 import com.sextant.app.agent.prepareChange
 import com.sextant.app.agent.AgentTraceRecorder
+import com.sextant.app.agent.AgentToolResult
 import com.sextant.app.agent.SchemaArgs
 import com.sextant.app.agent.generateConversationTitle
 import com.sextant.app.agent.normalizeConversationTitle
@@ -79,6 +80,12 @@ class AgentLedgerTest {
   private fun draft() = AgentDraft(UUID.randomUUID().toString(), "run", "create", UUID.randomUUID().toString(),
     amountCents = 3500, description = "午饭", transactionDate = date.toStartOfDayMillis())
 
+  private suspend fun prepare(store: AgentConversationStore, args: ChangeArgs): String {
+    val version = args.transactionId?.let { repository.findTransaction(it)?.transaction?.updatedAt }
+    return AgentLedgerQuery.capture(context, repository).use {
+      prepareChange(repository, store, "run", args.copy(expectedUpdatedAt = version), it)
+    }
+  }
   @Test fun legacyConversationRemainsAvailableAfterCreatingAndReopeningHistory() = runBlocking {
     File(context.noBackupFilesDir, "agent-test.json").writeText("""{
       "messages":[{"id":"m1","role":"user","text":"上个月花了多少","runId":"run"}],
@@ -238,14 +245,14 @@ class AgentLedgerTest {
   @Test fun preparePersistsDraftWithoutPostingAndNewStoreRestoresIt() = runBlocking {
     val store = AgentConversationStore(context, "agent-test.json")
     store.update { it.copy(runId = "run", status = "running") }
-    val result = JSONObject(prepareChange(repository, store, "run", ChangeArgs("create", type = "expense", amountCents = 3500,
+    val result = JSONObject(prepare(store, ChangeArgs("create", type = "expense", amountCents = 3500,
       description = "午饭", date = "2026-10-25")))
     assertEquals("awaiting_confirmation", result.getString("status"))
     assertTrue(repository.loadState().transactions.isEmpty())
     assertEquals(1, store.state.value.drafts.size)
     val savedFile = File(context.noBackupFilesDir, "agent-test.json")
     assertTrue("File missing: $savedFile", savedFile.exists())
-    assertTrue("Unexpected persisted data: ${savedFile.readText()}", savedFile.readText().contains("3500"))
+    assertTrue(savedFile.readText().contains("storageVersion"))
     val restored = AgentConversationStore(context, "agent-test.json").load()
     assertEquals(3500L, restored.drafts.single().amountCents)
     assertEquals(date.toStartOfDayMillis(), restored.drafts.single().transactionDate)
@@ -258,8 +265,8 @@ class AgentLedgerTest {
     repository.applyAgentDraft(operation)
     val store = AgentConversationStore(context, "agent-test.json")
     store.update { it.copy(runId = "run", status = "running") }
-    prepareChange(repository, store, "run", ChangeArgs("update", transactionId = operation.transactionId, amountCents = 3200))
-    prepareChange(repository, store, "run", ChangeArgs("update", transactionId = operation.transactionId, amountCents = 3000))
+    prepare(store, ChangeArgs("update", transactionId = operation.transactionId, amountCents = 3200))
+    prepare(store, ChangeArgs("update", transactionId = operation.transactionId, amountCents = 3000))
     val pending = store.load().drafts.filter { it.status == "pending" }
     assertEquals(1, pending.size)
     assertEquals("午饭", pending.single().description)
@@ -271,7 +278,7 @@ class AgentLedgerTest {
     val store = AgentConversationStore(context, "agent-test.json")
     store.update { it.copy(runId = "run", status = "cancelled") }
     assertTrue(runCatching {
-      prepareChange(repository, store, "run", ChangeArgs("create", type = "expense", amountCents = 100, date = "2026-10-25"))
+      prepare(store, ChangeArgs("create", type = "expense", amountCents = 100, date = "2026-10-25"))
     }.isFailure)
     assertTrue(store.load().drafts.isEmpty())
   }
@@ -304,8 +311,12 @@ class AgentLedgerTest {
     val store = AgentConversationStore(context, "agent-test.json")
     store.update { it.copy(runId = "run", status = "running") }
     val recorder = AgentTraceRecorder(store, "run")
-    recorder.tool("query_ledger", "{\"sql\":\"SELECT 1\"}") { "{\"rows\":[[1]],\"truncated\":false}" }
-    recorder.tool("query_ledger", "{\"sql\":\"SELECT missing\"}") { "{\"status\":\"error\",\"message\":\"字段不存在\"}" }
+    recorder.tool("query_ledger", "{\"sql\":\"SELECT 1\"}", "正在查询账本…") {
+      AgentToolResult("{\"rows\":[[1]],\"truncated\":false}", "返回 1 行")
+    }
+    recorder.tool("query_ledger", "{\"sql\":\"SELECT missing\"}", "正在查询账本…") {
+      AgentToolResult("{\"status\":\"error\",\"message\":\"字段不存在\"}", "字段不存在", failed = true)
+    }
     val entries = AgentConversationStore(context, "agent-test.json").load().trace
     assertEquals(listOf("completed", "failed"), entries.map { it.status })
     assertEquals("返回 1 行", entries.first().summary)
@@ -318,7 +329,7 @@ class AgentLedgerTest {
     store.update { it.copy(runId = "run", status = "running") }
     val recorder = AgentTraceRecorder(store, "run")
     val full = "x".repeat(20000)
-    val actual = recorder.tool("query_ledger", "{}") { full }
+    val actual = recorder.tool("query_ledger", "{}", "正在查询账本…") { AgentToolResult(full, "完整结果") }
     assertEquals(full, actual)
     assertEquals(16000, store.state.value.trace.single().result.length)
     assertTrue(store.state.value.trace.single().truncated)
