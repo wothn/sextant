@@ -3,6 +3,7 @@ package com.sextant.app.data
 import android.content.Context
 import androidx.room.withTransaction
 import com.sextant.app.automation.EncryptedValue
+import com.sextant.app.automation.PaymentPageSnapshot
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -127,6 +128,26 @@ class AutomationDiagnosticsTest {
     assertFalse(row.ciphertext.toString(Charsets.UTF_8).contains(secret))
     diagnostics.clear()
     assertTrue(report().entries.isEmpty())
+  }
+
+  @Test fun failedScanExportsEveryAttemptWithOptInAndKeepsMetadataWhenContentIsOff() = runBlocking {
+    val snapshot = PaymentPageSnapshot(List(200) { "支付页面".repeat(50) }, 500, 5, 2, setOf("nodes"))
+    val content = (1..4).flatMap { snapshot.diagnosticContent(it, "success_missing") }
+    settings(true, content = true)
+    diagnostics.record("page", "scan", "scan_exhausted", traceId = "failed-scan",
+      details = mapOf("attempt1.tree" to snapshot.statistics()), content = { content })
+    val entry = report().entries.single()
+    assertEquals("scan_exhausted", entry.reason)
+    assertEquals("failed-scan", entry.traceId)
+    assertEquals(4, entry.content!!.count { it.startsWith("attempt=") })
+    assertTrue(entry.content.any { it.contains("contentTruncated=true") })
+    assertTrue(entry.content.sumOf { it.length } <= 8_000)
+    assertTrue(entry.details.getValue("attempt1.tree").contains("limits=nodes"))
+    settings(true)
+    diagnostics.record("page", "scan", "scan_exhausted",
+      details = entry.details, content = { error("Content was disabled") })
+    assertNull(report().entries.last().content)
+    assertEquals(entry.details, report().entries.last().details)
   }
 
   @Test fun stoppingRecordingKeepsOldLogsButDoesNotWriteNewOnes() = runBlocking {

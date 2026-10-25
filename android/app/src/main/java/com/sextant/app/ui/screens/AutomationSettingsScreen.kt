@@ -273,7 +273,7 @@ fun AutomationSettingsScreen(
                       diagnosticContentEnabled = if (it) draft.diagnosticContentEnabled else false)
                   }
                   if (draft.diagnosticsEnabled) {
-                    InlineSwitch("记录支付内容", "额外加密保存支付通知正文和页面提取的支付字段，可能包含金额、商户及交易单号", draft.diagnosticContentEnabled) {
+                    InlineSwitch("记录支付内容", "额外加密保存支付通知正文及识别成功或失败时读取的页面文字，可能包含金额、商户、交易单号及其他页面内容", draft.diagnosticContentEnabled) {
                       draft = draft.copy(diagnosticContentEnabled = it)
                     }
                   }

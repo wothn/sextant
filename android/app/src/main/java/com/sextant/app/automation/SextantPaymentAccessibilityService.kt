@@ -54,10 +54,14 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
       val app = application as SextantApplication
       val diagnostics = app.repository.automationDiagnostics
       val reasons = mutableListOf<String>()
+      val scanDetails = mutableMapOf<String, String>()
+      val scanContent = mutableListOf<String>()
+      var retainContent = false
       var result = "scan_cancelled"
       var errorType: String? = null
       try {
         val settings = app.repository.loadAutomationSettings()
+        retainContent = settings.diagnosticsEnabled && settings.diagnosticContentEnabled
         if (!settings.enabled || !settings.paymentPageEnabled ||
           (packageName == WECHAT_PACKAGE && !settings.wechatEnabled) ||
           (packageName == ALIPAY_PACKAGE && !settings.alipayEnabled)) {
@@ -67,22 +71,30 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
         val candidate = awaitPaymentPageCandidate(pause = { delay(it) }) {
           val root = rootInActiveWindow ?: run {
             reasons.add("root_unavailable")
+            scanDetails["attempt${reasons.size}.reason"] = "root_unavailable"
             return@awaitPaymentPageCandidate null
           }
           val texts = try {
+            scanDetails["attempt${reasons.size + 1}.rootClass"] = root.className?.toString().orEmpty()
             if (root.packageName?.toString() != packageName ||
               (window.second >= 0 && root.windowId != window.second)) {
               result = "window_changed"
+              scanDetails["activePackage"] = root.packageName?.toString().orEmpty()
+              scanDetails["activeWindowId"] = root.windowId.toString()
               return@launch
             }
-            collectPaymentPageText(root)
+            collectPaymentPageSnapshot(root)
           } finally {
             @Suppress("DEPRECATION")
             root.recycle()
           }
-          val inspection = PaymentPageParser.inspect(packageName, texts, System.currentTimeMillis())
+          val inspection = PaymentPageParser.inspect(packageName, texts.text, System.currentTimeMillis())
           reasons.add(inspection.reason)
-          // Never retain the surrounding accessibility tree, including on failed parses.
+          val attempt = reasons.size
+          scanDetails["attempt$attempt.reason"] = inspection.reason
+          scanDetails["attempt$attempt.textCount"] = texts.text.size.toString()
+          scanDetails["attempt$attempt.tree"] = texts.statistics()
+          if (retainContent) scanContent.addAll(texts.diagnosticContent(attempt, inspection.reason))
           inspection.candidate
         }
         if (candidate == null) {
@@ -111,10 +123,12 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
       } finally {
         // One summary per scan, dispatched outside the retry loop and service lifetime.
         val details = eventDetails + mapOf("attempts" to reasons.size.toString(),
-          "reasons" to reasons.joinToString(",")) + (errorType?.let { mapOf("errorType" to it) } ?: emptyMap())
+          "reasons" to reasons.joinToString(",")) + scanDetails +
+          (errorType?.let { mapOf("errorType" to it) } ?: emptyMap())
         val finalResult = result
         app.applicationScope.launch {
-          diagnostics.record("page", "scan", finalResult, packageName, scanSession, details)
+          diagnostics.record("page", "scan", finalResult, packageName, scanSession, details,
+            content = { scanContent.toList() })
         }
       }
     }
@@ -145,16 +159,49 @@ internal suspend inline fun awaitPaymentPageCandidate(
 
 /** Bound work and ignore editable/password nodes; retain node boundaries for label/value parsing. */
 internal fun collectPaymentPageText(root: AccessibilityNodeInfo): List<String> {
+  return collectPaymentPageSnapshot(root).text
+}
+
+internal data class PaymentPageSnapshot(
+  val text: List<String>,
+  val visited: Int,
+  val invisible: Int,
+  val sensitive: Int,
+  val limits: Set<String>,
+) {
+  fun statistics(): String = "visited=$visited,invisible=$invisible,sensitive=$sensitive,limits=${limits.joinToString("|")}"
+
+  // Reserve room for every retry within the recorder's 200-line / 8,000-character cap.
+  fun diagnosticContent(attempt: Int, reason: String): List<String> {
+    var remaining = 1_700
+    val lines = text.take(45).mapNotNull { line ->
+      line.take(minOf(remaining, 200)).also { remaining -= it.length }.takeIf { it.isNotEmpty() }
+    }
+    return listOf("attempt=$attempt reason=$reason textCount=${text.size} contentTruncated=${lines != text}") + lines
+  }
+}
+
+internal fun collectPaymentPageSnapshot(root: AccessibilityNodeInfo): PaymentPageSnapshot {
   val result = mutableListOf<String>()
   var visited = 0
+  var invisible = 0
+  var sensitive = 0
+  val limits = mutableSetOf<String>()
   fun visit(node: AccessibilityNodeInfo, depth: Int) {
-    if (++visited > 500 || depth > 30 || result.size >= 200) return
-    if (node.isPassword || node.isEditable) return
+    if (visited >= 500) { limits.add("nodes"); return }
+    if (depth > 30) { limits.add("depth"); return }
+    if (result.size >= 200) { limits.add("texts"); return }
+    visited++
+    if (node.isPassword || node.isEditable) { sensitive++; return }
     if (node.isVisibleToUser) {
       val text = node.text?.toString()?.takeIf(String::isNotBlank)
         ?: node.contentDescription?.toString()?.takeIf(String::isNotBlank)
-      if (text != null) result.add(text.take(200))
-    }
+      if (text != null) {
+        if (text.length > 200) limits.add("textLength")
+        result.add(text.take(200))
+      }
+    } else invisible++
+    if (node.childCount > 100) limits.add("children")
     for (index in 0 until node.childCount.coerceAtMost(100)) {
       val child = node.getChild(index) ?: continue
       try { visit(child, depth + 1) } finally {
@@ -164,7 +211,7 @@ internal fun collectPaymentPageText(root: AccessibilityNodeInfo): List<String> {
     }
   }
   visit(root, 0)
-  return result
+  return PaymentPageSnapshot(result, visited, invisible, sensitive, limits)
 }
 
 fun isPaymentPageServiceEnabled(context: Context): Boolean {
