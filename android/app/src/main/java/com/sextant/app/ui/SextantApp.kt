@@ -16,6 +16,10 @@ import com.sextant.app.ui.components.SextantTextButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -232,10 +236,11 @@ fun SextantApp(
   }
 
   val useRail = LocalConfiguration.current.screenWidthDp >= 600 && !calendarOpen
+  val chatKeyboardOpen = tab == Tab.Chat && WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
   Scaffold(
     snackbarHost = { SnackbarHost(snackbarHostState) },
     bottomBar = {
-      if (!calendarOpen && !useRail) LedgerBottomBar(
+      if (!calendarOpen && !useRail && !chatKeyboardOpen) LedgerBottomBar(
         selectedTab = tab,
         onTabSelected = { tab = it },
       )
@@ -255,6 +260,8 @@ fun SextantApp(
       Row(
         Modifier
           .padding(top = padding.calculateTopPadding(), bottom = navBarInset)
+          .consumeWindowInsets(PaddingValues(top = padding.calculateTopPadding(), bottom = navBarInset))
+          .then(if (tab == Tab.Chat) Modifier.imePadding() else Modifier)
           .fillMaxSize()
           // FAB 的滚动收起挂在内容区最外层：页面里的任何列表滚动都会经过这里，
           // 只读方向、不消费位移，所以页面的滚动行为不受影响。

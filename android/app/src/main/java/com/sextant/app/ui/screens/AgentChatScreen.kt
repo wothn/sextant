@@ -78,6 +78,7 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
   var showSettings by rememberSaveable { mutableStateOf(false) }
   var showHistory by rememberSaveable { mutableStateOf(false) }
   val traceByRun = conversation.trace.groupBy { it.runId }
+  val draftsByMessage = agentDraftsByMessage(conversation.messages, conversation.drafts)
   val processItemCount = conversation.messages.filter { it.role == "user" && it.runId != null }.sumOf { message ->
     val entries = traceByRun[message.runId].orEmpty()
     if (entries.isEmpty()) 0 else 1 +
@@ -100,7 +101,7 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
     if (last > 0 && followLatest) list.animateScrollToItem(last)
   }
   val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-  Column(Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current).imePadding()) {
+  Column(Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
         Text("对话", style = MaterialTheme.typography.headlineMedium)
@@ -138,8 +139,11 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
             }
           }
         }
+        items(draftsByMessage[message.id].orEmpty(), key = { it.id }) { draft ->
+          DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
+        }
       }
-      items(conversation.drafts.filter { it.status != "superseded" }, key = { it.id }) { draft ->
+      items(draftsByMessage[null].orEmpty(), key = { it.id }) { draft ->
         DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
       }
       if (conversation.status in setOf("failed", "interrupted", "cancelled")) item {
