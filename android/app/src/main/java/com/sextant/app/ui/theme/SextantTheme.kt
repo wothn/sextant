@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(
+  androidx.compose.material3.ExperimentalMaterial3Api::class,
+  androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+)
 
 package com.sextant.app.ui.theme
 
@@ -8,11 +11,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.foundation.IndicationNodeFactory
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.ShapeDefaults
 import androidx.compose.material3.Shapes
@@ -29,6 +36,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -387,9 +398,26 @@ fun SextantTheme(
       typography = SextantTypography,
       shapes = SextantShapes,
       motionScheme = MotionScheme.expressive(),
-      content = content,
-    )
+    ) {
+      // Material 控件和普通 clickable/selectable 都不叠加涟漪，避免与选中底色闪叠。
+      // 必须放在 MaterialExpressiveTheme 内，防止主题覆盖 LocalIndication。
+      CompositionLocalProvider(
+        LocalRippleConfiguration provides null,
+        LocalIndication provides NoInteractionIndication,
+        content = content,
+      )
+    }
   }
+}
+
+private object NoInteractionIndication : IndicationNodeFactory {
+  override fun create(interactionSource: InteractionSource): DelegatableNode =
+    object : Modifier.Node(), DrawModifierNode {
+      override fun ContentDrawScope.draw() = drawContent()
+    }
+
+  override fun equals(other: Any?): Boolean = other === this
+  override fun hashCode(): Int = javaClass.hashCode()
 }
 
 fun argbColor(value: Long): Color {

@@ -205,7 +205,7 @@ fun SextantNavigationBar(
   }
 }
 
-/** 选中底块由底栏统一移动；条目本身只负责内容、涟漪与键盘聚焦。 */
+/** 选中底块由底栏统一移动；条目本身只负责内容与键盘聚焦。 */
 @Composable
 fun RowScope.SextantNavigationItem(
   selected: Boolean,
@@ -244,7 +244,7 @@ fun RowScope.SextantNavigationItem(
       .selectable(
         selected = selected,
         interactionSource = interactionSource,
-        indication = ripple(),
+        indication = null,
         role = Role.Tab,
         onClick = onClick,
       ),

@@ -164,7 +164,13 @@ fun ExpensePieChart(
                 x = if (slice.isRight) availableWidth - labelWidth else 0.dp,
                 y = with(density) { (labelCenters.getValue(slice.index) - rowHeight / 2).toDp() },
               ).width(labelWidth).height(with(density) { rowHeight.toDp() })
-                .selectable(selected = active, role = Role.Button, onClick = { select(slice.index) })
+                .selectable(
+                  selected = active,
+                  interactionSource = null,
+                  indication = null,
+                  role = Role.Button,
+                  onClick = { select(slice.index) },
+                )
                 .semantics { contentDescription = "${item.categoryName}，${shares[slice.index]}，${formatCurrency(item.amountCents)}" },
               verticalArrangement = Arrangement.Center,
               horizontalAlignment = if (slice.isRight) Alignment.Start else Alignment.End,
@@ -181,7 +187,12 @@ fun ExpensePieChart(
             Modifier.absoluteOffset(x = (availableWidth - centerWidth) / 2,
               y = with(density) { center.y.toDp() } - diameter * .26f)
               .width(centerWidth).height(diameter * .52f)
-              .clickable(enabled = selected != null, onClickLabel = "显示总$metricLabel") { onSelect(null) },
+              .clickable(
+                interactionSource = null,
+                indication = null,
+                enabled = selected != null,
+                onClickLabel = "显示总$metricLabel",
+              ) { onSelect(null) },
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
           ) {
