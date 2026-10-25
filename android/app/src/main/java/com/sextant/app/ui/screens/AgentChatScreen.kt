@@ -98,15 +98,12 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
     val last = conversation.messages.size + conversation.drafts.count { it.status != "superseded" } +
       (if (conversation.status in setOf("failed", "interrupted", "cancelled")) 1 else 0) +
       (if (commandError != null) 1 else 0) + processItemCount
-    if (last > 0 && followLatest) list.animateScrollToItem(last)
+    if (last > 0 && followLatest) list.animateScrollToItem(last - 1)
   }
   val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
   Column(Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-      Column(Modifier.weight(1f)) {
-        Text("对话", style = MaterialTheme.typography.headlineMedium)
-        Text("记一笔，也聊聊消费", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-      }
+      Spacer(Modifier.weight(1f))
       IconButton(onClick = { showHistory = true }, enabled = ready && !importingImages) { Icon(Icons.Outlined.History, "对话历史") }
       IconButton(onClick = { coordinator.newConversation() }, enabled = ready && !conversation.running && !importingImages) {
         Icon(Icons.Outlined.AddComment, "新对话")
@@ -115,10 +112,6 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
     }
     LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list,
       contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      item {
-        Text("可以聊聊消费、记一笔，或上传账单截图。对话、图片和查询结果会发送给你配置的 DeepSeek；记账变更需要你确认。",
-          style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-      }
       conversation.messages.forEach { message ->
         item(key = message.id) { AgentMessageItem(message, coordinator.images) }
         if (message.role == "user" && message.runId != null) {

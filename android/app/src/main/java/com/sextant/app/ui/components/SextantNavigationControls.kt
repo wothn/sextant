@@ -151,7 +151,7 @@ fun SextantCollapsibleFab(
  */
 val LocalBottomBarInset = compositionLocalOf { 0.dp }
 
-/** 悬浮胶囊底栏：80dp 高、56×32 的图标指示器、标签在指示器下方。 */
+/** 悬浮胶囊底栏：60dp 高，图标和 56×32 的指示器垂直居中。 */
 @Composable
 fun SextantNavigationBar(
   selectedIndex: Int,
@@ -169,7 +169,7 @@ fun SextantNavigationBar(
     shadowElevation = 2.dp,
   ) {
     BoxWithConstraints(
-      modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)
+      modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp)
         .padding(horizontal = 4.dp, vertical = 6.dp),
     ) {
       val slotWidth = maxWidth / itemCount.coerceAtLeast(1)
@@ -189,7 +189,7 @@ fun SextantNavigationBar(
             .offset {
               IntOffset(
                 with(density) { indicatorOffset.toPx().roundToInt() },
-                with(density) { 6.dp.toPx().roundToInt() },
+                with(density) { 8.dp.toPx().roundToInt() },
               )
             }
             .size(indicatorWidth, indicatorHeight)
@@ -211,7 +211,6 @@ fun RowScope.SextantNavigationItem(
   selected: Boolean,
   onClick: () -> Unit,
   icon: @Composable () -> Unit,
-  label: @Composable () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val interactionSource = remember { MutableInteractionSource() }
@@ -230,15 +229,10 @@ fun RowScope.SextantNavigationItem(
     animationSpec = SextantMotion.defaultEffects(),
     label = "navIconColor",
   )
-  val labelColor by animateColorAsState(
-    targetValue = if (selected) SextantColors.Text else SextantColors.TextSubtle,
-    animationSpec = SextantMotion.defaultEffects(),
-    label = "navLabelColor",
-  )
   Box(
     modifier = modifier
       .weight(1f)
-      .heightIn(min = 68.dp)
+      .heightIn(min = 48.dp)
       .clip(SextantFullShape)
       .then(if (focused) Modifier.border(2.dp, SextantColors.Accent, SextantFullShape) else Modifier)
       .selectable(
@@ -250,25 +244,14 @@ fun RowScope.SextantNavigationItem(
       ),
     contentAlignment = Alignment.Center,
   ) {
-    Column(
+    Box(
       modifier = Modifier
         .fillMaxWidth()
-        .padding(top = 6.dp, bottom = 4.dp)
         .graphicsLayer { scaleX = contentScale; scaleY = contentScale },
-      horizontalAlignment = Alignment.CenterHorizontally,
+      contentAlignment = Alignment.Center,
     ) {
       Box(Modifier.size(width = 56.dp, height = 32.dp), contentAlignment = Alignment.Center) {
         CompositionLocalProvider(LocalContentColor provides iconColor) { icon() }
-      }
-      Spacer(Modifier.height(2.dp))
-      CompositionLocalProvider(LocalContentColor provides labelColor) {
-        ProvideTextStyle(
-          if (selected) {
-            MaterialTheme.typography.labelMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-          } else {
-            MaterialTheme.typography.labelMedium
-          },
-        ) { label() }
       }
     }
   }

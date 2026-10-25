@@ -7,7 +7,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -15,7 +14,7 @@ import com.sextant.app.ui.components.SextantNavigationBar
 import com.sextant.app.ui.components.SextantNavigationItem
 import com.sextant.app.ui.theme.SextantMotion
 
-/** 四目的地底栏：共享组件负责整项胶囊和按下、聚焦、选中反馈。 */
+/** 图标底栏：共享组件负责整项胶囊和按下、聚焦、选中反馈。 */
 @Composable
 fun LedgerNavigationBar(
   selectedTab: Tab,
@@ -42,12 +41,11 @@ fun LedgerNavigationBar(
           ) { selected ->
             Icon(
               if (selected) tab.selectedIcon else tab.icon,
-              contentDescription = null,
+              contentDescription = tab.title,
               modifier = Modifier.size(24.dp),
             )
           }
         },
-        label = { Text(tab.title, maxLines = 1) },
       )
     }
   }
