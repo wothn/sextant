@@ -278,7 +278,7 @@ fun AutomationSettingsScreen(
                     }
                   }
                   Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("仅保存在本机，最多保留 7 天、500 条。关闭后停止新增；已有日志可清空。导出文件为可读文本，记录支付内容时请留意其中的个人信息。",
+                    Text("仅保存在本机，最多保留 7 天、5000 条。关闭后停止新增；已有日志可清空。导出文件为可读文本，记录支付内容时请留意其中的个人信息。",
                       color = SextantColors.TextMuted, style = MaterialTheme.typography.bodyMedium)
                     Text("已有 $diagnosticCount 条日志", style = MaterialTheme.typography.bodyMedium)
                     diagnosticError?.let { Text(it, color = SextantColors.Danger) }

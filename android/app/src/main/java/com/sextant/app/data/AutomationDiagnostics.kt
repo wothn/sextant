@@ -145,7 +145,7 @@ internal class AutomationDiagnostics(
   companion object {
     const val ENABLED_KEY = "automation_diagnostics_enabled"
     const val CONTENT_KEY = "automation_diagnostic_content_enabled"
-    const val MAX_ENTRIES = 500
+    const val MAX_ENTRIES = 5_000
     const val RETENTION_MILLIS = 7L * 24 * 60 * 60 * 1000
 
     // Process-local correlation only. Never persist/export the key, including for low-entropy inputs.
