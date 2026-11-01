@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.toList
 internal fun streamingLedgerStrategy(
   initialParts: List<MessagePart.RequestPart>? = null,
   appendUser: Boolean = true,
+  runContext: String? = null,
   pendingCalls: List<MessagePart.Tool.Call> = emptyList(),
   checkpoint: suspend (List<Message>, Boolean) -> Unit = { _, _ -> },
 ) = strategy<String, String>("sextant_streaming") {
@@ -33,7 +34,15 @@ internal fun streamingLedgerStrategy(
         checkpoint(prompt.messages.drop(firstMessageCount), false)
       }
     }
-    llm.writeSession { requestLLMStreaming() }
+    llm.writeSession {
+      // 先闭合恢复中的工具调用，再追加本次快照信息；持久化后才能请求模型。
+      // 上下文属于本轮协议，后续运行原样重放，不能重写历史前缀。
+      if (runContext != null) {
+        appendPrompt { user(runContext) }
+        checkpoint(prompt.messages.drop(firstMessageCount), false)
+      }
+      requestLLMStreaming()
+    }
   }
   val sendResults by node<ReceivedToolResults, Flow<StreamFrame>> {
     llm.writeSession {

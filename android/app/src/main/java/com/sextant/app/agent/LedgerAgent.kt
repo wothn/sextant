@@ -7,6 +7,7 @@ import ai.koog.agents.features.eventHandler.feature.handleEvents
 import ai.koog.http.client.KoogHttpClientException
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.message.Message
+import ai.koog.prompt.message.RequestMetaInfo
 import ai.koog.prompt.params.LLMParams
 import ai.koog.prompt.streaming.StreamFrame
 import com.sextant.app.data.*
@@ -46,15 +47,14 @@ internal class LedgerAgent(
         val config = AIAgentConfig(
           model = AgentModelAccess.model(settings.model, hasImages),
           prompt = prompt("sextant-chat", params = LLMParams(maxTokens = 4096)) {
-            system(ledgerInstructions(ledger.capturedAt))
-            system("历史工具结果来自当时的快照，不代表当前账本；修改前需重新查询记录及 updatedAt。" +
-              "当前草稿状态：" + active.drafts.joinToString { "${it.id}=${it.status}" })
+            message(Message.System(ledgerInstructions(), RequestMetaInfo.Empty))
             history.forEach { message(it) }
           },
           maxAgentIterations = 40,
         )
         val agent = AIAgent(promptExecutor = access.executor, agentConfig = config,
           strategy = streamingLedgerStrategy(appendUser = false,
+            runContext = ledgerRunContext(ledger.capturedAt, active.drafts.joinToString { "${it.id}=${it.status}" }),
             pendingCalls = AgentTranscriptCodec.pendingCalls(previous), checkpoint = session::checkpoint), toolRegistry = registry) {
           handleEvents {
             onLLMStreamingStarting { trace.startModel() }

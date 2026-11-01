@@ -102,6 +102,57 @@ class AgentSessionTest {
       messages = it.messages + AgentMessage("user-$run", "user", "分析$run", run)) }
   }
 
+  @Test fun laterTurnsPreserveTheEntireRequestPrefixAndPersistTheirOwnContext() = runBlocking {
+    val store = AgentConversationStore(context, fileName)
+    begin(store, "first")
+    var firstRequest = emptyList<Message>()
+    agent(store, executor { request ->
+      firstRequest = request.messages.toList()
+      assertEquals(1, request.messages.filterIsInstance<Message.System>().size)
+      assertFalse(request.messages.first().textContent().contains("现在是"))
+      assertEquals("分析first", request.messages[1].textContent())
+      assertTrue(request.messages.last().textContent().contains("【应用运行上下文】"))
+      // 请求发送之前已经落盘，网络错误或进程退出也不会丢失运行上下文。
+      assertEquals(request.messages.last(), AgentTranscriptCodec.decode(store.load().transcript.single()).single())
+      assistant("第一轮完成")
+    }).run("first", AgentSettings("test-key"), "first")
+    val firstProtocol = AgentTranscriptCodec.decode(store.load().transcript.single())
+    store.update { it.copy(status = "completed") }
+    val restored = AgentConversationStore(context, fileName)
+    begin(restored, "second")
+    agent(restored, executor { request ->
+      assertEquals(firstRequest, request.messages.take(firstRequest.size))
+      assertEquals(firstProtocol.last(), request.messages[firstRequest.size])
+      assertEquals("分析second", request.messages[request.messages.lastIndex - 1].textContent())
+      assertTrue(request.messages.last().textContent().contains("【应用运行上下文】"))
+      assistant("第二轮完成")
+    }).run("second", AgentSettings("test-key"), "second")
+    assertEquals(firstProtocol, AgentTranscriptCodec.decode(restored.load().transcript.first()))
+  }
+
+  @Test fun retryAfterNetworkFailureAppendsFreshContextWithoutRewritingSavedInput() = runBlocking {
+    val store = AgentConversationStore(context, fileName)
+    begin(store, "run", "old")
+    var failedRequest = emptyList<Message>()
+    assertTrue(runCatching {
+      agent(store, executor { request ->
+        failedRequest = request.messages.toList()
+        error("模拟网络错误")
+      }).run("run", AgentSettings("test-key"), "old")
+    }.isFailure)
+    val restored = AgentConversationStore(context, fileName)
+    restored.update { it.copy(attemptId = "new") }
+    agent(restored, executor { request ->
+      assertEquals(failedRequest, request.messages.take(failedRequest.size))
+      assertEquals(failedRequest.size + 1, request.messages.size)
+      assertTrue(request.messages.last().textContent().contains("【应用运行上下文】"))
+      assistant("恢复完成")
+    }).run("run", AgentSettings("test-key"), "new")
+    assertEquals(2, AgentTranscriptCodec.decode(restored.load().transcript.single()).count {
+      it.textContent().contains("【应用运行上下文】")
+    })
+  }
+
   @Test fun secondTurnAfterRestartReplaysReasoningCallsResultsAndReceiptsOnTheWire() = runBlocking {
     val store = AgentConversationStore(context, fileName)
     begin(store, "first")
