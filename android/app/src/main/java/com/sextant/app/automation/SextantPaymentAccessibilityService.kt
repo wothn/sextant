@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.sextant.app.SextantApplication
@@ -26,6 +27,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
   private var session = UUID.randomUUID().toString()
   private var lastPage: String? = null
   private var lastWindow: Pair<String, Int>? = null
+  private val alipayPaymentContext = AlipayPaymentPageContext()
 
   override fun onServiceConnected() {
     super.onServiceConnected()
@@ -37,6 +39,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
     if (packageName != WECHAT_PACKAGE && packageName != ALIPAY_PACKAGE) return
     if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
       event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+    if (packageName == WECHAT_PACKAGE) alipayPaymentContext.clear()
     val window = packageName to event.windowId
     if (lastWindow != window) {
       scanJob?.cancel()
@@ -65,6 +68,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
         if (!settings.enabled || !settings.paymentPageEnabled ||
           (packageName == WECHAT_PACKAGE && !settings.wechatEnabled) ||
           (packageName == ALIPAY_PACKAGE && !settings.alipayEnabled)) {
+          alipayPaymentContext.clear()
           result = "automation_disabled"
           return@launch
         }
@@ -81,6 +85,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
               result = "window_changed"
               scanDetails["activePackage"] = root.packageName?.toString().orEmpty()
               scanDetails["activeWindowId"] = root.windowId.toString()
+              if (root.packageName?.toString() != ALIPAY_PACKAGE) alipayPaymentContext.clear()
               return@launch
             }
             collectPaymentPageSnapshot(root)
@@ -88,7 +93,8 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
             @Suppress("DEPRECATION")
             root.recycle()
           }
-          val inspection = PaymentPageParser.inspect(packageName, texts.text, System.currentTimeMillis())
+          val inspection = alipayPaymentContext.inspect(packageName, window.second, texts.text,
+            System.currentTimeMillis(), SystemClock.elapsedRealtime())
           reasons.add(inspection.reason)
           val attempt = reasons.size
           scanDetails["attempt$attempt.reason"] = inspection.reason
@@ -135,10 +141,12 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
   }
 
   override fun onInterrupt() {
+    alipayPaymentContext.clear()
     (application as SextantApplication).automationCoordinator.noteServiceEvent("page", "page_service_interrupted")
   }
 
   override fun onDestroy() {
+    alipayPaymentContext.clear()
     (application as SextantApplication).automationCoordinator.noteServiceEvent("page", "page_service_destroyed")
     serviceScope.cancel()
     super.onDestroy()

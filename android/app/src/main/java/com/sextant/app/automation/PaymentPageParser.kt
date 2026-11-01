@@ -49,20 +49,17 @@ object PaymentPageParser {
     val alipayTotal = alipayTotals.singleOrNull()
     val success = lines.take(16).firstOrNull { it in successTitles }
       ?: alipayTotal?.let { "支付成功" } ?: return reject("success_missing")
-    // WeChat's native and mini-program result pages expose only content descriptions: success,
-    // merchant, unsigned yuan total, then optional promotions and a closing action. The native
-    // page closes with 完成, the mini-program page with 返回商家; accepting only 完成 rejected the
-    // whole page and dropped its merchant and amount along with it.
-    val wechatResultMerchant = if (sourcePackage == WECHAT_PACKAGE && !detail &&
-      lines[0] == "支付成功" && lines.any { it in wechatResultActions } &&
-      wechatResultAmount.matches(lines[2])) {
-      lines[1].takeIf { validMerchant(it) && excludedKinds.none(it::startsWith) }
-    } else null
+    val resultHeader = if (!detail) resultHeader(sourcePackage, lines) else null
     val hasPaymentField = lines.any { line -> paymentFields.any { line == it || line.startsWith("$it：") || line.startsWith("$it:") } }
-    if (!detail && !hasPaymentField && wechatResultMerchant == null) return reject("payment_fields_missing")
+    if (!detail && !hasPaymentField && resultHeader == null) return reject("payment_fields_missing")
 
     val labeledAmount = field(lines, listOf("实付金额", "实付款", "支付金额", "付款金额"))
-    val explicitTotal = alipayTotal ?: detailTotal
+    // A standalone currency node immediately after the success heading is Alipay's actual
+    // paid total. Original prices and discounts later in the card must not compete with it.
+    val splitTotal = resultHeader?.takeIf { it.splitAmount }?.amountText
+    if (alipayTotal != null && splitTotal != null &&
+      parseAmountCents(alipayTotal) != parseAmountCents(splitTotal)) return reject("amount_conflict")
+    val explicitTotal = alipayTotal ?: detailTotal ?: splitTotal
     if (explicitTotal != null && labeledAmount != null) {
       val labeledMatch = amount.matchEntire(labeledAmount) ?: return reject("amount_invalid")
       val explicitMatch = amount.matchEntire(explicitTotal) ?: return reject("amount_invalid")
@@ -86,7 +83,7 @@ object PaymentPageParser {
     val merchant = (if (isMaskedMerchant(declaredMerchant)) storeName ?: declaredMerchant else declaredMerchant)
       ?: lines.firstNotNullOfOrNull { payTo.matchEntire(it)?.groupValues?.get(1) }
       ?: lines.firstNotNullOfOrNull { paidToHeadline.matchEntire(it)?.groupValues?.get(1) }
-      ?: wechatResultMerchant?.takeIf { amountText == lines[2] }
+      ?: resultHeader?.takeIf { amountText == it.amountText }?.merchant
       ?: if (detail) {
         // 原生详情页把商户写成金额上方的那行标题；微信在小程序里的支付卡片则写在金额下面。
         // 两个位置都看，但每一行都要先过 validMerchant，标题和字段名不会被当成商户；
@@ -122,6 +119,27 @@ object PaymentPageParser {
       parser = if (sourcePackage == WECHAT_PACKAGE) "wechat-page-v1" else "alipay-page-v1",
       hasExactTime = transactionTime != null,
     ))
+  }
+
+  private data class ResultHeader(val merchant: String, val amountText: String, val splitAmount: Boolean = false)
+
+  private fun resultHeader(sourcePackage: String, lines: List<String>): ResultHeader? {
+    if (lines.first() != "支付成功") return null
+    val header = lines.dropWhile { it == "支付成功" }.dropWhile { it == "回首页" }
+    fun merchant(value: String) = validMerchant(value) && excludedKinds.none(value::startsWith)
+    if (sourcePackage == WECHAT_PACKAGE) {
+      if (lines.none { it in wechatResultActions }) return null
+    } else {
+      // These controls identify Alipay's compact result card, including the variant without
+      // payment fields. Do not apply its amount-first layout to arbitrary success text.
+      if ("完成" !in lines || lines.none { it == "回首页" || it == "使用说明" }) return null
+      if (header.size >= 3 && header[0] == "¥" &&
+        unsignedAmount.matches(header[1]) && merchant(header[2])) {
+        return ResultHeader(header[2], "¥${header[1]}", splitAmount = true)
+      }
+    }
+    if (header.size < 2 || !merchant(header[0]) || !wechatResultAmount.matches(header[1])) return null
+    return ResultHeader(header[0], header[1])
   }
 
   private fun field(lines: List<String>, labels: List<String>): String? {
@@ -164,6 +182,7 @@ object PaymentPageParser {
   private val alipaySuccessAmount = Regex("支付成功\\s*(¥\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\s*元?")
   private val alipayExpenseAmount = Regex("支出\\s*(¥?\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?\\s*元)")
   private val wechatResultAmount = Regex("¥\\s*[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?\\s*元?")
+  private val unsignedAmount = Regex("[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?")
   private val payTo = Regex("向\\s*(.{2,80}?)\\s*付款")
 
   /**

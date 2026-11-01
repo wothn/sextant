@@ -60,6 +60,60 @@ class PaymentPageParserTest {
     assertWechatSuccess(wechatNativeSuccess, 3000L, "示例网络商店", "¥30.00")
   }
 
+  @Test fun wechatSuccessAcceptsRepeatedSuccessAndActionNodesFromDiagnostics() {
+    for (promotion in listOf("摇一摇，有优惠", "稍等一下...", "摇一摇有优惠,点击领取优惠,领取")) {
+      assertWechatSuccess(listOf("支付成功", "支付成功", "猪杂汤粉（**琴）", "¥15.00",
+        promotion, "完成", "完成"), 1500L, "猪杂汤粉（**琴）", "¥15.00")
+    }
+  }
+
+  @Test fun alipayCompactSuccessReadsMerchantWithoutPaymentFieldsFromDiagnostics() {
+    for (page in listOf(
+      listOf("支付成功", "回首页", "示例优品超市", "￥3.90", "完成"),
+      listOf("支付成功", "示例优品超市", "￥3.90", "完成", "使用说明"),
+    )) {
+      val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE, page, now)!!
+      assertEquals(390L, candidate.amountCents)
+      assertEquals("示例优品超市", candidate.merchant)
+      assertEquals("示例优品超市", candidate.description)
+      assertEquals("alipay-page-v1", candidate.parser)
+      assertEquals(now, candidate.occurredAt)
+      assertFalse(candidate.hasExactTime)
+    }
+  }
+
+  @Test fun alipaySplitCurrencyTotalOverridesOriginalPriceAndDiscountFromDiagnostics() {
+    val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE, alipaySplitSuccess, now)!!
+    assertEquals(1792L, candidate.amountCents)
+    assertEquals("¥17.92", candidate.amountEvidence)
+    assertEquals("示例家常菜馆", candidate.merchant)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertEquals(AutomationKind.Purchase, candidate.kind)
+  }
+
+  @Test fun newResultLayoutsRejectIncompleteConflictingAndNonPaymentEvidence() {
+    val compact = listOf("支付成功", "回首页", "示例优品超市", "￥3.90", "完成")
+    for (page in listOf(
+      compact.filterNot { it == "完成" },
+      compact.filterNot { it == "示例优品超市" },
+      compact + "￥2.81",
+      compact + "待付款",
+      compact + "退款成功",
+      compact + "转账",
+      alipaySplitSuccess + "实付金额：18.00元",
+      alipaySplitSuccess + "支付成功￥18.00",
+      alipaySplitSuccess.filterNot { it == "示例家常菜馆" },
+      alipaySplitSuccess.filterNot { it == "完成" },
+      alipaySplitSuccess + "确认付款",
+      alipaySplitSuccess + "USD",
+    )) assertNull(page.toString(), PaymentPageParser.parse(ALIPAY_PACKAGE, page, now))
+    for (total in listOf("0.00", "-17.92", "+17.92", "17.921", "17.92元优惠")) {
+      assertNull(total, PaymentPageParser.parse(ALIPAY_PACKAGE,
+        alipaySplitSuccess.map { if (it == "17.92") total else it }, now))
+    }
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, alipaySplitSuccess, now))
+  }
+
   @Test fun wechatNativeSuccessRequiresCompleteHeaderAndRejectsAmbiguousAmounts() {
     for (page in listOf(
       wechatNativeSuccess.filterNot { it == "完成" },
@@ -405,6 +459,11 @@ class PaymentPageParserTest {
   private val alipayDiscountedSuccess = listOf(
     "支付成功￥77.20", "支付成功", "77.20", "￥79.20", "示例银行立减金", "-￥2.00",
     "付款方式", "示例银行储蓄卡(0000)", "去看看", "完成", "回首页", "回首页",
+  )
+
+  private val alipaySplitSuccess = listOf(
+    "支付成功", "回首页", "¥", "17.92", "示例家常菜馆", "￥18.00", "百次立减", "-￥0.08",
+    "付款方式", "示例银行信用卡(0000)", "完成",
   )
 
   /** Real accessibility order, including duplicate WebView values and the toolbar at the end. */
