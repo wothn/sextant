@@ -106,6 +106,8 @@ fun SextantApp(
   openAgent: Boolean = false,
   onAgentRequestConsumed: () -> Unit = {},
 ) {
+  val updateCoordinator = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.sextant.app.SextantApplication).updateCoordinator
+  com.sextant.app.ui.components.AppUpdateDialog(updateCoordinator)
   var tab by rememberSaveable { mutableStateOf(Tab.Home) }
   LaunchedEffect(openAgent) {
     if (openAgent) { tab = Tab.Chat; onAgentRequestConsumed() }

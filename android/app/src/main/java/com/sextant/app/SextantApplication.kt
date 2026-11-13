@@ -29,6 +29,8 @@ class SextantApplication : Application() {
     private set
   lateinit var agentCoordinator: com.sextant.app.agent.AgentCoordinator
     private set
+  lateinit var updateCoordinator: com.sextant.app.update.UpdateCoordinator
+    private set
 
   private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -38,6 +40,7 @@ class SextantApplication : Application() {
   override fun onCreate() {
     super.onCreate()
     repository = SextantRepository(this)
+    updateCoordinator = com.sextant.app.update.UpdateCoordinator(this, appScope)
     agentCoordinator = com.sextant.app.agent.AgentCoordinator(this, repository, appScope,
       store = com.sextant.app.data.AgentConversationStore(this),
       settings = com.sextant.app.data.AgentSettingsStore(this),

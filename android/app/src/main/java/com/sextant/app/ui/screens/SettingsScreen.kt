@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,6 +53,7 @@ import com.sextant.app.ui.components.SextantPageContent
 import com.sextant.app.ui.components.SextantPredictiveBackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -183,6 +185,8 @@ private fun SettingsOverview(
   onBackupImport: () -> Unit,
 ) {
   val listState = rememberLazyListState()
+  val updates = (LocalContext.current.applicationContext as com.sextant.app.SextantApplication).updateCoordinator
+  val updateState by updates.state.collectAsState()
   Column(Modifier.fillMaxSize()) {
     SextantFlexibleHeader(
       title = "设置",
@@ -271,6 +275,25 @@ private fun SettingsOverview(
             enabled = !isBusy,
             trailingLabel = "导入",
             onClick = onBackupImport,
+          )
+        }
+      }
+      item {
+        SettingsSection("关于") {
+          SettingsEntry(
+            title = "检查更新",
+            description = when {
+              !updates.supported -> "当前版本 ${updates.currentVersion} · 调试版不支持自动更新"
+              updateState.checking -> "正在检查 GitHub Release…"
+              updateState.downloading -> "正在下载 ${(updateState.progress * 100).toInt()}%"
+              updateState.ready -> "新版本 ${updateState.release?.version} 已可安装"
+              updateState.release != null -> "发现新版本 ${updateState.release?.version}"
+              else -> "当前版本 ${updates.currentVersion} · 启动时自动检查"
+            },
+            icon = Icons.Outlined.SystemUpdate,
+            enabled = !updateState.checking,
+            trailingLabel = if (updateState.ready) "安装" else null,
+            onClick = { if (updateState.release != null) updates.showRelease() else updates.check() },
           )
         }
       }
