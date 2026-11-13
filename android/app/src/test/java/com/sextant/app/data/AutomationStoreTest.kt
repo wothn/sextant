@@ -457,6 +457,40 @@ class AutomationStoreTest {
   }
 
   private fun pageCandidate() = candidate().copy(description = "街角咖啡", merchant = "街角咖啡", parser = "wechat-page-v1", providerReference = "20260920123456")
+
+  @Test fun compactWechatCardOnlyEnrichesAnExistingNotification() = runBlocking {
+    val page = PaymentPageParser.parse(WECHAT_PACKAGE,
+      listOf("拼多多", "￥16.40", "微信支付", "关闭"), 2000)!!
+    assertTrue(page.enrichmentOnly)
+    val alone = store.capture(pageNotification("alone", page), encrypted())!!
+    assertNull(store.postCandidate(alone, WECHAT_PACKAGE, page))
+    assertEquals(0L, database.count("transactions"))
+    assertEquals(AutomationEventStatus.Captured, store.getEvent(alone)!!.status)
+    val notice = store.capture(notification("pdd"), encrypted())!!
+    val posted = store.postCandidate(notice, WECHAT_PACKAGE,
+      candidate().copy(amountCents = 1640, merchant = null, description = ""))!!
+    assertEquals(posted.id, store.postCandidate(alone, WECHAT_PACKAGE, page)!!.id)
+    assertEquals(1L, database.count("transactions"))
+    assertEquals("拼多多", database.transactionDao().findById(posted.id)!!.merchantName)
+  }
+
+  @Test fun compactWechatCardExpiresWithoutPostingAndRejectsMultiplePayments() = runBlocking {
+    val page = PaymentPageParser.parse(WECHAT_PACKAGE,
+      listOf("拼多多", "￥16.40", "微信支付", "关闭"), 2000)!!
+    val expired = store.capture(pageNotification("expired", page), encrypted())!!
+    database.openHelper.writableDatabase.execSQL("UPDATE automation_events SET createdAt = 0 WHERE id = ?", arrayOf(expired))
+    assertNull(store.postCandidate(expired, WECHAT_PACKAGE, page))
+    assertEquals(AutomationEventStatus.Failed, store.getEvent(expired)!!.status)
+    assertEquals(0L, database.count("transactions"))
+    for (key in listOf("first-notice", "second-notice")) {
+      val event = store.capture(notification(key), encrypted())!!
+      store.postCandidate(event, WECHAT_PACKAGE, candidate().copy(amountCents = 1640, merchant = null, description = ""))
+    }
+    val ambiguous = store.capture(pageNotification("ambiguous", page), encrypted())!!
+    assertNull(store.postCandidate(ambiguous, WECHAT_PACKAGE, page))
+    assertEquals("payment_match_ambiguous", store.getEvent(ambiguous)!!.failureCode)
+    assertEquals(2L, database.count("transactions"))
+  }
   private fun pageNotification(key: String, candidate: ParsedTransactionCandidate) = notification("payment-page:$key").copy(
     postedAt = candidate.occurredAt, pageCandidate = candidate,
   )

@@ -156,6 +156,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
       events.findNearby(sourcePackage, candidate.occurredAt - 90_000, candidate.occurredAt + 90_000, summary, eventId)
         .filter { previous ->
           val previousPage = previous.notificationKey.startsWith("payment-page:")
+          if (candidate.enrichmentOnly && (previousPage || previous.status != AutomationEventStatus.Posted)) return@filter false
           // Same-channel notifications can be two legitimate purchases. Include pages
           // with an unknown merchant so the ambiguity guard below prevents duplicate bills.
           val row = previous.transactionId?.let { database.transactionDao().findById(it) }
@@ -167,6 +168,13 @@ internal class AutomationStore(private val database: SextantDatabase) {
             (isPage && row != null && (row.description == candidate.description ||
               row.description.isBlank() || candidate.description.isBlank())))
         }
+    }
+    if (candidate.enrichmentOnly && matches.isEmpty()) {
+      // Page and notification workers can run in either order. Keep the encrypted card
+      // briefly so WorkManager can retry after the notification has committed.
+      if (now - event.createdAt in 0..90_000L) return@withTransaction null
+      updateEvent(eventId, AutomationEventStatus.Failed, candidate.parser, "payment_fields_missing", clearPayload = true)
+      return@withTransaction null
     }
     if (matches.size > 1) {
       updateEvent(eventId, AutomationEventStatus.Failed, candidate.parser, "payment_match_ambiguous", clearPayload = true)

@@ -28,6 +28,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
   private var lastPage: String? = null
   private var lastWindow: Pair<String, Int>? = null
   private val alipayPaymentContext = AlipayPaymentPageContext()
+  private val recentPages = PaymentPageRepeatGuard()
 
   override fun onServiceConnected() {
     super.onServiceConnected()
@@ -72,7 +73,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           result = "automation_disabled"
           return@launch
         }
-        val candidate = awaitPaymentPageCandidate(pause = { delay(it) }) {
+        val candidate = awaitPaymentPageCandidate(pause = { delay(it) }, settle = packageName == ALIPAY_PACKAGE) {
           val root = rootInActiveWindow ?: run {
             reasons.add("root_unavailable")
             scanDetails["attempt${reasons.size}.reason"] = "root_unavailable"
@@ -110,7 +111,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           return@launch
         }
         val identity = "$packageName|${candidate.providerReference}|${candidate.amountCents}|${candidate.description}|${candidate.occurredAt.takeIf { candidate.hasExactTime }}"
-        if (identity == lastPage) {
+        if (identity == lastPage || recentPages.isRepeated(window, identity, SystemClock.elapsedRealtime())) {
           result = "page_repeated"
           return@launch
         }
@@ -118,6 +119,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           app.automationCoordinator.receivePaymentPage(packageName, scanSession, candidate)
         }
         lastPage = identity
+        recentPages.record(window, identity, SystemClock.elapsedRealtime())
         result = "parsed"
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -156,13 +158,33 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
 /** Mini-program nodes can arrive after the last window event. Retry briefly, never poll forever. */
 internal suspend inline fun awaitPaymentPageCandidate(
   pause: suspend (Long) -> Unit,
+  settle: Boolean = false,
   readPage: () -> ParsedTransactionCandidate?,
 ): ParsedTransactionCandidate? {
-  for (waitMillis in listOf(350L, 500L, 1_000L, 2_000L)) {
+  var previous: ParsedTransactionCandidate? = null
+  val waits = if (settle) listOf(350L, 2_000L, 2_000L, 2_000L) else listOf(350L, 500L, 1_000L, 2_000L)
+  for (waitMillis in waits) {
     pause(waitMillis)
-    readPage()?.let { return it }
+    val candidate = readPage()
+    if (!settle && candidate != null) return candidate
+    val comparable = if (candidate?.hasExactTime == false) previous?.copy(occurredAt = candidate.occurredAt) else previous
+    if (candidate != null && comparable == candidate) return candidate
+    previous = candidate
   }
   return null
+}
+
+/** Keep repeats stable when a temporary overlay changes the active window. */
+internal class PaymentPageRepeatGuard {
+  private val pages = mutableMapOf<Pair<String, Int>, Pair<String, Long>>()
+  fun isRepeated(window: Pair<String, Int>, identity: String, elapsed: Long): Boolean {
+    pages.entries.removeAll { elapsed - it.value.second !in 0..90_000L }
+    return pages[window]?.first == identity
+  }
+  fun record(window: Pair<String, Int>, identity: String, elapsed: Long) {
+    isRepeated(window, identity, elapsed)
+    pages[window] = identity to elapsed
+  }
 }
 
 /** Bound work and ignore editable/password nodes; retain node boundaries for label/value parsing. */

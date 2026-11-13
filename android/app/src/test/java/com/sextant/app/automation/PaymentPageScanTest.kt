@@ -6,6 +6,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PaymentPageScanTest {
+  @Test fun alipayWaitsForDiscountedTotalToSettle() = runBlocking {
+    val original = PaymentPageParser.parse(ALIPAY_PACKAGE,
+      listOf("支付成功", "回首页", "示例饭店", "￥15.00", "完成"), observedAt)!!
+    val discounted = original.copy(amountCents = 1485, amountEvidence = "¥14.85")
+    var reads = 0
+    val result = awaitPaymentPageCandidate(pause = {}, settle = true) {
+      if (reads++ == 0) original else discounted.copy(occurredAt = observedAt + reads)
+    }!!
+    assertEquals(1485L, result.amountCents)
+    assertEquals(3, reads)
+  }
+
+  @Test fun repeatGuardSurvivesOverlayButExpiresAndSeparatesWindows() {
+    val guard = PaymentPageRepeatGuard()
+    val window = WECHAT_PACKAGE to 750
+    guard.record(window, "merchant|550", 1000)
+    assertTrue(guard.isRepeated(window, "merchant|550", 14000))
+    assertFalse(guard.isRepeated(WECHAT_PACKAGE to 751, "merchant|550", 14000))
+    assertFalse(guard.isRepeated(window, "merchant|600", 14000))
+    assertFalse(guard.isRepeated(window, "merchant|550", 91001))
+  }
+
   // Current device nodes: merchant and closing action are content descriptions in a mini-program.
   private val completedPage = listOf("支付成功", "示例交通服务", "￥20.00", "摇一摇，有优惠", "返回商家")
   private val observedAt = 1_791_817_200_000L

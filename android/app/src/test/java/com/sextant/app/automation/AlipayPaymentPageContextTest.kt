@@ -7,6 +7,16 @@ import org.junit.Before
 import org.junit.Test
 
 class AlipayPaymentPageContextTest {
+  @Test fun compactConfirmationUsesMerchantImmediatelyBeforeAgreedTotal() {
+    val compact = listOf("返回", "商户单号XP123456", "¥", "18.00", "立即付款", "返回", "使用密码",
+      "拼多多平台商户", "支付金额17.92元", "订单金额", "¥18.00",
+      "付款,确认付款付款金额17.92元人民币", "付款")
+    assertNull(inspect(compact, 1000).candidate)
+    assertEquals("拼多多平台商户", inspect(success).candidate!!.merchant)
+    inspect(compact.map { it.replace("支付金额17.92", "支付金额18.00") }, 3000)
+    assertNull(inspect(success, 4000).candidate!!.merchant)
+  }
+
   private lateinit var previousZone: TimeZone
   @Before fun setUp() {
     previousZone = TimeZone.getDefault()

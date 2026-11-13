@@ -128,6 +128,9 @@ class AutomationCoordinator(
         noteCapture(notification, "parse", "parsed", eventId, outcome.candidate)
         val posted = repository.automationStore.postCandidate(eventId, stored.sourcePackage, outcome.candidate, notification.notificationWhen)
         val result = repository.automationStore.getEvent(eventId)
+        if (outcome.candidate.enrichmentOnly && result?.status == AutomationEventStatus.Captured) {
+          return ProcessingResult.Retry
+        }
         noteCapture(notification, "post", result?.failureCode ?: result?.status?.name?.lowercase() ?: "event_missing",
           eventId, outcome.candidate, includeContent = true, transactionId = result?.transactionId)
         onPosted(posted)

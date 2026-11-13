@@ -11,6 +11,19 @@ import org.junit.Before
 import org.junit.Test
 
 class PaymentPageParserTest {
+  @Test fun compactMerchantCardRequiresExactWeChatLayoutAndPositiveAmount() {
+    val card = listOf("拼多多", "￥16.40", "微信支付", "关闭")
+    val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, card, now)!!
+    assertEquals(1640L, candidate.amountCents)
+    assertEquals("拼多多", candidate.merchant)
+    assertTrue(candidate.enrichmentOnly)
+    assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, card, now))
+    for (page in listOf(card + "聊天信息", card + "确认付款", card.filterNot { it == "关闭" },
+      card.map { it.replace("16.40", "0.00") }, card.map { it.replace("16.40", "-16.40") })) {
+      assertNull(page.toString(), PaymentPageParser.parse(WECHAT_PACKAGE, page, now))
+    }
+  }
+
   private lateinit var previousZone: TimeZone
   private val now get() = LocalDateTime.of(2026, 9, 20, 12, 0).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 

@@ -18,6 +18,17 @@ object PaymentPageParser {
     val lines = text.flatMap { it.lines() }.map { it.trim().replace('￥', '¥') }.filter(String::isNotEmpty)
     if (lines.size !in 3..200) return reject("page_text_incomplete")
     if (lines.any { it in rejectedPages }) return reject("page_not_completed")
+    if (sourcePackage == WECHAT_PACKAGE && lines.size == 4 &&
+      lines[2] == "微信支付" && lines[3] == "关闭" && validMerchant(lines[0]) &&
+      excludedKinds.none(lines[0]::startsWith) && wechatResultAmount.matches(lines[1])) {
+      val cents = parseAmountCents(amount.matchEntire(lines[1])!!.groupValues[2])
+        ?: return reject("amount_invalid")
+      return PaymentPageInspection("parsed", ParsedTransactionCandidate(
+        direction = TransactionType.Expense, kind = AutomationKind.Purchase, amountCents = cents,
+        occurredAt = observedAt, merchant = lines[0], description = lines[0],
+        amountEvidence = lines[1], directionEvidence = "", parser = "wechat-page-v1", enrichmentOnly = true,
+      ))
+    }
     // Alipay's WebView content precedes the native toolbar, so there the title sits anywhere on the
     // page. WeChat's native detail page keeps the title in the toolbar at the very top, while the
     // payment card embedded in a mini-program puts it on the row right above the amount. WeChat's

@@ -40,13 +40,18 @@ internal class AlipayPaymentPageContext {
     val confirmations = lines.mapNotNull { confirmation.matchEntire(it) }.distinctBy { it.value }
     if (lines.any { it.startsWith("付款,确认付款") || it.startsWith("付款，确认付款") }) {
       clear()
-      val confirmation = confirmations.singleOrNull() ?: return PaymentPageInspection("page_not_completed")
+      val confirmation = confirmations.singleOrNull()
       val totals = lines.mapNotNull { checkoutTotal.matchEntire(it)?.groupValues?.get(1) }
         .mapNotNull(::parseAmountCents).distinct()
-      val merchant = confirmation.groupValues[1].trim()
-      val amount = parseAmountCents(confirmation.groupValues[2])
+      val compact = lines.mapNotNull { compactConfirmation.matchEntire(it) }.singleOrNull()
+      val totalIndex = lines.indexOfFirst { checkoutTotal.matches(it) }
+      val merchant = confirmation?.groupValues?.get(1)?.trim()
+        ?: compact?.let { lines.getOrNull(totalIndex - 1) }
+        ?: return PaymentPageInspection("page_not_completed")
+      val amount = parseAmountCents(confirmation?.groupValues?.get(2) ?: compact!!.groupValues[1])
       if (amount != null && totals.singleOrNull() == amount && merchant in lines && merchant.length in 2..80 &&
-        "关闭" in lines && "付款" in lines) {
+        ("关闭" in lines || (compact != null && "返回" in lines && "使用密码" in lines)) && "付款" in lines &&
+        '¥' !in merchant && merchant !in setOf("返回", "关闭", "使用密码", "付款", "订单金额", "账号")) {
         pending = Checkout(merchant, amount, elapsedMillis)
       }
       return PaymentPageInspection("page_not_completed")
@@ -76,5 +81,6 @@ internal class AlipayPaymentPageContext {
     val terminalPages = setOf("支付失败", "付款失败", "支付已取消", "已取消", "取消支付", "交易关闭")
     val checkoutTotal = Regex("支付金额([0-9]+(?:\\.[0-9]{1,2})?)元")
     val confirmation = Regex("付款[，,]确认付款[，,]([^，,]{2,80})[，,]付款金额([0-9]+(?:\\.[0-9]{1,2})?)元人民币")
+    val compactConfirmation = Regex("付款[，,]确认付款付款金额([0-9]+(?:\\.[0-9]{1,2})?)元人民币")
   }
 }
