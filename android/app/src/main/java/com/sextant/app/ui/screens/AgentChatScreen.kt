@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.AddComment
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,6 +39,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
 
 @Composable
 fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository) {
@@ -79,14 +82,11 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
   var showHistory by rememberSaveable { mutableStateOf(false) }
   val traceByRun = conversation.trace.groupBy { it.runId }
   val draftsByMessage = agentDraftsByMessage(conversation.messages, conversation.drafts)
-  val processItemCount = conversation.messages.filter { it.role == "user" && it.runId != null }.sumOf { message ->
-    val entries = traceByRun[message.runId].orEmpty()
-    if (entries.isEmpty()) 0 else 1 +
-      (if (conversation.running && conversation.runId == message.runId && entries.lastOrNull { it.kind == "model" }?.text?.isNotBlank() == true) 1 else 0)
-  }
   val list = key(conversationId) { rememberLazyListState() }
   val dragged by list.interactionSource.collectIsDraggedAsState()
-  var followLatest by remember(conversationId) { mutableStateOf(true) }
+  // 和列表位置一起跨页面切换保存，避免返回时自动滚动覆盖用户正在阅读的位置。
+  var followLatest by rememberSaveable(conversationId) { mutableStateOf(true) }
+  var scrollToBottomRequest by remember(conversationId) { mutableIntStateOf(0) }
   LaunchedEffect(dragged, list.canScrollForward) {
     if (dragged) followLatest = !list.canScrollForward
   }
@@ -94,11 +94,13 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
   LaunchedEffect(conversation.drafts, ready) {
     if (ready) ledger = repository.loadState(projection = StateProjection.Settings)
   }
-  LaunchedEffect(conversationId, conversation.messages.size, conversation.drafts.size, conversation.trace, conversation.status, commandError) {
-    val last = conversation.messages.size + conversation.drafts.count { it.status != "superseded" } +
-      (if (conversation.status in setOf("failed", "interrupted", "cancelled")) 1 else 0) +
-      (if (commandError != null) 1 else 0) + processItemCount
-    if (last > 0 && followLatest) list.animateScrollToItem(last - 1)
+  LaunchedEffect(conversationId, conversation.messages, conversation.drafts, conversation.trace, conversation.status, commandError, followLatest, scrollToBottomRequest) {
+    if (followLatest) {
+      // 使用布局实际包含的末尾锚点，长消息也能滚到底部；列表增删后重新读取目标。
+      snapshotFlow { list.layoutInfo.totalItemsCount }
+        .filter { it > 0 }
+        .collectLatest { count -> list.animateScrollToItem(count - 1) }
+    }
   }
   val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
   Column(Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)) {
@@ -110,7 +112,8 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
       }
       IconButton(onClick = { showSettings = true }) { Icon(Icons.Outlined.Settings, "模型与 API Key") }
     }
-    LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list,
+    Box(Modifier.weight(1f).fillMaxWidth()) {
+    LazyColumn(Modifier.fillMaxSize(), state = list,
       contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       conversation.messages.forEach { message ->
         item(key = message.id) { AgentMessageItem(message, coordinator.images) }
@@ -147,6 +150,18 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
         Text(error, color = MaterialTheme.colorScheme.error)
         TextButton(onClick = coordinator::dismissError) { Text("知道了") }
       } }
+      item(key = "chat-bottom-anchor") { Spacer(Modifier.height(1.dp)) }
+    }
+    if (list.canScrollForward) {
+      SmallFloatingActionButton(
+        onClick = { followLatest = true; scrollToBottomRequest++ },
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 12.dp),
+        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+      ) {
+        Icon(Icons.Outlined.ArrowDownward, contentDescription = "回到底部")
+      }
+    }
     }
     if (pendingImages.isNotEmpty()) Box(Modifier.padding(horizontal = 20.dp)) {
       AgentMessageImages(pendingImages, coordinator.images, onRemove = if (conversation.running || importingImages) null else { id ->
