@@ -6,10 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
@@ -24,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mikepenz.markdown.m3.Markdown
@@ -39,8 +38,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.filter
 
 @Composable
 fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository) {
@@ -82,25 +79,11 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
   var showHistory by rememberSaveable { mutableStateOf(false) }
   val traceByRun = conversation.trace.groupBy { it.runId }
   val draftsByMessage = agentDraftsByMessage(conversation.messages, conversation.drafts)
-  val list = key(conversationId) { rememberLazyListState() }
-  val dragged by list.interactionSource.collectIsDraggedAsState()
-  // 和列表位置一起跨页面切换保存，避免返回时自动滚动覆盖用户正在阅读的位置。
-  var followLatest by rememberSaveable(conversationId) { mutableStateOf(true) }
-  var scrollToBottomRequest by remember(conversationId) { mutableIntStateOf(0) }
-  LaunchedEffect(dragged, list.canScrollForward) {
-    if (dragged) followLatest = !list.canScrollForward
-  }
+  val chatScroll = rememberAgentChatScrollState(conversationId)
+  val list = chatScroll.list
   var ledger by remember { mutableStateOf(AppState()) }
   LaunchedEffect(conversation.drafts, ready) {
     if (ready) ledger = repository.loadState(projection = StateProjection.Settings)
-  }
-  LaunchedEffect(conversationId, conversation.messages, conversation.drafts, conversation.trace, conversation.status, commandError, followLatest, scrollToBottomRequest) {
-    if (followLatest) {
-      // 使用布局实际包含的末尾锚点，长消息也能滚到底部；列表增删后重新读取目标。
-      snapshotFlow { list.layoutInfo.totalItemsCount }
-        .filter { it > 0 }
-        .collectLatest { count -> list.animateScrollToItem(count - 1) }
-    }
   }
   val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
   Column(Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)) {
@@ -113,13 +96,32 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
       IconButton(onClick = { showSettings = true }) { Icon(Icons.Outlined.Settings, "模型与 API Key") }
     }
     Box(Modifier.weight(1f).fillMaxWidth()) {
-    LazyColumn(Modifier.fillMaxSize(), state = list,
+    LazyColumn(Modifier.fillMaxSize().nestedScroll(chatScroll.userScroll), state = list, reverseLayout = true,
       contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      conversation.messages.forEach { message ->
-        item(key = message.id) { AgentMessageItem(message, coordinator.images) }
+      // Emit in reverse chronological order so index zero remains the bottom anchor.
+      item(key = "chat-bottom-anchor") { Spacer(Modifier.height(1.dp)) }
+      commandError?.let { error -> item(key = "chat-command-error") {
+        Text(error, color = MaterialTheme.colorScheme.error)
+        TextButton(onClick = coordinator::dismissError) { Text("知道了") }
+      } }
+      if (conversation.status in setOf("failed", "interrupted", "cancelled")) item(key = "chat-status") {
+        Text(conversation.error ?: conversation.activity, color = MaterialTheme.colorScheme.error)
+        TextButton(onClick = coordinator::retry) { Text("继续分析") }
+      }
+      items(draftsByMessage[null].orEmpty().asReversed(), key = { it.id }) { draft ->
+        DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
+      }
+      conversation.messages.asReversed().forEach { message ->
+        items(draftsByMessage[message.id].orEmpty().asReversed(), key = { it.id }) { draft ->
+          DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
+        }
         if (message.role == "user" && message.runId != null) {
           val entries = traceByRun[message.runId].orEmpty()
           if (entries.isNotEmpty()) {
+            val liveText = entries.lastOrNull { it.kind == "model" }?.text.orEmpty()
+            if (conversation.running && conversation.runId == message.runId && liveText.isNotBlank()) item(key = "stream-${message.id}") {
+              AgentMessageItem(AgentMessage("stream-${message.id}", "assistant", liveText), coordinator.images, streaming = true)
+            }
             item(key = "process-${message.id}") {
               AgentProcess(entries, conversation.running && conversation.runId == message.runId,
                 if (conversation.runId == message.runId) conversation.status else when {
@@ -129,32 +131,14 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
                   else -> "completed"
                 })
             }
-            val liveText = entries.lastOrNull { it.kind == "model" }?.text.orEmpty()
-            if (conversation.running && conversation.runId == message.runId && liveText.isNotBlank()) item(key = "stream-${message.id}") {
-              AgentMessageItem(AgentMessage("stream-${message.id}", "assistant", liveText), coordinator.images, streaming = true)
-            }
           }
         }
-        items(draftsByMessage[message.id].orEmpty(), key = { it.id }) { draft ->
-          DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
-        }
+        item(key = message.id) { AgentMessageItem(message, coordinator.images) }
       }
-      items(draftsByMessage[null].orEmpty(), key = { it.id }) { draft ->
-        DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
-      }
-      if (conversation.status in setOf("failed", "interrupted", "cancelled")) item {
-        Text(conversation.error ?: conversation.activity, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = coordinator::retry) { Text("继续分析") }
-      }
-      commandError?.let { error -> item {
-        Text(error, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = coordinator::dismissError) { Text("知道了") }
-      } }
-      item(key = "chat-bottom-anchor") { Spacer(Modifier.height(1.dp)) }
     }
-    if (list.canScrollForward) {
+    if (list.canScrollBackward) {
       SmallFloatingActionButton(
-        onClick = { followLatest = true; scrollToBottomRequest++ },
+        onClick = chatScroll::requestBottom,
         modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 12.dp),
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -186,7 +170,7 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
         enabled = ready && (conversation.running || (!importingImages && (input.isNotBlank() || pendingImages.isNotEmpty()))), onClick = {
           if (conversation.running) coordinator.stop()
           else {
-            followLatest = true
+            chatScroll.requestBottom()
             if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
             coordinator.send(input, pendingImages) { input = ""; pendingImages = emptyList(); imageError = null }
           }
@@ -232,7 +216,9 @@ private fun AgentMessageContent(message: AgentMessage, images: AgentImageStore, 
     if (message.images.isNotEmpty()) AgentMessageImages(message.images, images)
     if (message.text.isNotBlank()) SelectionContainer {
       if (message.role == "assistant") Markdown(
-        markdownState = rememberMarkdownState(message.text, retainState = true),
+        // Restoring a list offset against an empty, asynchronously parsed answer makes
+        // LazyColumn clamp that offset to a different message before the text appears.
+        markdownState = rememberMarkdownState(message.text, retainState = true, immediate = true),
         modifier = Modifier.fillMaxWidth(),
         typography = markdownTypography(
           h1 = MaterialTheme.typography.headlineSmall,
