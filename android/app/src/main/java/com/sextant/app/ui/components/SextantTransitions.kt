@@ -2,15 +2,16 @@ package com.sextant.app.ui.components
 
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.sextant.app.ui.theme.SextantMotion
@@ -24,7 +25,7 @@ import kotlinx.coroutines.flow.collect
  */
 
 /**
- * 主页面切换：新页面从右侧滑入、旧页面淡出。
+ * 主页面切换：按底栏标签顺序，新旧页面沿水平方向同步平移。
  *
  * 用 `AnimatedContent` + 弹簧而不是默认的淡入淡出，因为底部导航的切换是有方向的
  * ——用户按的是「更右」还是「更左」的标签，位移把这个方向说清楚。
@@ -37,16 +38,18 @@ fun SextantTabContent(
 ) {
   // 弹簧来自 CompositionLocal，而 transitionSpec 不是 composable lambda，
   // 所以先把值取出来再传进去。
-  val spatialSpec = SextantMotion.defaultSpatial<Float>()
-  val effectsSpec = SextantMotion.defaultEffects<Float>()
+  val spatialSpec = SextantMotion.defaultSpatial<IntOffset>()
   AnimatedContent(
     targetState = selectedIndex,
-    modifier = modifier,
+    modifier = modifier.clipToBounds(),
     transitionSpec = {
-      // 顶级目的地之间不存在左右空间关系，用 fade through：旧页淡出、新页从 94% 放大淡入。
-      // 有方向的 shared axis 留给子页面和下钻（见 SextantPageContent）。
-      (fadeIn(animationSpec = effectsSpec) + scaleIn(initialScale = 0.94f, animationSpec = spatialSpec)) togetherWith
-        fadeOut(animationSpec = effectsSpec)
+      val direction = if (targetState > initialState) {
+        AnimatedContentTransitionScope.SlideDirection.Left
+      } else {
+        AnimatedContentTransitionScope.SlideDirection.Right
+      }
+      slideIntoContainer(direction, animationSpec = spatialSpec) togetherWith
+        slideOutOfContainer(direction, animationSpec = spatialSpec)
     },
     label = "tabContent",
   ) { index ->
