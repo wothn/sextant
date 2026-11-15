@@ -37,3 +37,19 @@ local.properties
 .workbuddy
 docs/
 .codex-remote-attachments/
+
+# Private credentials, signing material and local exports
+.env
+.env.*
+!.env.example
+*.keystore
+key.properties
+keystore.properties
+secrets.properties
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.apk
+*.aab

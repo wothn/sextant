@@ -154,7 +154,7 @@ class PaymentPageParserTest {
   }
 
   /**
-   * 真机抓下来的微信小程序支付结果页形状（商户与交易数据均使用虚构示例值）。窗口是 WxaLiteAppTransparentLiteUI，
+   * 真机抓下来的微信小程序支付结果页形状（商户名与交易标识已替换为示例值）。窗口是 WxaLiteAppTransparentLiteUI，
    * 整页只暴露四个 content description：成功、商户、无符号元金额、结束动作。小程序页的结束按钮是
    * 「返回商家」而不是原生结果页的「完成」，只认「完成」会把整页判成非支付页，商户和金额一起丢掉。
    */
