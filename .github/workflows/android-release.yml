@@ -141,7 +141,6 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
 
@@ -189,12 +188,8 @@ jobs:
           }
 
           {
-            printf '## Sextant %s\n\n' "${TAG}"
-            if [[ -n "${previous_tag}" ]]; then
-              printf '自 [%s](https://github.com/%s/releases/tag/%s) 以来的变更：[完整对比](https://github.com/%s/compare/%s...%s)。\n\n' \
-                "${previous_tag}" "${GITHUB_REPOSITORY}" "${previous_tag}" \
-                "${GITHUB_REPOSITORY}" "${previous_tag}" "${TAG}"
-            else
+            # Release 标题和应用更新弹窗已显示版本号，正文只保留更新内容。
+            if [[ -z "${previous_tag}" ]]; then
               printf '首个正式版本。\n\n'
             fi
             emit feat "✨ 新功能"
