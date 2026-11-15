@@ -25,7 +25,7 @@ Sextant 是一款原生 Android 记账应用，使用 Kotlin、Jetpack Compose �
 
 ## 下载
 
-在 [Releases](https://github.com/wothn/sextant/releases/latest) 下载最新 APK，支持 Android 8.0 及以上版本。安装后可在应用内检查更新。
+在 [Releases](https://github.com/wothn/sextant/releases/latest) 下载 APK，支持 Android 8.0 及以上版本。
 
 ## 数据与 AI
 
