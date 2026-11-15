@@ -46,3 +46,7 @@ macOS / Linux 使用 `./gradlew`。应用模块为 `android/app`，主要代码�
 - `ui/`：Compose 页面与组件。
 
 提交到 `main` 或创建 PR 时，CI 会运行单元测试。
+
+## 许可证
+
+本项目采用 [MIT License](LICENSE)。第三方依赖遵循各自的许可证。
