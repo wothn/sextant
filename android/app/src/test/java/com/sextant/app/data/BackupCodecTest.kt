@@ -6,6 +6,18 @@ import org.junit.Test
 
 class BackupCodecTest {
   @Test
+  fun budgetVersionsRoundTripAndRejectInvalidReferencesAmountsAndDuplicateKeys() {
+    val rule = BackupBudgetRule("food", 1, false, 10000)
+    val document = sampleDocument().copy(budgetRules = listOf(rule, rule.copy(onlyThisMonth = true, amountCents = 0)))
+    assertEquals(document, BackupCodec.decodeAndValidate(BackupCodec.encode(document)))
+    for (rules in listOf(listOf(rule, rule), listOf(rule.copy(categoryId = "missing")), listOf(rule.copy(amountCents = -1)))) {
+      assertThrows(BackupException::class.java) {
+        BackupCodec.decodeAndValidate(BackupCodec.encode(document.copy(budgetRules = rules)))
+      }
+    }
+  }
+
+  @Test
   fun preservesPaymentPageOrigin() {
     val document = sampleDocument().let { it.copy(transactions = it.transactions.map { row -> row.copy(entryOrigin = "accessibility") }) }
     assertEquals(document, BackupCodec.decodeAndValidate(BackupCodec.encode(document)))

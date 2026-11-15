@@ -48,7 +48,7 @@ class WidgetSnapshotTest {
     add(7000, now - 1, category = excluded.id)
     // 未来记录不应出现在「最近」列表。
     add(8000, today.plusDays(1).toStartOfDayMillis())
-    repository.setMonthlyBudget(10000)
+    repository.writeBudgetRule("", 10000, BudgetScope.FromThisMonth, LedgerFilter.forMonth(now).rangeStart)
     repository.setThemePreference(ThemePreference.Dark)
     val snapshot = repository.loadWidgetSnapshot(now)
     assertEquals(listOf(400L, 300L, 200L), snapshot.recent.map { it.transaction.amountCents })

@@ -44,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sextant.app.data.AppState
+import com.sextant.app.data.BudgetScope
+import androidx.compose.material3.FilterChip
 import com.sextant.app.data.BudgetProgress
 import com.sextant.app.data.SextantRepository
 import com.sextant.app.data.TransactionType
@@ -86,6 +88,9 @@ fun BudgetPane(
   var editingCategory by rememberSaveable { mutableStateOf(false) }
   var editingCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
   var pendingClear by rememberSaveable { mutableStateOf(false) }
+  var clearingTotal by rememberSaveable { mutableStateOf(false) }
+  var categoryScope by rememberSaveable { mutableStateOf(BudgetScope.FromThisMonth) }
+  var totalScope by rememberSaveable { mutableStateOf(BudgetScope.FromThisMonth) }
   var totalText by rememberSaveable(state.monthlyBudgetCents) { mutableStateOf(state.monthlyBudgetCents?.let(::formatAmountPlain).orEmpty()) }
   var selectedCategoryId by rememberSaveable { mutableStateOf(state.categories.firstOrNull { it.type == TransactionType.Expense && it.parentCategoryId == null && it.includeInSpending }?.id) }
   var categoryAmountText by rememberSaveable { mutableStateOf("") }
@@ -101,6 +106,7 @@ fun BudgetPane(
     state.budgets.firstOrNull { it.categoryId == id }
   }
   val openCategoryEditor: (BudgetProgress?) -> Unit = { budget ->
+    categoryScope = BudgetScope.FromThisMonth
     selectedCategoryId = budget?.categoryId ?: expenseCategories.firstOrNull()?.id
     categoryAmountText = budget?.amountCents?.let(::formatAmountPlain).orEmpty()
     editingCategoryId = budget?.categoryId
@@ -113,18 +119,29 @@ fun BudgetPane(
     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp + LocalBottomBarInset.current),
     verticalArrangement = Arrangement.spacedBy(24.dp),
   ) {
-    item { BudgetOverview(state, onEdit = { editingTotal = true }) }
+    item { BudgetOverview(state, onEdit = { totalScope = BudgetScope.FromThisMonth; editingTotal = true }) }
     item {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Column {
           SextantHeading("分类预算")
           Text("${state.budgets.size} 个分类已设置", color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall)
         }
-        SextantTonalButton(onClick = { editingCategory = true }) {
+        SextantTonalButton(onClick = { openCategoryEditor(null) }) {
           Icon(Icons.Outlined.Add, null, modifier = Modifier.size(18.dp))
           Spacer(Modifier.width(8.dp))
           Text("添加")
         }
+      }
+    }
+    state.monthlyBudgetCents?.let { total ->
+      item {
+        val allocated = state.budgets.sumOf { it.amountCents }
+        Text(
+          if (allocated > total) "分类额度合计超出总预算 ${formatCurrency(allocated - total)}"
+          else "已分配 ${formatCurrency(allocated)} · 未分配 ${formatCurrency(total - allocated)}",
+          color = if (allocated > total) SextantColors.Warning else SextantColors.TextMuted,
+          style = MaterialTheme.typography.bodySmall,
+        )
       }
     }
     if (state.budgets.isEmpty()) {
@@ -146,12 +163,15 @@ fun BudgetPane(
     SextantBottomSheet(onDismissRequest = { editingTotal = false }) {
       BudgetEditor(
         title = if (state.monthlyBudgetCents == null) "设置本月总预算" else "调整本月总预算",
+        scope = totalScope,
+        onScopeChanged = { totalScope = it },
+        onClear = if (state.monthlyBudgetCents == null) null else ({ clearingTotal = true; pendingClear = true }),
         amountText = totalText,
         onAmountChanged = { totalText = it },
         onSave = {
           parseAmountCents(totalText)?.let {
             saveAction.launch {
-              repository.setMonthlyBudget(it)
+              repository.setMonthlyBudget(it, totalScope)
             }
           }
         },
@@ -196,12 +216,13 @@ fun BudgetPane(
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
           modifier = Modifier.fillMaxWidth(),
         )
+        BudgetScopeSelector(categoryScope) { categoryScope = it }
         SextantButton(onClick = {
             val categoryId = editingCategoryId ?: selectedCategoryId
             val amount = parseAmountCents(categoryAmountText)
             if (categoryId != null && amount != null) {
               saveAction.launch {
-                repository.upsertBudget(categoryId, amount)
+                repository.upsertBudget(categoryId, amount, categoryScope)
               }
             }
           },
@@ -210,7 +231,7 @@ fun BudgetPane(
         ) { Text(if (editingBudget != null) "保存修改" else "保存分类预算") }
         if (editingBudget != null) {
           SextantTextButton(
-            onClick = { pendingClear = true },
+            onClick = { clearingTotal = false; pendingClear = true },
             enabled = !saveAction.busy,
             contentColor = SextantColors.Danger,
           ) { Text("清除这项预算") }
@@ -221,16 +242,19 @@ fun BudgetPane(
 
   if (pendingClear) {
     val categoryId = editingCategoryId
+    val scope = if (clearingTotal) totalScope else categoryScope
     SextantAlertDialog(
       onDismissRequest = { pendingClear = false },
-      title = { Text("清除这项预算？") },
-      text = { Text("本月不再显示该分类的预算；已经记录的历史流水不受影响。") },
+      title = { Text(if (clearingTotal) "清除总预算？" else "清除这项预算？") },
+      text = { Text(if (scope == BudgetScope.ThisMonth) "仅停用本月预算，下月按原设置执行。历史预算和流水保留。" else "从本月起停用，以后不再沿用。历史预算和流水保留。") },
       confirmButton = {
         SextantTextButton(
           onClick = {
             pendingClear = false
-            if (categoryId != null) {
-              saveAction.launch { repository.clearBudget(categoryId) }
+            if (clearingTotal) {
+              saveAction.launch { repository.clearMonthlyBudget(scope) }
+            } else if (categoryId != null) {
+              saveAction.launch { repository.clearBudget(categoryId, scope) }
             }
           },
           contentColor = SextantColors.Danger,
@@ -291,7 +315,7 @@ private fun BudgetOverview(state: AppState, onEdit: () -> Unit) {
 }
 
 @Composable
-private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (String) -> Unit, onSave: () -> Unit) {
+private fun BudgetEditor(title: String, scope: BudgetScope, onScopeChanged: (BudgetScope) -> Unit, onClear: (() -> Unit)?, amountText: String, onAmountChanged: (String) -> Unit, onSave: () -> Unit) {
   Column(
     Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -309,10 +333,14 @@ private fun BudgetEditor(title: String, amountText: String, onAmountChanged: (St
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
       modifier = Modifier.fillMaxWidth(),
     )
+    BudgetScopeSelector(scope, onScopeChanged)
     SextantButton(onClick = onSave,
       enabled = parseAmountCents(amountText) != null,
       modifier = Modifier.fillMaxWidth(),
     ) { Text("保存总预算") }
+    if (onClear != null) {
+      SextantTextButton(onClick = onClear, contentColor = SextantColors.Danger) { Text("清除总预算") }
+    }
   }
 }
 
@@ -342,6 +370,20 @@ private fun CategoryBudgetRow(item: BudgetProgress, onClick: () -> Unit) {
       "已用 ${formatCurrency(item.spentCents)} / 额度 ${formatCurrency(item.amountCents)}",
       color = SextantColors.TextMuted,
       style = MaterialTheme.typography.bodyMedium,
+    )
+  }
+}@Composable
+private fun BudgetScopeSelector(scope: BudgetScope, onSelect: (BudgetScope) -> Unit) {
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Text("生效范围", style = MaterialTheme.typography.labelLarge)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      BudgetScope.entries.forEach { item ->
+        FilterChip(selected = scope == item, onClick = { onSelect(item) }, label = { Text(item.label) })
+      }
+    }
+    Text(
+      if (scope == BudgetScope.FromThisMonth) "以后每月沿用此额度，历史月份不变" else "只调整本月，下月按原设置执行",
+      color = SextantColors.TextSubtle, style = MaterialTheme.typography.bodySmall,
     )
   }
 }

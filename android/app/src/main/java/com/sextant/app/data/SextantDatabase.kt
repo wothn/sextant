@@ -27,6 +27,7 @@ import java.util.UUID
     TransactionEntity::class,
     PaymentMethodEntity::class,
     BudgetEntity::class,
+    BudgetRuleEntity::class,
     AppSettingEntity::class,
     RecurringExpenseEntity::class,
     AutomationEventEntity::class,
@@ -43,6 +44,7 @@ abstract class SextantDatabase : RoomDatabase() {
   internal abstract fun transactionDao(): TransactionDao
   internal abstract fun paymentMethodDao(): PaymentMethodDao
   internal abstract fun budgetDao(): BudgetDao
+  internal abstract fun budgetRuleDao(): BudgetRuleDao
   internal abstract fun appSettingDao(): AppSettingDao
   internal abstract fun recurringExpenseDao(): RecurringExpenseDao
   internal abstract fun automationEventDao(): AutomationEventDao
@@ -50,7 +52,7 @@ abstract class SextantDatabase : RoomDatabase() {
   internal abstract fun automationDiagnosticDao(): AutomationDiagnosticDao
 
   companion object {
-    const val DATABASE_VERSION = 14
+    const val DATABASE_VERSION = 15
 
     private const val DATABASE_NAME = "sextant.db"
     const val THEME_PREFERENCE_KEY = "theme_preference"
@@ -74,7 +76,7 @@ abstract class SextantDatabase : RoomDatabase() {
 
     private fun build(context: Context): SextantDatabase = Room
       .databaseBuilder(context, SextantDatabase::class.java, DATABASE_NAME)
-      .addMigrations(MIGRATION_13_14, MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
+      .addMigrations(MIGRATION_14_15, MIGRATION_13_14, MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
       .addCallback(SeedCallback)
       // Room 的 AUTOMATIC 在真机上本来就会选 WAL，但那是运行时的选择：显式写下来，
       // 「监听服务写流水的同时页面在读书、两边不互相阻塞」才是这个库的既定行为。
@@ -90,7 +92,7 @@ abstract class SextantDatabase : RoomDatabase() {
      */
     internal fun createForTests(context: Context, name: String = DATABASE_NAME): SextantDatabase =
       Room.databaseBuilder(context.applicationContext, SextantDatabase::class.java, name)
-        .addMigrations(MIGRATION_13_14, MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
+        .addMigrations(MIGRATION_14_15, MIGRATION_13_14, MIGRATION_12_13, MIGRATION_11_12, MIGRATION_10_11, MIGRATION_LEGACY)
         .addCallback(SeedCallback)
         .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
         .allowMainThreadQueries()
@@ -146,6 +148,21 @@ abstract class SextantDatabase : RoomDatabase() {
           unique = true,
         )
       }
+    }
+
+    val MIGRATION_14_15 = object : Migration(14, 15) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS budget_rules (categoryId TEXT NOT NULL, startMonth INTEGER NOT NULL, onlyThisMonth INTEGER NOT NULL, amountCents INTEGER NOT NULL, PRIMARY KEY(categoryId, startMonth, onlyThisMonth))")
+        importLegacyBudgets(db)
+      }
+    }
+
+    /** 旧分类额度保持原月有效，仅把当月额度作为今后沿用的起点。 */
+    internal fun importLegacyBudgets(db: SupportSQLiteDatabase) {
+      val month = LedgerFilter.currentMonth().rangeStart
+      db.execSQL("INSERT OR REPLACE INTO budget_rules SELECT categoryId, startDate, 1, CASE WHEN isActive = 1 THEN amountCents ELSE 0 END FROM budgets WHERE period = 'month' ORDER BY id")
+      db.execSQL("INSERT OR REPLACE INTO budget_rules SELECT categoryId, startDate, 0, CASE WHEN isActive = 1 THEN amountCents ELSE 0 END FROM budgets WHERE period = 'month' AND startDate = ? ORDER BY id", arrayOf(month))
+      db.execSQL("INSERT OR REPLACE INTO budget_rules SELECT '', ?, 0, CAST(value AS INTEGER) FROM app_settings WHERE key = 'monthly_budget_cents' AND CAST(value AS INTEGER) > 0", arrayOf(month))
     }
 
     val MIGRATION_13_14 = object : Migration(13, 14) {
@@ -291,6 +308,7 @@ abstract class SextantDatabase : RoomDatabase() {
         rebuildBudgets(db, convertAmounts = !budgetsHadCents)
         MIGRATION_12_13.migrate(db)
         MIGRATION_13_14.migrate(db)
+        MIGRATION_14_15.migrate(db)
 
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transactionDate)")
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(type, transactionDate)")

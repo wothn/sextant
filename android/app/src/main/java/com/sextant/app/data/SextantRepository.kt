@@ -46,7 +46,7 @@ class SextantRepository(context: Context) {
         todaySummary = LedgerCalculations.summarize(today),
         todayCount = monthSpending(today).size,
         monthSummary = LedgerCalculations.summarize(month),
-        monthlyBudgetCents = monthlyBudget(),
+        monthlyBudgetCents = monthlyBudget(LedgerFilter.forMonth(now).rangeStart),
         recent = recent,
         upcoming = upcomingWidgetCharges(listRecurringExpenses(), now.toLocalDate()),
         theme = loadThemePreference(),
@@ -83,7 +83,7 @@ class SextantRepository(context: Context) {
         allPaymentMethods = allPaymentMethods,
         monthSummary = LedgerCalculations.summarize(rows),
         budgets = budgetProgress(categories, rows, month.rangeStart),
-        monthlyBudgetCents = monthlyBudget(),
+        monthlyBudgetCents = monthlyBudget(month.rangeStart),
         recurringExpenses = listRecurringExpenses(),
       )
     }
@@ -135,7 +135,7 @@ class SextantRepository(context: Context) {
       todaySummary = LedgerCalculations.summarize(todayTransactions),
       rangeSummary = LedgerCalculations.summarize(transactions),
       monthSummary = LedgerCalculations.summarize(analysisTransactions),
-      monthlyBudgetCents = monthlyBudget(),
+      monthlyBudgetCents = monthlyBudget(monthStart),
     )
     val previousMonthStart = monthRangeOf(monthStart - 1).first
     val previousTransactions = listTransactions(
@@ -160,7 +160,7 @@ class SextantRepository(context: Context) {
       categoryBreakdown = currentBreakdown.map { it.copy(previousAmountCents = previousBreakdown[it.categoryName]?.amountCents ?: 0) },
       analysisTransactions = analysisTransactions,
       budgets = budgetProgress(categories, analysisTransactions, monthStart),
-      monthlyBudgetCents = monthlyBudget(),
+      monthlyBudgetCents = monthlyBudget(monthStart),
       recurringExpenses = if (projection == StateProjection.All) listRecurringExpenses() else emptyList(),
       previousMonthSummary = LedgerCalculations.summarize(previousTransactions),
       dailySpending = LedgerCalculations.dailySpending(analysisTransactions, monthStart),
@@ -171,9 +171,28 @@ class SextantRepository(context: Context) {
     )
   }
 
-  suspend fun setMonthlyBudget(amountCents: Long) {
+  suspend fun setMonthlyBudget(amountCents: Long, scope: BudgetScope = BudgetScope.FromThisMonth) {
     require(amountCents > 0) { "月预算金额必须大于 0" }
-    database.appSettingDao().upsert(AppSettingEntity(SextantDatabase.MONTHLY_BUDGET_KEY, amountCents.toString()))
+    writeBudgetRule("", amountCents, scope)
+  }
+
+  suspend fun clearMonthlyBudget(scope: BudgetScope = BudgetScope.FromThisMonth) {
+    writeBudgetRule("", 0, scope)
+  }
+
+  /** 同月例外不会改变后续额度；持续调整会替换当月例外，但不覆盖旧月份。 */
+  internal suspend fun writeBudgetRule(
+    categoryId: String,
+    amountCents: Long,
+    scope: BudgetScope,
+    month: Long = LedgerFilter.currentMonth().rangeStart,
+  ) {
+    require(amountCents >= 0) { "预算金额不能小于 0" }
+    database.withTransaction {
+      val rules = database.budgetRuleDao()
+      if (scope == BudgetScope.FromThisMonth) rules.deleteOverride(categoryId, month)
+      rules.upsert(BudgetRuleEntity(categoryId, month, scope == BudgetScope.ThisMonth, amountCents))
+    }
     notifyChanged()
   }
 
@@ -364,39 +383,16 @@ class SextantRepository(context: Context) {
     _changes.update { it + 1 }
   }
 
-  /** 月预算的查找和写入必须是一个事务，避免两个写入口同时创建同一业务键。 */
-  suspend fun upsertBudget(categoryId: String, amountCents: Long) {
+  suspend fun upsertBudget(categoryId: String, amountCents: Long, scope: BudgetScope = BudgetScope.FromThisMonth) {
     require(categoryId.isNotBlank()) { "预算分类不能为空" }
     require(amountCents > 0) { "预算金额必须大于 0" }
-    val budgets = database.budgetDao()
-    val startDate = LedgerFilter.currentMonth().rangeStart
-    database.withTransaction {
-      val existingId = budgets.findIdForCategoryMonth(categoryId, startDate)
-      if (existingId != null) {
-        budgets.updateAmount(existingId, amountCents)
-      } else {
-        budgets.insert(
-          BudgetEntity(
-            id = UUID.randomUUID().toString(),
-            categoryId = categoryId,
-            amountCents = amountCents,
-            period = "month",
-            startDate = startDate,
-            alertThreshold = 0.8,
-            isActive = true,
-          ),
-        )
-      }
-    }
-    notifyChanged()
+    require(listCategories().any { it.id == categoryId && it.type == TransactionType.Expense && it.includeInSpending }) { "预算分类无效" }
+    writeBudgetRule(categoryId, amountCents, scope)
   }
 
-  /** 清除某分类本月的预算；历史月份的行保留，避免回看旧账时莫名其妙少一项。 */
-  suspend fun clearBudget(categoryId: String) {
+  suspend fun clearBudget(categoryId: String, scope: BudgetScope = BudgetScope.FromThisMonth) {
     require(categoryId.isNotBlank()) { "预算分类不能为空" }
-    val startDate = LedgerFilter.currentMonth().rangeStart
-    database.budgetDao().deactivateForCategoryMonth(categoryId, startDate)
-    notifyChanged()
+    writeBudgetRule(categoryId, 0, scope)
   }
   /**
    * 新增（[id] 为 null）或更新一笔周期支出，返回它的 id。
@@ -687,19 +683,19 @@ class SextantRepository(context: Context) {
     monthStart: Long,
   ): List<BudgetProgress> {
     val categoryById = categories.associateBy { it.id }
-    return database.budgetDao().listActiveForMonth(monthStart).mapNotNull { budget ->
+    return database.budgetRuleDao().listAll().effectiveBudgets(monthStart).mapNotNull { (categoryId, amountCents) ->
       // 已归档分类的预算不再出现在页面上：分类列表里没有它，说明它已经停用。
-      val category = categoryById[budget.categoryId] ?: return@mapNotNull null
+      val category = categoryById[categoryId] ?: return@mapNotNull null
       val budgetCategoryIds = category.childInclusiveIds(categories)
       val spent = transactions
         .filter { it.transaction.categoryId in budgetCategoryIds && it.transaction.type == TransactionType.Expense }
         .sumOf { it.transaction.amountCents }
-      BudgetProgress(category.displayName(categoryById), category.color, budget.amountCents, spent, category.id)
+      BudgetProgress(category.displayName(categoryById), category.color, amountCents, spent, category.id)
     }
   }
 
-  private suspend fun monthlyBudget(): Long? =
-    database.appSettingDao().findValue(SextantDatabase.MONTHLY_BUDGET_KEY)?.toLongOrNull()
+  private suspend fun monthlyBudget(monthStart: Long): Long? =
+    database.budgetRuleDao().listAll().effectiveBudgets(monthStart)[""]
 
   /**
    * 全部周期支出，启用的排在前面，同组内按首次扣费日。

@@ -28,6 +28,7 @@ internal class BackupStore(private val database: SextantDatabase) {
       paymentMethods = database.paymentMethodDao().listAllForBackup().map { it.toBackup() },
       transactions = database.transactionDao().listAllForBackup().map { it.toBackup() },
       budgets = database.budgetDao().listAll().map { it.toBackup() },
+      budgetRules = database.budgetRuleDao().listAll().map { BackupBudgetRule(it.categoryId, it.startMonth, it.onlyThisMonth, it.amountCents) },
       recurringExpenses = database.recurringExpenseDao().listAll().map { it.toBackup() },
       merchantCategoryRules = database.merchantCategoryRuleDao().listAll().map { BackupMerchantCategoryRule(it.merchantKey, it.merchantName, it.categoryId) },
       // 自动记账的设置项带着本机的解析偏好，属于敏感配置，不进备份；
@@ -57,6 +58,7 @@ internal class BackupStore(private val database: SextantDatabase) {
 
           database.merchantCategoryRuleDao().deleteAll()
           budgets.deleteAll()
+          database.budgetRuleDao().deleteAll()
           recurringExpenses.deleteAll()
           database.automationEventDao().deleteAll()
           database.automationDiagnosticDao().deleteAll()
@@ -72,6 +74,13 @@ internal class BackupStore(private val database: SextantDatabase) {
           document.budgets.forEach { budgets.insert(it.toEntity()) }
           document.recurringExpenses.forEach { recurringExpenses.insert(it.toEntity()) }
           document.settings.forEach { settings.upsert(AppSettingEntity(it.key, it.value)) }
+          if (document.databaseVersion < 15) {
+            SextantDatabase.importLegacyBudgets(database.openHelper.writableDatabase)
+          } else {
+            document.budgetRules.forEach {
+              database.budgetRuleDao().upsert(BudgetRuleEntity(it.categoryId, it.startMonth, it.onlyThisMonth, it.amountCents))
+            }
+          }
         }
         database.diagnosticPolicy.settings = AutomationSettings()
       }
@@ -284,6 +293,12 @@ internal object BackupCodec {
 
     val categoryIds = document.categories.mapTo(mutableSetOf()) { it.id }
     val paymentMethodIds = document.paymentMethods.mapTo(mutableSetOf()) { it.id }
+    requireBackup(document.budgetRules.map { Triple(it.categoryId, it.startMonth, it.onlyThisMonth) }.distinct().size == document.budgetRules.size) { "预算版本重复" }
+    requireBackup(document.budgetRules.isEmpty() || document.databaseVersion >= 15) { "预算版本与数据库版本不匹配" }
+    document.budgetRules.forEach {
+      requireBackup(it.categoryId == "" || it.categoryId in categoryIds) { "预算分类引用无效" }
+      requireBackup(it.amountCents >= 0) { "预算金额无效" }
+    }
     document.categories.forEach { item ->
       requireBackup(item.id.isNotBlank() && item.name.isNotBlank()) { "分类信息不完整" }
       requireBackup(item.type == "expense" || item.type == "income") { "分类类型无效" }
@@ -338,12 +353,18 @@ internal data class BackupDocument(
   @SerialName("paymentMethods") val paymentMethods: List<BackupPaymentMethod> = emptyList(),
   val transactions: List<BackupTransaction> = emptyList(),
   val budgets: List<BackupBudget> = emptyList(),
+  val budgetRules: List<BackupBudgetRule> = emptyList(),
   val recurringExpenses: List<BackupRecurringExpense> = emptyList(),
   val settings: List<BackupSetting> = emptyList(),
   val merchantCategoryRules: List<BackupMerchantCategoryRule> = emptyList(),
 ) {
-  fun summary() = BackupSummary(transactions.size, categories.size, paymentMethods.size, budgets.size, recurringExpenses.size)
+  fun summary() = BackupSummary(transactions.size, categories.size, paymentMethods.size,
+    (budgets.map { it.categoryId } + budgetRules.filter { it.categoryId.isNotEmpty() && it.amountCents > 0 }.map { it.categoryId }).distinct().size,
+    recurringExpenses.size)
 }
+
+@Serializable
+internal data class BackupBudgetRule(val categoryId: String, val startMonth: Long, val onlyThisMonth: Boolean, val amountCents: Long)
 
 @Serializable
 internal data class BackupCategory(
@@ -445,6 +466,6 @@ private inline fun requireBackup(condition: Boolean, message: () -> String) {
 }
 
 private const val BACKUP_FORMAT = "sextant-backup"
-private const val BACKUP_VERSION = 4
+private const val BACKUP_VERSION = 5
 private val TRANSACTION_TYPES = setOf("expense", "income", "transfer")
 private val AUTOMATION_KINDS = setOf("purchase", "refund", "receipt", "transfer_in", "transfer_out", "recharge", "repayment", "red_packet", "withdrawal", "other")

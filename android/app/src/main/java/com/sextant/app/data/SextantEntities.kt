@@ -96,6 +96,14 @@ internal data class AppSettingEntity(
   @ColumnInfo(name = "value") val value: String,
 )
 
+@Entity(tableName = "budget_rules", primaryKeys = ["categoryId", "startMonth", "onlyThisMonth"])
+internal data class BudgetRuleEntity(
+  val categoryId: String,
+  val startMonth: Long,
+  val onlyThisMonth: Boolean,
+  val amountCents: Long,
+)
+
 /**
  * 周期支出（房租、会员、宽带这类固定节奏的金额）。
  *

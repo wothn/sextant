@@ -56,6 +56,7 @@ class SextantDatabaseTest {
     assertTrue(db.hasTable("payment_methods"))
     assertTrue(db.hasTable("transactions"))
     assertTrue(db.hasTable("budgets"))
+    assertTrue(db.hasTable("budget_rules"))
     assertTrue(db.hasTable("app_settings"))
     assertTrue(db.hasTable("automation_events"))
     assertTrue(db.hasTable("automation_diagnostics"))
@@ -85,6 +86,39 @@ class SextantDatabaseTest {
     assertEquals(setOf("银行卡", "微信", "支付宝", "现金"), db.stringSet("SELECT name FROM payment_methods"))
     assertEquals(4L, db.longValue("SELECT COUNT(*) FROM payment_methods WHERE isBuiltIn = 1 AND isActive = 1"))
     assertTrue(db.longValue("SELECT COUNT(*) FROM categories") > 7)
+  }
+
+  @Test
+  fun versionFourteenUpgradePreservesHistoricalLimitsAndStartsRecurringLimitsThisMonth() {
+    val originalZone = java.util.TimeZone.getDefault()
+    try {
+      java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+      val current = LedgerFilter.currentMonth().rangeStart
+      val previous = monthRangeOf(current - 1).first
+      // Existing tables use the captured device schema. The diagnostics table is the
+      // only addition in v14, copied unchanged from MIGRATION_13_14.
+      val schema = javaClass.getResource("/database/v13-device-schema.json")!!.readText()
+      context.openOrCreateDatabase(DATABASE_NAME, Context.MODE_PRIVATE, null).use { db ->
+        Json.decodeFromString<List<String>>(schema).forEach { db.execSQL(it) }
+        db.execSQL("CREATE TABLE IF NOT EXISTS automation_diagnostics (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, createdAt INTEGER NOT NULL, ciphertext BLOB NOT NULL, iv BLOB NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_diagnostics_created ON automation_diagnostics(createdAt)")
+        db.execSQL("INSERT INTO budgets VALUES ('old', 'food', 10000, 'month', ?, 0.8, 1)", arrayOf(previous))
+        db.execSQL("INSERT INTO budgets VALUES ('new', 'food', 20000, 'month', ?, 0.8, 1)", arrayOf(current))
+        db.execSQL("INSERT INTO budgets VALUES ('paused', 'paused', 30000, 'month', ?, 0.8, 0)", arrayOf(current))
+        db.execSQL("INSERT INTO app_settings VALUES ('monthly_budget_cents', '90000')")
+        db.version = 14
+      }
+      val db = openCurrentDatabase()
+      assertEquals(15, db.version)
+      assertEquals(3L, db.longValue("SELECT COUNT(*) FROM budgets"))
+      assertEquals(10000L, db.longValue("SELECT amountCents FROM budget_rules WHERE categoryId = 'food' AND startMonth = $previous AND onlyThisMonth = 1"))
+      assertEquals(20000L, db.longValue("SELECT amountCents FROM budget_rules WHERE categoryId = 'food' AND startMonth = $current AND onlyThisMonth = 0"))
+      assertEquals(0L, db.longValue("SELECT amountCents FROM budget_rules WHERE categoryId = 'paused' AND onlyThisMonth = 0"))
+      assertEquals(90000L, db.longValue("SELECT amountCents FROM budget_rules WHERE categoryId = '' AND startMonth = $current"))
+      assertEquals(0L, db.longValue("SELECT COUNT(*) FROM budget_rules WHERE categoryId = '' AND startMonth < $current"))
+    } finally {
+      java.util.TimeZone.setDefault(originalZone)
+    }
   }
 
   @Test

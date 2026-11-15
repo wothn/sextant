@@ -313,7 +313,7 @@ class SextantRepositoryTest {
     repository.upsertBudget(categoryId, 10_000)
     repository.upsertBudget(categoryId, 20_000)
 
-    val budgets = repository.database.budgetDao().listAll().filter { it.categoryId == categoryId }
+    val budgets = repository.database.budgetRuleDao().listAll().filter { it.categoryId == categoryId }
     assertEquals(1, budgets.size)
     assertEquals(20_000L, budgets.single().amountCents)
   }
