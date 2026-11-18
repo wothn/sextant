@@ -25,8 +25,8 @@ internal object AgentTranscriptCodec {
 }
 
 internal class AgentContextBuilder(private val images: AgentImageStore) {
-  suspend fun build(conversation: AgentConversation): List<Message> {
-    val userParts = agentMessageParts(conversation.messages, images)
+  suspend fun build(conversation: AgentConversation, documentMarkers: Map<String, String> = emptyMap()): List<Message> {
+    val userParts = agentMessageParts(conversation.messages, images, documentMarkers)
     val turns = conversation.transcript.associateBy { it.userMessageId }
     val recordedRuns = conversation.transcript.map { it.runId }.toSet()
     return buildList {

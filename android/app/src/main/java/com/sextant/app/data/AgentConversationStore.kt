@@ -17,7 +17,11 @@ import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class AgentMessage(val id: String, val role: String, val text: String, val runId: String? = null,
-  val images: List<String> = emptyList())
+  val images: List<String> = emptyList(), val documents: List<AgentDocument> = emptyList(),
+  val sources: List<AgentWebSource> = emptyList())
+
+@Serializable
+data class AgentWebSource(val url: String, val title: String)
 
 @Serializable
 data class AgentTraceEntry(
@@ -193,6 +197,15 @@ class AgentConversationStore(context: Context, fileName: String = "agent-convers
     }
   }
 
+  suspend fun containsDocument(id: String): Boolean {
+    load()
+    return mutex.withLock {
+      requireNotNull(archive).conversations.any { saved ->
+        saved.conversation.messages.any { message -> message.documents.any { it.id == id } }
+      }
+    }
+  }
+
   /** 标题生成可能晚于会话切换，必须按 ID 回写，且不能覆盖已有标题或改变历史排序。 */
   suspend fun setTitleIfAbsent(conversationId: String, title: String) {
     load()
@@ -265,6 +278,7 @@ class AgentConversationStore(context: Context, fileName: String = "agent-convers
       .sortedByDescending { it.updatedAt }.map { entry ->
         val messages = entry.conversation.messages
         fun label(message: AgentMessage?): String = message?.text?.takeIf { it.isNotBlank() }?.take(120)
+          ?: message?.documents?.firstOrNull()?.name
           ?: if (message?.images?.isNotEmpty() == true) "[图片]" else "未命名对话"
         val fallbackTitle = label(messages.firstOrNull { it.role == "user" }).take(80)
         AgentConversationSummary(entry.id, entry.title?.takeIf { it.isNotBlank() } ?: fallbackTitle,

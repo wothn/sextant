@@ -18,8 +18,10 @@ import ai.koog.prompt.streaming.StreamFrame
 import ai.koog.prompt.streaming.toStreamFrames
 import com.sextant.app.agent.*
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.headersOf
@@ -38,6 +40,11 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -108,7 +115,7 @@ class AgentSessionTest {
     var firstRequest = emptyList<Message>()
     agent(store, executor { request ->
       firstRequest = request.messages.toList()
-      assertEquals(1, request.messages.filterIsInstance<Message.System>().size)
+      assertEquals(2, request.messages.filterIsInstance<Message.System>().size)
       assertFalse(request.messages.first().textContent().contains("现在是"))
       assertEquals("分析first", request.messages[1].textContent())
       assertTrue(request.messages.last().textContent().contains("【应用运行上下文】"))
@@ -204,6 +211,127 @@ class AgentSessionTest {
     }
     assertEquals("第二轮完成", agent(reloaded, second).run("second", AgentSettings("test-key"), "second"))
     assertEquals(2, reloaded.load().transcript.size)
+  }
+
+  @Test fun deepSeekWebAndFileExtensionsSurviveToolCallsAndRestart() = runBlocking {
+    val store = AgentConversationStore(context, fileName)
+    begin(store, "first")
+    val document = AgentDocument(UUID.randomUUID().toString(), "账单.csv", AgentDocumentUpload(
+      "file-api-test", System.currentTimeMillis() / 1000 + 3600, documentKeyFingerprint("test-key"),
+    ))
+    val question = "结合账单读这个链接 https://example.com/page"
+    store.update { state -> state.copy(messages = listOf(state.messages.single().copy(text = question, documents = listOf(document)))) }
+    val requests = mutableListOf<JSONObject>()
+    val webCalls = """[{"index":0,"reasoning_content":"准备读网页","calls":[{"index":0,"id":"srvtoolu_test","type":"deepseek_read_url","kind":"read_link","status":"completed","signature":"opaque-signature"}]}]"""
+    val annotations = """[{"type":"url_citation","url_citation":{"url":"https://example.com/page","title":"示例来源","start_index":0,"end_index":2}}]"""
+    fun chunk(delta: String, finish: String = "null", event: String = "") =
+      """{"id":"response","object":"chat.completion.chunk","created":1,"model":"deepseek-flash","choices":[{"index":0,"delta":$delta,"finish_reason":$finish$event}]}"""
+    fun modelAccess(): AgentModelAccess = AgentModelAccess("test-key", HttpClient(OkHttp) {
+      engine {
+        addInterceptor { chain ->
+          val request = chain.request()
+          val body = Buffer().also { requireNotNull(request.body).writeTo(it) }.readUtf8()
+          requests += JSONObject(body)
+          val chunks = when (requests.size) {
+            1 -> listOf(
+              chunk("""{"role":"assistant","reasoning_content":"准备读网页"}"""),
+              chunk("{}", event = ""","server_tool_event":{"type":"step_reasoning_done","step":0}"""),
+              chunk("{}", event = ""","server_tool_event":{"type":"call_started","step":0,"call":{"action":{"type":"read_link"}}}"""),
+              chunk("""{"reasoning_content":"现在查账","tool_calls":[{"index":0,"id":"local-call","type":"function","function":{"name":"query_ledger","arguments":"{\"sql\":\"SELECT 42 AS amount\"}"}}]}"""),
+              chunk("""{"server_tool_calls":$webCalls}""", "\"tool_calls\""),
+            )
+            else -> listOf(
+              chunk("""{"role":"assistant","reasoning_content":"整理结果","content":"已完成"}"""),
+              chunk("""{"annotations":$annotations}""", "\"stop\""),
+            )
+          }
+          val stream = chunks.joinToString("") { "data: $it\n\n" } + "data: [DONE]\n\n"
+          Response.Builder()
+            .request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+            .header("Content-Type", "text/event-stream").body(stream.toResponseBody("text/event-stream".toMediaType()))
+            .build()
+        }
+      }
+    })
+    fun ledgerAgent(conversationStore: AgentConversationStore) =
+      LedgerAgent(context, repository, conversationStore, models = { modelAccess() })
+
+    assertEquals("已完成", ledgerAgent(store).run("first", AgentSettings("test-key"), "first"))
+    val firstTurn = store.load().transcript.single()
+    assertEquals(listOf(AgentWebSource("https://example.com/page", "示例来源")),
+      deepSeekWebSources(AgentTranscriptCodec.decode(firstTurn)))
+    store.update { state -> state.copy(status = "completed",
+      messages = state.messages + AgentMessage("first-answer", "assistant", "已完成", "first")) }
+    val reloaded = AgentConversationStore(context, fileName)
+    begin(reloaded, "second")
+    assertEquals("已完成", ledgerAgent(reloaded).run("second", AgentSettings("test-key"), "second"))
+
+    assertEquals(3, requests.size)
+    assertTrue(requests.first().getJSONArray("tools").toString().contains("deepseek_web_search"))
+    assertTrue(requests.first().getJSONArray("tools").toString().contains("deepseek_read_url"))
+    val firstMessages = requests.first().getJSONArray("messages")
+    val user = (0 until firstMessages.length()).map(firstMessages::getJSONObject).last { it.getString("role") == "user" }
+    val parts = user.getJSONArray("content")
+    assertEquals(question, parts.getJSONObject(0).getString("text"))
+    assertEquals("file", parts.getJSONObject(1).getString("type"))
+    assertEquals("file-api-test", parts.getJSONObject(1).getString("file_id"))
+    requests.forEach { request ->
+      assertTrue(request.toString().contains("file-api-test"))
+      assertFalse(request.toString().contains("sextant-file-"))
+    }
+    requests.drop(1).forEach { request ->
+      val messages = request.getJSONArray("messages")
+      val history = (0 until messages.length()).map { messages.getJSONObject(it) }
+      val web = history.single { it.has("server_tool_calls") }
+      assertEquals("现在查账", web.getString("reasoning_content"))
+      assertEquals("opaque-signature", web.getJSONArray("server_tool_calls").getJSONObject(0)
+        .getJSONArray("calls").getJSONObject(0).getString("signature"))
+      assertEquals("local-call", web.getJSONArray("tool_calls").getJSONObject(0).getString("id"))
+      assertTrue(history.single { it.optString("tool_call_id") == "local-call" }.getString("content").contains("42"))
+    }
+  }
+
+  @Test fun attachmentUploadSetsAnExpirationAndReusesItsSavedFileId() = runBlocking {
+    val store = AgentConversationStore(context, fileName)
+    begin(store, "doc")
+    val document = AgentDocument(UUID.randomUUID().toString(), "statement.csv")
+    store.update { state -> state.copy(messages = listOf(state.messages.single().copy(documents = listOf(document)))) }
+    val source = File(File(context.noBackupFilesDir, "agent-documents").apply { mkdirs() }, document.id)
+    source.writeText("amount\n42\n")
+    var uploads = 0
+    val expiration = System.currentTimeMillis() / 1000 + 604800
+    val uploader = DeepSeekDocuments(AgentDocumentStore(context), store) {
+      HttpClient(MockEngine { request ->
+        uploads++
+        assertEquals("https://api.deepseek.com/files", request.url.toString())
+        assertEquals("Bearer test-key", request.headers[HttpHeaders.Authorization])
+        val multipart = request.body.toByteArray().decodeToString()
+        val purposePart = Regex("name=\"?purpose\"?").find(multipart)
+        val filePart = Regex("name=\"?file\"?\\s*[;\\r\\n]").find(multipart)
+        assertNotNull(multipart, purposePart)
+        assertNotNull(multipart, filePart)
+        assertTrue(purposePart!!.range.first < filePart!!.range.first)
+        assertTrue(multipart.contains("user_data"))
+        assertTrue(multipart.contains("expires_after[seconds]"))
+        assertTrue(multipart.contains("604800"))
+        assertTrue(multipart.contains("filename=\"statement.csv\""))
+        assertTrue(multipart.contains("amount\n42\n"))
+        respond("""{"id":"file-api-uploaded","expires_at":$expiration}""",
+          headers = headersOf(HttpHeaders.ContentType, "application/json"))
+      })
+    }
+    try {
+      uploader.prepare(store.load(), "user-doc", "test-key")
+      val restored = AgentConversationStore(context, fileName).load()
+      val saved = restored.messages.single().documents.single()
+      assertEquals(expiration, saved.upload?.expiresAt)
+      assertEquals("file-api-uploaded", saved.activeFileId(documentKeyFingerprint("test-key")))
+      assertNull(saved.activeFileId(documentKeyFingerprint("another-key")))
+      uploader.prepare(restored, "user-doc", "test-key")
+      assertEquals(1, uploads)
+    } finally {
+      source.delete()
+    }
   }
 
   @Test fun interruptedToolBatchResumesOnlyMissingResultsAndPreservesUntruncatedData() = runBlocking {

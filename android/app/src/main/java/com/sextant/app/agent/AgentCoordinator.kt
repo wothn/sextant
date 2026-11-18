@@ -18,6 +18,7 @@ class AgentCoordinator(
   private val store: AgentConversationStore = AgentConversationStore(context),
   val settings: AgentSettingsStore = AgentSettingsStore(context),
   val images: AgentImageStore = AgentImageStore(context),
+  val documents: AgentDocumentStore = AgentDocumentStore(context),
 ) {
   private val draftActions = AgentDraftActions(repository, store)
   val state = store.state
@@ -59,12 +60,23 @@ class AgentCoordinator(
   fun discardPendingImage(id: String) = command {
     if (!store.containsImage(id)) images.removePending(id)
   }
-  fun send(text: String, imageIds: List<String> = emptyList(), onAccepted: () -> Unit = {}) = command {
+  fun discardPendingDocument(id: String) = command { removePendingDocuments(listOf(id)) }
+
+  private suspend fun removePendingDocuments(ids: List<String>) {
+    ids.forEach { id -> if (!store.containsDocument(id)) documents.removePending(id) }
+  }
+
+  fun send(text: String, imageIds: List<String> = emptyList(), attachments: List<AgentDocument> = emptyList(),
+    onAccepted: () -> Unit = {}) = command {
     require(mutableReady.value) { "对话正在加载" }
-    require((text.isNotBlank() || imageIds.isNotEmpty()) && text.length <= 6000) { "请填写消息或选择图片，文字最多6000字" }
+    require((text.isNotBlank() || imageIds.isNotEmpty() || attachments.isNotEmpty()) && text.length <= 6000) {
+      "请填写消息或选择附件，文字最多6000字"
+    }
     require(imageIds.size <= AgentImageStore.MAX_IMAGES && imageIds.distinct().size == imageIds.size) { "每条消息最多4张图片" }
+    require(attachments.size <= AgentDocumentStore.MAX_FILES && attachments.distinctBy { it.id }.size == attachments.size) { "每条消息最多4个文件" }
     val config = settings.read()
     require(config.apiKey.isNotBlank()) { "请先在右上角配置 DeepSeek API Key" }
+    require(attachments.isEmpty() || AgentModelAccess.supportsExtendedChat(config.model)) { "附件需要使用 deepseek-flash，请在设置中切换模型" }
     require(AgentModelAccess.supportsImages(config.model) ||
       (imageIds.isEmpty() && store.load().messages.none { it.images.isNotEmpty() })) {
       "当前模型不支持图片，请在设置中切换为 deepseek-flash"
@@ -74,7 +86,8 @@ class AgentCoordinator(
     val attempt = UUID.randomUUID().toString()
     store.update {
       require(!it.running) { "请等待当前任务结束，或先停止任务" }
-      it.copy(messages = it.messages + AgentMessage(UUID.randomUUID().toString(), "user", text.trim(), id, imageIds.toList()),
+      it.copy(messages = it.messages + AgentMessage(UUID.randomUUID().toString(), "user", text.trim(), id,
+        images = imageIds.toList(), documents = attachments.map { document -> document.copy(upload = null) }),
         drafts = it.drafts.map { draft -> if (draft.status == "pending") draft.copy(status = "superseded") else draft },
         runId = id, attemptId = attempt, status = "running", activity = "准备连接 DeepSeek…", error = null)
     }
@@ -113,14 +126,18 @@ class AgentCoordinator(
 
   fun decide(id: String, approve: Boolean) = command { draftActions.decide(id, approve) }
 
-  fun newConversation() = command {
+  fun newConversation(discardDocuments: List<String> = emptyList()) = command {
     require(mutableReady.value) { "对话正在加载" }
+    val previous = store.activeId.value
     store.newConversation()
+    if (previous != store.activeId.value) removePendingDocuments(discardDocuments)
   }
 
-  fun openConversation(id: String, onOpened: () -> Unit) = command {
+  fun openConversation(id: String, discardDocuments: List<String> = emptyList(), onOpened: () -> Unit) = command {
     require(mutableReady.value) { "对话正在加载" }
+    val previous = store.activeId.value
     store.openConversation(id)
+    if (previous != id) removePendingDocuments(discardDocuments)
     withContext(Dispatchers.Main) { onOpened() }
   }
 
@@ -141,8 +158,10 @@ class AgentCoordinator(
       val config = settings.read()
       require(config.apiKey.isNotBlank()) { "请配置 DeepSeek API Key" }
       val result = LedgerAgent(context, repository, store, images).run(id, config, attemptId)
+      val turn = store.load().transcript.firstOrNull { it.runId == id }
+      val sources = turn?.let { deepSeekWebSources(AgentTranscriptCodec.decode(it)) }.orEmpty()
       store.update { current -> if (!current.ownsRun(id, attemptId)) current else current.copy(
-        messages = current.messages + AgentMessage(UUID.randomUUID().toString(), "assistant", result, id),
+        messages = current.messages + AgentMessage(UUID.randomUUID().toString(), "assistant", result, id, sources = sources),
         status = if (current.drafts.any { it.status == "pending" }) "awaiting_confirmation" else "completed",
         activity = "", error = null,
       ) }
@@ -150,6 +169,8 @@ class AgentCoordinator(
       if (userMessage.isNotBlank()) generateTitleAsync(conversationId, userMessage, result, config)
     } catch (image: AgentImageUnavailableException) {
       fail("failed", requireNotNull(image.message), id, attemptId)
+    } catch (document: AgentDocumentException) {
+      fail("failed", requireNotNull(document.message), id, attemptId)
     } catch (timeout: TimeoutCancellationException) {
       withContext(NonCancellable) { fail("failed", "任务超过15分钟，已停止。可继续分析，账本未自动修改。", id, attemptId) }
     } catch (cancelled: CancellationException) {

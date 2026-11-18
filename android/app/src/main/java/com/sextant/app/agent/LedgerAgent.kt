@@ -11,6 +11,7 @@ import ai.koog.prompt.message.RequestMetaInfo
 import ai.koog.prompt.params.LLMParams
 import ai.koog.prompt.streaming.StreamFrame
 import com.sextant.app.data.*
+import java.util.UUID
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 
@@ -30,13 +31,21 @@ internal class LedgerAgent(
     val previous = turn?.let { AgentTranscriptCodec.decode(it) }.orEmpty()
     // 最终协议已落盘、UI 完成状态尚未落盘时，直接兑现回答，不重复调用模型或工具。
     if (turn?.completed == true) return@withTimeout (previous.last() as Message.Assistant).textContent()
-    val active = store.update { state ->
+    val cleared = store.update { state ->
       check(state.ownsRun(runId, attemptId)) { "当前任务已停止或切换" }
       state.copy(drafts = state.drafts.filterNot {
         it.runId == runId && it.status == "pending" && it.id !in turn?.draftIds.orEmpty()
       })
     }
-    val history = AgentContextBuilder(images).build(active)
+    val supportsDocuments = AgentModelAccess.supportsExtendedChat(settings.model)
+    if (!supportsDocuments && latest.documents.isNotEmpty()) throw AgentDocumentException("附件需要使用 deepseek-flash，请在设置中切换模型")
+    val active = DeepSeekDocuments(AgentDocumentStore(context), store).prepare(cleared, latest.id, settings.apiKey)
+    val keyFingerprint = documentKeyFingerprint(settings.apiKey)
+    val documentIds = if (supportsDocuments) active.messages.flatMap { it.documents }
+      .mapNotNull { document -> document.activeFileId(keyFingerprint)?.let { document.id to it } }
+      .takeLast(20).toMap() else emptyMap()
+    val markers = documentIds.mapValues { "[sextant-file-${UUID.randomUUID()}]" }
+    val history = AgentContextBuilder(images).build(active, markers)
     val hasImages = active.messages.any { it.images.isNotEmpty() }
     require(!hasImages || AgentModelAccess.supportsImages(settings.model)) { "当前模型不支持图片，请切换模型" }
     val session = AgentRunSession(store, runId, attemptId, latest.id, previous)
@@ -44,6 +53,11 @@ internal class LedgerAgent(
       val trace = AgentTraceRecorder(store, runId, attemptId = attemptId)
       val registry = ledgerTools(repository, store, runId, attemptId, ledger, trace)
       models(settings).use { access ->
+        access.configureExtensions(markers.entries.associate { (id, marker) -> marker to documentIds.getValue(id) }) { activity ->
+          store.update(persist = false) { state ->
+            if (state.ownsRun(runId, attemptId)) state.copy(activity = activity) else state
+          }
+        }
         val config = AIAgentConfig(
           model = AgentModelAccess.model(settings.model, hasImages),
           prompt = prompt("sextant-chat", params = LLMParams(maxTokens = 4096)) {
@@ -55,7 +69,8 @@ internal class LedgerAgent(
         val agent = AIAgent(promptExecutor = access.executor, agentConfig = config,
           strategy = streamingLedgerStrategy(appendUser = false,
             runContext = ledgerRunContext(ledger.capturedAt, active.drafts.joinToString { "${it.id}=${it.status}" }),
-            pendingCalls = AgentTranscriptCodec.pendingCalls(previous), checkpoint = session::checkpoint), toolRegistry = registry) {
+            pendingCalls = AgentTranscriptCodec.pendingCalls(previous), checkpoint = session::checkpoint,
+            prepareRequest = access::prepareRequest, completeResponse = access::completeResponse), toolRegistry = registry) {
           handleEvents {
             onLLMStreamingStarting { trace.startModel() }
             onLLMStreamingFrameReceived { event ->

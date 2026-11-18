@@ -20,6 +20,8 @@ internal fun streamingLedgerStrategy(
   runContext: String? = null,
   pendingCalls: List<MessagePart.Tool.Call> = emptyList(),
   checkpoint: suspend (List<Message>, Boolean) -> Unit = { _, _ -> },
+  prepareRequest: (List<Message>) -> Unit = {},
+  completeResponse: (Message.Assistant) -> Message.Assistant = { it },
 ) = strategy<String, String>("sextant_streaming") {
   var firstMessageCount = 0
   val request by node<String, Flow<StreamFrame>> { input ->
@@ -38,19 +40,22 @@ internal fun streamingLedgerStrategy(
       // 先闭合恢复中的工具调用，再追加本次快照信息；持久化后才能请求模型。
       // 上下文属于本轮协议，后续运行原样重放，不能重写历史前缀。
       if (runContext != null) {
-        appendPrompt { user(runContext) }
+        // DeepSeek 从最后一条用户消息提取链接，应用上下文使用独立的 system 角色。
+        appendPrompt { system(runContext) }
         checkpoint(prompt.messages.drop(firstMessageCount), false)
       }
+      prepareRequest(prompt.messages)
       requestLLMStreaming()
     }
   }
   val sendResults by node<ReceivedToolResults, Flow<StreamFrame>> {
     llm.writeSession {
+      prepareRequest(prompt.messages)
       requestLLMStreaming()
     }
   }
   val collectResponse by node<Flow<StreamFrame>, Message.Assistant> { stream ->
-    val response = stream.toList().toMessageResponse()
+    val response = completeResponse(stream.toList().toMessageResponse())
     llm.writeSession {
       appendPrompt { message(response) }
       checkpoint(prompt.messages.drop(firstMessageCount), response.parts.none { it is MessagePart.Tool.Call })
