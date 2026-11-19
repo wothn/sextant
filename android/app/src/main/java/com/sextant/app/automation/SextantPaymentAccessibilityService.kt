@@ -166,7 +166,7 @@ internal suspend inline fun awaitPaymentPageCandidate(
   for (waitMillis in waits) {
     pause(waitMillis)
     val candidate = readPage()
-    if (!settle && candidate != null) return candidate
+    if (candidate != null && (!settle || candidate.hasFinalPageTotal)) return candidate
     val comparable = if (candidate?.hasExactTime == false) previous?.copy(occurredAt = candidate.occurredAt) else previous
     if (candidate != null && comparable == candidate) return candidate
     previous = candidate

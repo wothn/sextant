@@ -6,6 +6,26 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PaymentPageScanTest {
+  @Test fun completedAlipayDiscountAndBillHeadersSurviveAnImmediateWindowChange() = runBlocking {
+    val merchant = "示例饭店"
+    val billFields = listOf("交易成功", "订单金额", "17.00", "百次立减", "-0.01",
+      "支付时间", "2026-09-18 08:30:00", "账单详情")
+    val pages = listOf(
+      listOf("支付成功", "回首页", "￥", "16.99", merchant, "￥17.00", "百次立减", "-￥0.01", "付款方式", "完成"),
+      listOf(merchant, "支出16.99元") + billFields,
+      listOf(merchant, "-16.99") + billFields,
+    )
+    for (page in pages) {
+      var reads = 0
+      val result = awaitPaymentPageCandidate(pause = {}, settle = true) {
+        check(++reads == 1) { "Window already changed" }
+        PaymentPageParser.parse(ALIPAY_PACKAGE, page, observedAt)
+      }!!
+      assertEquals(1699L, result.amountCents)
+      assertEquals(merchant, result.merchant)
+    }
+  }
+
   @Test fun alipayWaitsForDiscountedTotalToSettle() = runBlocking {
     val original = PaymentPageParser.parse(ALIPAY_PACKAGE,
       listOf("支付成功", "回首页", "示例饭店", "￥15.00", "完成"), observedAt)!!

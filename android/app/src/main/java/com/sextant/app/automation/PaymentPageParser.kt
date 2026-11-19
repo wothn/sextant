@@ -70,7 +70,13 @@ object PaymentPageParser {
     val splitTotal = resultHeader?.takeIf { it.splitAmount }?.amountText
     if (alipayTotal != null && splitTotal != null &&
       parseAmountCents(alipayTotal) != parseAmountCents(splitTotal)) return reject("amount_conflict")
-    val explicitTotal = alipayTotal ?: detailTotal ?: splitTotal
+    // The collapsed Alipay bill replaces the spoken expense with a signed header.
+    // Scope it to the merchant / debit / success header so a discount cannot qualify.
+    val signedDetailTotal = if (sourcePackage == ALIPAY_PACKAGE && detail &&
+      validMerchant(lines[0]) && lines[2] == "交易成功") {
+      lines[1].takeIf { amount.matchEntire(it)?.groupValues?.get(1) == "-" }
+    } else null
+    val explicitTotal = alipayTotal ?: detailTotal ?: signedDetailTotal ?: splitTotal
     if (explicitTotal != null && labeledAmount != null) {
       val labeledMatch = amount.matchEntire(labeledAmount) ?: return reject("amount_invalid")
       val explicitMatch = amount.matchEntire(explicitTotal) ?: return reject("amount_invalid")
@@ -129,6 +135,8 @@ object PaymentPageParser {
       directionEvidence = success,
       parser = if (sourcePackage == WECHAT_PACKAGE) "wechat-page-v1" else "alipay-page-v1",
       hasExactTime = transactionTime != null,
+      hasFinalPageTotal = sourcePackage == ALIPAY_PACKAGE &&
+        (detail || splitTotal != null || alipayTotal != null),
     ))
   }
 

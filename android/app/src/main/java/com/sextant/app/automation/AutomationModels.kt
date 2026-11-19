@@ -69,6 +69,7 @@ data class ParsedTransactionCandidate(
   val hasExactTime: Boolean = false,
   // A merchant card without a completion signal may only enrich a posted notification.
   val enrichmentOnly: Boolean = false,
+  val hasFinalPageTotal: Boolean = false,
 )
 
 sealed interface LocalParseOutcome {
