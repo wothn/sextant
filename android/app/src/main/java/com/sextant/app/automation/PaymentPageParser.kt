@@ -19,7 +19,7 @@ object PaymentPageParser {
     if (lines.size !in 3..200) return reject("page_text_incomplete")
     if (lines.any { it in rejectedPages }) return reject("page_not_completed")
     if (sourcePackage == WECHAT_PACKAGE && lines.size == 4 &&
-      lines[2] == "微信支付" && lines[3] == "关闭" && validMerchant(lines[0]) &&
+      lines[2] == "微信支付" && lines[3] == "关闭" && validMerchant(lines[0], allowSingleCharacter = true) &&
       excludedKinds.none(lines[0]::startsWith) && wechatResultAmount.matches(lines[1])) {
       val cents = parseAmountCents(amount.matchEntire(lines[1])!!.groupValues[2])
         ?: return reject("amount_invalid")
@@ -110,7 +110,7 @@ object PaymentPageParser {
         listOfNotNull(lines.getOrNull(index - 1), lines.getOrNull(index + 1))
           .firstOrNull { signedExpense && validMerchant(it) && excludedKinds.none(it::startsWith) }
       } else null
-    if (merchant != null && !validMerchant(merchant)) return reject("merchant_invalid")
+    if (merchant != null && !validMerchant(merchant, allowSingleCharacter = sourcePackage == WECHAT_PACKAGE)) return reject("merchant_invalid")
     // Only this explicit Alipay success total permits an absent merchant. Keep the
     // description empty so notifications can match and later enrich the transaction.
     if (merchant == null && alipayTotal == null) return reject("merchant_missing")
@@ -145,7 +145,8 @@ object PaymentPageParser {
   private fun resultHeader(sourcePackage: String, lines: List<String>): ResultHeader? {
     if (lines.first() != "支付成功") return null
     val header = lines.dropWhile { it == "支付成功" }.dropWhile { it == "回首页" }
-    fun merchant(value: String) = validMerchant(value) && excludedKinds.none(value::startsWith)
+    fun merchant(value: String) = validMerchant(value, allowSingleCharacter = sourcePackage == WECHAT_PACKAGE) &&
+      excludedKinds.none(value::startsWith)
     if (sourcePackage == WECHAT_PACKAGE) {
       if (lines.none { it in wechatResultActions }) return null
     } else {
@@ -184,7 +185,8 @@ object PaymentPageParser {
   /** 微信详情卡独有的字段名：WebView 页和小程序卡片常常不暴露标题，靠这些字段认出详情页。 */
   private val wechatDetailFields = setOf("当前状态", "收单机构", "商户简称", "商户单号")
 
-  private fun validMerchant(value: String): Boolean = value.length in 2..80 &&
+  private fun validMerchant(value: String, allowSingleCharacter: Boolean = false): Boolean =
+    (value.length in 2..80 || (allowSingleCharacter && value.singleOrNull()?.isLetter() == true && value != "元")) &&
     value !in allLabels && value !in successTitles && value !in detailTitles &&
     value !in wechatResultActions &&
     value !in setOf("微信支付", "支付宝", "返回", "更多", "支付方式", "付款方式") &&

@@ -11,6 +11,20 @@ import org.junit.Before
 import org.junit.Test
 
 class PaymentPageParserTest {
+  @Test fun wechatRecognizesSingleCharacterMerchantOnCardAndSuccessPage() {
+    val card = listOf("怂", "￥22.80", "微信支付", "关闭")
+    val success = listOf("支付成功", "怂", "￥22.80", "摇一摇有优惠", "返回商家")
+    for (page in listOf(card, success)) {
+      val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, page, now)!!
+      assertEquals("怂", candidate.merchant)
+      assertEquals(2280L, candidate.amountCents)
+      assertEquals(page == card, candidate.enrichmentOnly)
+      for (invalid in listOf("元", "￥", "8", "·")) {
+        assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, page.map { if (it == "怂") invalid else it }, now))
+      }
+    }
+  }
+
   @Test fun compactMerchantCardRequiresExactWeChatLayoutAndPositiveAmount() {
     val card = listOf("拼多多", "￥16.40", "微信支付", "关闭")
     val candidate = PaymentPageParser.parse(WECHAT_PACKAGE, card, now)!!
