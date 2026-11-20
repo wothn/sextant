@@ -371,6 +371,12 @@ class SextantRepository(context: Context) {
    * 先查这笔流水落在哪个月，再按那个月取一次明细，是为了复用手写的筛选投影：调用方要的是
    * 和列表里一模一样的一行（分类显示名、来源名、计入支出与否），而不是一条裸记录。
    */
+  internal suspend fun detailTransactions(detail: AgentLedgerDetail): List<TransactionListItem> = database.withTransaction {
+    listTransactions(listCategories(), listPaymentMethods(), detail.filter()).filter {
+      detail.type != TransactionType.Expense || it.includeInSpending
+    }
+  }
+
   suspend fun findTransaction(id: String): TransactionListItem? {
     val transactionDate = database.transactionDao().findById(id)?.transactionDate ?: return null
     val categories = listCategories()
@@ -590,7 +596,7 @@ class SextantRepository(context: Context) {
     return summary
   }
 
-  private suspend fun listCategories(): List<Category> =
+  internal suspend fun listCategories(): List<Category> =
     database.categoryDao().listActive().map { entity ->
       Category(
         id = entity.id,

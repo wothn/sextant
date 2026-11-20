@@ -18,7 +18,15 @@ import kotlinx.serialization.json.JsonElement
 @Serializable
 data class AgentMessage(val id: String, val role: String, val text: String, val runId: String? = null,
   val images: List<String> = emptyList(), val documents: List<AgentDocument> = emptyList(),
-  val sources: List<AgentWebSource> = emptyList())
+  val sources: List<AgentWebSource> = emptyList(), val details: List<AgentLedgerDetail> = emptyList())
+
+@Serializable
+data class AgentLedgerDetail(
+  val title: String, val start: Long, val end: Long, val type: TransactionType,
+  val categoryId: String?, val count: Int, val totalCents: Long, val categoryName: String? = null,
+) {
+  fun filter() = LedgerFilter(start, end, categoryId = categoryId, type = type)
+}
 
 @Serializable
 data class AgentWebSource(val url: String, val title: String)
@@ -57,7 +65,10 @@ data class AgentDraft(
   val result: String? = null,
   val restoreOriginal: Boolean = false,
   val appliedUpdatedAt: Long? = null,
-)
+  val choiceGroup: String? = null,
+) {
+  val awaitingInput get() = status == "pending" || status == "candidate"
+}
 
 @Serializable
 data class AgentTurnTranscript(
@@ -282,7 +293,7 @@ class AgentConversationStore(context: Context, fileName: String = "agent-convers
           ?: if (message?.images?.isNotEmpty() == true) "[图片]" else "未命名对话"
         val fallbackTitle = label(messages.firstOrNull { it.role == "user" }).take(80)
         AgentConversationSummary(entry.id, entry.title?.takeIf { it.isNotBlank() } ?: fallbackTitle,
-          label(messages.lastOrNull()), entry.updatedAt)
+          label(messages.lastOrNull { it.role != "receipt" }), entry.updatedAt)
       }
   }
 }

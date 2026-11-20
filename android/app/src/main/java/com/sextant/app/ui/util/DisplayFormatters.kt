@@ -113,7 +113,7 @@ fun formatCurrency(valueCents: Long): String {
 }
 
 fun formatAmountPlain(valueCents: Long): String {
-  return "%.2f".format(Locale.CHINA, valueCents / 100.0)
+  return java.math.BigDecimal.valueOf(valueCents, 2).toPlainString()
 }
 
 fun parseAmountCents(value: String): Long? = value.trim().toBigDecimalOrNull()

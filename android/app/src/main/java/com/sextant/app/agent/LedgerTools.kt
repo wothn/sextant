@@ -16,7 +16,11 @@ import org.json.JSONObject
 @Serializable
 data class SchemaArgs(val includeSchema: Boolean = true)
 @Serializable
+data class DetailArgs(val title: String, val startDate: String, val endDateInclusive: String, val type: String, val categoryId: String? = null)
+@Serializable
 data class QueryArgs(val sql: String)
+@Serializable
+data class ChangeTarget(val transactionId: String, val expectedUpdatedAt: Long)
 @Serializable
 data class ChangeArgs(
   val action: String,
@@ -30,6 +34,7 @@ data class ChangeArgs(
   val clearCategory: Boolean = false,
   val clearPaymentMethod: Boolean = false,
   val expectedUpdatedAt: Long? = null,
+  val candidates: List<ChangeTarget> = emptyList(),
 )
 
 private suspend fun toolResult(summary: (String) -> String, block: suspend () -> String): AgentToolResult = try {
@@ -47,6 +52,33 @@ internal suspend fun prepareChange(
   ledger: AgentLedgerQuery, attemptId: String? = null,
 ): String {
   require(args.action in setOf("create", "update", "delete")) { "action 必须是 create/update/delete" }
+  val choice = args.candidates.isNotEmpty()
+  if (choice) {
+    require(args.action != "create" && args.transactionId == null && args.candidates.size in 2..8 &&
+      args.candidates.distinctBy { it.transactionId }.size == args.candidates.size) { "请提供 2 至 8 笔不同的候选流水" }
+  }
+  val group = if (choice) UUID.randomUUID().toString() else null
+  val proposals = if (choice) args.candidates.map { target ->
+    args.copy(transactionId = target.transactionId, expectedUpdatedAt = target.expectedUpdatedAt, candidates = emptyList())
+  } else listOf(args)
+  val drafts = proposals.map { proposal -> buildDraft(repository, ledger, runId, proposal).copy(
+    choiceGroup = group, status = if (choice) "candidate" else "pending") }
+  store.update { state ->
+    require(state.ownsRun(runId, attemptId)) { "任务已停止" }
+    val targets = drafts.map { it.transactionId }.toSet()
+    val replacedGroups = state.drafts.filter { it.status == "candidate" && it.transactionId in targets }.mapNotNull { it.choiceGroup }
+    val retained = state.drafts.map {
+      if (it.awaitingInput && (it.transactionId in targets || it.choiceGroup in replacedGroups)) it.copy(status = "superseded") else it
+    }
+    require(retained.count { it.runId == runId && it.awaitingInput } + drafts.size <= 20) { "一次最多准备20项变更" }
+    state.copy(drafts = retained + drafts)
+  }
+  return if (choice) JSONObject().put("status", "awaiting_selection").put("message", "候选已展示，请用户点选；仍需确认。").toString()
+    else JSONObject().put("status", "awaiting_confirmation").put("draftId", drafts.single().id)
+      .put("message", "草稿已展示给用户，尚未修改账本。用户可在卡片中确认或拒绝。").toString()
+}
+
+private suspend fun buildDraft(repository: SextantRepository, ledger: AgentLedgerQuery, runId: String, args: ChangeArgs): AgentDraft {
   val before = if (args.action == "create") null else {
     val id = requireNotNull(args.transactionId) { "需要交易ID" }
     val observedVersion = ledger.transactionVersion(id) ?: error("快照中没有这笔记录，请重新分析")
@@ -63,19 +95,10 @@ internal suspend fun prepareChange(
     if (value.length == 10) LocalDate.parse(value).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
     else OffsetDateTime.parse(value).toInstant().toEpochMilli()
   } ?: before?.transactionDate ?: error("需要日期")
-  val draft = AgentDraft(UUID.randomUUID().toString(), runId, args.action, before?.id ?: UUID.randomUUID().toString(),
+  return AgentDraft(UUID.randomUUID().toString(), runId, args.action, before?.id ?: UUID.randomUUID().toString(),
     type, amount, if (args.clearCategory) null else args.categoryId ?: before?.categoryId,
     if (args.clearPaymentMethod) null else args.paymentMethodId ?: before?.paymentMethodId,
     args.description ?: before?.description.orEmpty(), date, before?.updatedAt, before)
-  store.update { state ->
-    require(state.ownsRun(runId, attemptId)) { "任务已停止" }
-    require(state.drafts.count { it.runId == runId && it.status == "pending" } < 20) { "一次最多准备20项变更" }
-    state.copy(drafts = state.drafts.map {
-      if (before != null && it.transactionId == before.id && it.status == "pending") it.copy(status = "superseded") else it
-    } + draft)
-  }
-  return JSONObject().put("status", "awaiting_confirmation").put("draftId", draft.id)
-    .put("message", "草稿已展示给用户，尚未修改账本。用户可在卡片中确认或拒绝。").toString()
 }
 
 internal fun ledgerTools(repository: SextantRepository, store: AgentConversationStore, runId: String, attemptId: String?, ledger: AgentLedgerQuery, trace: AgentTraceRecorder): ToolRegistry {
@@ -92,10 +115,21 @@ internal fun ledgerTools(repository: SextantRepository, store: AgentConversation
       }) { ledger.query(args.sql) }
     }
   }
-  val changeTool = object : SimpleTool<ChangeArgs>(typeToken<ChangeArgs>(), "prepare_transaction_change", "生成待用户确认的新增(create)、修改(update)、删除(delete)草稿。不会入账。修改/删除必须先查询并提供确切 transactionId 和查询得到的 expectedUpdatedAt（updatedAt）；新增需提供 type(expense/income/transfer)、正整数分 amountCents 和 ISO date(yyyy-MM-dd 或带偏移量时间)。分类/来源使用查询得到的ID。未提供的修改字段保留原值。缺少关键信息应先问用户。") {
+  val changeTool = object : SimpleTool<ChangeArgs>(typeToken<ChangeArgs>(), "prepare_transaction_change", "生成待用户确认的新增(create)、修改(update)、删除(delete)草稿。不会入账。修改/删除必须先查询并提供确切 transactionId 和查询得到的 expectedUpdatedAt（updatedAt）；新增需提供 type(expense/income/transfer)、正整数分 amountCents 和 ISO date(yyyy-MM-dd 或带偏移量时间)。分类/来源使用查询得到的ID。未提供的修改字段保留原值。目标有多笔可能时用 candidates 传入每笔的 transactionId、expectedUpdatedAt，共用同一组修改字段，省略顶层 transactionId。缺少修改内容时先问用户。") {
     override suspend fun execute(args: ChangeArgs): String = trace.tool("prepare_transaction_change", Json.encodeToString(ChangeArgs.serializer(), args), "正在整理待确认的变更…") {
-      toolResult({ "草稿已生成，等待确认，尚未修改账本" }) { prepareChange(repository, store, runId, args, ledger, attemptId) }
+      toolResult({ if (args.candidates.isEmpty()) "草稿已生成，等待确认" else "候选流水已列出，等待选择" }) { prepareChange(repository, store, runId, args, ledger, attemptId) }
     }
   }
-  return ToolRegistry { tool(schemaTool); tool(queryTool); tool(changeTool) }
+  val detailTool = object : SimpleTool<DetailArgs>(typeToken<DetailArgs>(), "show_ledger_details",
+    "按时间、方向和可选分类查合计并在本条回答附上查看明细入口。日期为 yyyy-MM-dd，起止日均包含；type 为 expense/income/transfer。支出按消费统计口径，分类包含子分类。比较两期分别调用。") {
+    override suspend fun execute(args: DetailArgs): String = trace.tool("show_ledger_details", Json.encodeToString(args), "正在整理明细…") {
+      toolResult({ "已关联账本明细" }) {
+        val type = TransactionType.entries.singleOrNull { it.storageValue() == args.type } ?: error("无效的流水方向")
+        val detail = ledger.detail(args.title, LocalDate.parse(args.startDate).toStartOfDayMillis(),
+          LocalDate.parse(args.endDateInclusive).plusDays(1).toStartOfDayMillis(), type, args.categoryId)
+        Json.encodeToString(detail)
+      }
+    }
+  }
+  return ToolRegistry { tool(schemaTool); tool(queryTool); tool(changeTool); tool(detailTool) }
 }

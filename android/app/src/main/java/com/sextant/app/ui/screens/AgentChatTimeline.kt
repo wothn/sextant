@@ -3,6 +3,9 @@ package com.sextant.app.ui.screens
 import com.sextant.app.data.AgentDraft
 import com.sextant.app.data.AgentMessage
 
+// Receipts inform the model about committed writes. The draft itself shows their outcome.
+internal fun agentVisibleMessages(messages: List<AgentMessage>) = messages.filterNot { it.role == "receipt" }
+
 /** Keep each run's cards with its last message, including when later turns arrive. */
 internal fun agentDraftsByMessage(messages: List<AgentMessage>, drafts: List<AgentDraft>): Map<String?, List<AgentDraft>> {
   val anchorByRun = messages.filter { it.runId != null }.associate { it.runId to it.id }

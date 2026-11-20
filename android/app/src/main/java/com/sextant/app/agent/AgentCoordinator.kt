@@ -88,7 +88,7 @@ class AgentCoordinator(
       require(!it.running) { "请等待当前任务结束，或先停止任务" }
       it.copy(messages = it.messages + AgentMessage(UUID.randomUUID().toString(), "user", text.trim(), id,
         images = imageIds.toList(), documents = attachments.map { document -> document.copy(upload = null) }),
-        drafts = it.drafts.map { draft -> if (draft.status == "pending") draft.copy(status = "superseded") else draft },
+        drafts = it.drafts.map { draft -> if (draft.awaitingInput) draft.copy(status = "superseded") else draft },
         runId = id, attemptId = attempt, status = "running", activity = "准备连接 DeepSeek…", error = null)
     }
     withContext(Dispatchers.Main) { onAccepted() }
@@ -141,6 +141,11 @@ class AgentCoordinator(
     withContext(Dispatchers.Main) { onOpened() }
   }
 
+  fun choose(id: String) = command { draftActions.choose(id) }
+  suspend fun adjust(id: String, amount: Long, categoryId: String?, description: String) = commands.withLock {
+    draftActions.adjust(id, amount, categoryId, description)
+  }
+
   fun undo(id: String) = command { draftActions.undo(id) }
 
   /** 系统重投递从已保存的协议检查点继续，不会自动兑现任何变更草稿。 */
@@ -159,10 +164,12 @@ class AgentCoordinator(
       require(config.apiKey.isNotBlank()) { "请配置 DeepSeek API Key" }
       val result = LedgerAgent(context, repository, store, images).run(id, config, attemptId)
       val turn = store.load().transcript.firstOrNull { it.runId == id }
-      val sources = turn?.let { deepSeekWebSources(AgentTranscriptCodec.decode(it)) }.orEmpty()
+      val protocol = turn?.let(AgentTranscriptCodec::decode).orEmpty()
+      val sources = deepSeekWebSources(protocol)
+      val details = ledgerDetailsFrom(protocol)
       store.update { current -> if (!current.ownsRun(id, attemptId)) current else current.copy(
-        messages = current.messages + AgentMessage(UUID.randomUUID().toString(), "assistant", result, id, sources = sources),
-        status = if (current.drafts.any { it.status == "pending" }) "awaiting_confirmation" else "completed",
+        messages = current.messages + AgentMessage(UUID.randomUUID().toString(), "assistant", result, id, sources = sources, details = details),
+        status = if (current.drafts.any { it.awaitingInput }) "awaiting_confirmation" else "completed",
         activity = "", error = null,
       ) }
       val userMessage = saved.messages.lastOrNull { it.role == "user" && it.runId == id }?.text.orEmpty()
@@ -203,7 +210,7 @@ class AgentCoordinator(
     store.update { if (runId == null || !it.ownsRun(runId, attemptId)) it else it.copy(status = status, error = message, activity = "",
       trace = it.trace.map { entry -> if (entry.status == "running") entry.copy(status = if (status == "failed") "failed" else "cancelled") else entry },
       drafts = it.drafts.map { draft ->
-        if (draft.status == "pending" && draft.id !in it.transcript.flatMap { turn -> turn.draftIds }) draft.copy(status = "superseded") else draft
+        if (draft.awaitingInput && draft.id !in it.transcript.flatMap { turn -> turn.draftIds }) draft.copy(status = "superseded") else draft
       }) }
   }
 }

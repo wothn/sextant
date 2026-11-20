@@ -35,7 +35,7 @@ fun versionCodeFrom(name: String): Int {
  * 保持为「最后一个已发布版本」：派生出的 versionCode 就总是比下一个发布版本小 1，本地包装
  * 在设备上不会挡住随后的正式更新。
  */
-val localVersionName = "0.5.4"
+val localVersionName = "0.5.6"
 val resolvedVersionName = providers.environmentVariable("VERSION_NAME").orNull ?: localVersionName
 
 // VERSION_CODE 只留作逃生口（例如修复性重发同一版本号时需要手动抬高）。CI 不再传它。
@@ -148,6 +148,7 @@ dependencies {
   implementation("androidx.activity:activity-compose:1.13.0")
   implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.4")
   implementation("androidx.compose.material:material-icons-extended")
+  implementation("io.coil-kt:coil-compose:2.7.0")
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.ui:ui-tooling-preview")
   implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.40.2")
@@ -160,6 +161,7 @@ dependencies {
   implementation("ai.koog:prompt-executor-deepseek-client:1.3.0-beta")
   implementation("ai.koog:http-client-ktor:1.3.0")
   implementation("io.ktor:ktor-client-okhttp:3.3.3")
+  implementation("com.squareup.okhttp3:okhttp:5.2.1")
 
   // Room 取代了原来的 SQLiteOpenHelper：实体/DAO/迁移都由编译期校验，
   // 表结构写错会在构建时就报出来，而不是等到用户打开某个页面才崩。

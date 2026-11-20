@@ -2,6 +2,8 @@ package com.sextant.app.data
 
 import android.content.Context
 import com.sextant.app.agent.ChangeArgs
+import com.sextant.app.agent.ChangeTarget
+import com.sextant.app.agent.AgentDraftActions
 import com.sextant.app.agent.prepareChange
 import com.sextant.app.agent.AgentTraceRecorder
 import com.sextant.app.agent.AgentToolResult
@@ -272,6 +274,36 @@ class AgentLedgerTest {
     assertEquals("午饭", pending.single().description)
     assertEquals(3000L, pending.single().amountCents)
     assertEquals(3500L, repository.findTransaction(operation.transactionId)!!.transaction.amountCents)
+  }
+
+  @Test fun selectingAndAdjustingOnlyPostsTheSelectedDraftAfterConfirmation() = runBlocking {
+    val originals = listOf(draft(), draft())
+    originals.forEach { repository.applyAgentDraft(it) }
+    val targets = originals.map {
+      ChangeTarget(it.transactionId, repository.findTransaction(it.transactionId)!!.transaction.updatedAt)
+    }
+    val store = AgentConversationStore(context, "agent-test.json")
+    store.update { it.copy(runId = "run", status = "running") }
+    prepare(store, ChangeArgs("update", candidates = targets, amountCents = 3200))
+    store.update { it.copy(status = "awaiting_confirmation") }
+    val restored = AgentConversationStore(context, "agent-test.json")
+    val actions = AgentDraftActions(repository, restored)
+    val candidates = restored.load().drafts
+    assertEquals(2, candidates.count { it.status == "candidate" })
+    assertTrue(runCatching { actions.decide(candidates.first().id, true) }.isFailure)
+    val selected = candidates.last()
+    actions.choose(selected.id)
+    assertTrue(runCatching { actions.choose(candidates.first().id) }.isFailure)
+    val category = repository.listCategories().first { it.type == TransactionType.Expense }
+    actions.adjust(selected.id, 2600, category.id, "工作午餐")
+    assertEquals(3500L, repository.findTransaction(selected.transactionId)!!.transaction.amountCents)
+    actions.decide(selected.id, true)
+    val posted = repository.findTransaction(selected.transactionId)!!.transaction
+    assertEquals(2600L, posted.amountCents)
+    assertEquals(category.id, posted.categoryId)
+    assertEquals("工作午餐", posted.description)
+    assertEquals(3500L, repository.findTransaction(candidates.first().transactionId)!!.transaction.amountCents)
+    assertTrue(runCatching { actions.adjust(selected.id, 1000, null, "") }.isFailure)
   }
 
   @Test fun cancelledRunCannotPrepareChanges() = runBlocking {

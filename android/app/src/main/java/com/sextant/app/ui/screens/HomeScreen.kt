@@ -67,6 +67,7 @@ import com.sextant.app.ui.util.monthLabel
 import com.sextant.app.ui.util.signedAmountGrouped
 import java.text.SimpleDateFormat
 import java.util.Locale
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.CalendarMonth
 import com.sextant.app.ui.components.SextantTonalIconButton
 import com.sextant.app.ui.theme.SextantFullShape
@@ -82,6 +83,7 @@ fun HomeScreen(
   onFilterChanged: (LedgerFilter) -> Unit,
   onTransactionClick: (TransactionListItem) -> Unit,
   onOpenCalendar: () -> Unit,
+  onOpenAgent: () -> Unit = {},
   onCreateEntry: () -> Unit = {},
 ) {
   var showFilters by rememberSaveable { mutableStateOf(false) }
@@ -109,6 +111,10 @@ fun HomeScreen(
         }
         Spacer(Modifier.width(8.dp))
         FilterTrigger(filter) { showFilters = true }
+        Spacer(Modifier.width(8.dp))
+        SextantTonalIconButton(onClick = onOpenAgent) {
+          Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = "打开账本助手")
+        }
       },
     )
     LazyColumn(
@@ -360,10 +366,10 @@ internal fun LedgerTransactionRow(
   item: TransactionListItem,
   categoryName: String,
   parentName: String?,
-  onClick: (TransactionListItem) -> Unit,
+  onClick: ((TransactionListItem) -> Unit)? = null,
 ) {
   Row(
-    Modifier.fillMaxWidth().clickable(onClickLabel = "编辑这笔记录") { onClick(item) }.padding(vertical = 8.dp),
+    Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClickLabel = "编辑这笔记录") { onClick(item) } else Modifier).padding(vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     CategoryIcon(categoryIcon(categoryName), argbColor(item.categoryColor), size = 40.dp, iconSize = 22.dp)

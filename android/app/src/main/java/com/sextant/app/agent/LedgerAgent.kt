@@ -34,7 +34,7 @@ internal class LedgerAgent(
     val cleared = store.update { state ->
       check(state.ownsRun(runId, attemptId)) { "当前任务已停止或切换" }
       state.copy(drafts = state.drafts.filterNot {
-        it.runId == runId && it.status == "pending" && it.id !in turn?.draftIds.orEmpty()
+        it.runId == runId && it.awaitingInput && it.id !in turn?.draftIds.orEmpty()
       })
     }
     val supportsDocuments = AgentModelAccess.supportsExtendedChat(settings.model)

@@ -17,7 +17,7 @@ internal class AgentRunSession(
     store.update { state ->
       check(state.ownsRun(runId, attemptId)) { "任务已停止或已重试" }
       val turn = AgentTurnTranscript(userMessageId, runId, encoded,
-        state.drafts.filter { it.runId == runId && it.status == "pending" }.map { it.id }, completed)
+        state.drafts.filter { it.runId == runId && it.awaitingInput }.map { it.id }, completed)
       state.copy(transcript = state.transcript.filterNot { it.userMessageId == userMessageId } + turn)
     }
   }

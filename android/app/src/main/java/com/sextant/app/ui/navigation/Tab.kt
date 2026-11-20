@@ -9,8 +9,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class Tab(
@@ -21,6 +19,5 @@ enum class Tab(
   Home("概览", Icons.Outlined.AccountBalanceWallet, Icons.Filled.AccountBalanceWallet),
   Analytics("分析", Icons.Outlined.PieChart, Icons.Filled.PieChart),
   Discover("计划", Icons.AutoMirrored.Outlined.ReceiptLong, Icons.AutoMirrored.Filled.ReceiptLong),
-  Chat("对话", Icons.Outlined.ChatBubbleOutline, Icons.Filled.ChatBubble),
   Settings("设置", Icons.Outlined.Settings, Icons.Filled.Settings),
 }

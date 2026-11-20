@@ -12,7 +12,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
-import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.AddComment
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
@@ -29,7 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,11 +44,8 @@ import com.sextant.app.agent.AgentCoordinator
 import com.sextant.app.agent.AgentSpeech
 import com.sextant.app.agent.AgentSpeechException
 import com.sextant.app.data.*
-import com.sextant.app.ui.components.LocalBottomBarInset
 import com.sextant.app.ui.components.LocalSnackbarHostState
 import com.sextant.app.ui.components.SextantAlertDialog
-import com.sextant.app.ui.util.formatCurrency
-import com.sextant.app.ui.util.agentDraftDate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -61,7 +59,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 @Composable
-fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository) {
+fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository, onBack: () -> Unit) {
   val conversation by coordinator.state.collectAsState()
   val commandError by coordinator.error.collectAsState()
   val ready by coordinator.ready.collectAsState()
@@ -131,24 +129,27 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
   var showSettings by rememberSaveable { mutableStateOf(false) }
   var showHistory by rememberSaveable { mutableStateOf(false) }
   val traceByRun = conversation.trace.groupBy { it.runId }
-  val draftsByMessage = agentDraftsByMessage(conversation.messages, conversation.drafts)
+  val messages = remember(conversation.messages) { agentVisibleMessages(conversation.messages) }
+  val draftsByMessage = agentDraftsByMessage(messages, conversation.drafts)
   val chatScroll = rememberAgentChatScrollState(conversationId)
   val list = chatScroll.list
   var ledger by remember { mutableStateOf(AppState()) }
   LaunchedEffect(conversation.drafts, ready) {
-    if (ready) ledger = repository.loadState(projection = StateProjection.Settings)
+    if (ready && conversation.drafts.any { it.status != "superseded" }) ledger = repository.loadState(projection = StateProjection.Settings)
   }
   val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-  Column(Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current)) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-      Spacer(Modifier.weight(1f))
+  Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+      IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回") }
+      Text("账本助手", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
       IconButton(onClick = { showHistory = true }, enabled = ready && !importing) { Icon(Icons.Outlined.History, "对话历史") }
       IconButton(onClick = { coordinator.newConversation(discardDocuments = pendingDocuments.map { it.id }) }, enabled = ready && !conversation.running && !importing) {
         Icon(Icons.Outlined.AddComment, "新对话")
       }
       IconButton(onClick = { showSettings = true }) { Icon(Icons.Outlined.Settings, "模型与 API Key") }
     }
-    Box(Modifier.weight(1f).fillMaxWidth()) {
+    HorizontalDivider()
+    Box(Modifier.weight(1f).widthIn(max = 760.dp).fillMaxWidth()) {
     LazyColumn(Modifier.fillMaxSize().nestedScroll(chatScroll.userScroll), state = list, reverseLayout = true,
       contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       // Emit in reverse chronological order so index zero remains the bottom anchor.
@@ -164,13 +165,9 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
         Text(conversation.error ?: conversation.activity, color = MaterialTheme.colorScheme.error)
         TextButton(onClick = coordinator::retry) { Text("继续分析") }
       }
-      items(draftsByMessage[null].orEmpty().asReversed(), key = { it.id }) { draft ->
-        DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
-      }
-      conversation.messages.asReversed().forEach { message ->
-        items(draftsByMessage[message.id].orEmpty().asReversed(), key = { it.id }) { draft ->
-          DraftCard(draft, ledger, !conversation.running, { coordinator.decide(draft.id, true) }, { coordinator.decide(draft.id, false) }, { coordinator.undo(draft.id) })
-        }
+      draftItems(draftsByMessage[null].orEmpty(), ledger, !conversation.running, coordinator)
+      messages.asReversed().forEach { message ->
+        draftItems(draftsByMessage[message.id].orEmpty(), ledger, !conversation.running, coordinator)
         if (message.role == "user" && message.runId != null) {
           val entries = traceByRun[message.runId].orEmpty()
           if (entries.isNotEmpty()) {
@@ -190,15 +187,30 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
           }
         }
         item(key = message.id) {
-          AgentMessageItem(message, coordinator.images)
-          if (message.role == "assistant" && message.text.isNotBlank()) {
-            val speaking = speech.activeMessageId == message.id
-            IconButton(onClick = { speech.toggle(message) }) {
-              Icon(if (speaking) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.VolumeUp,
-                contentDescription = if (speaking) "停止朗读" else "朗读回复")
+          Column {
+            AgentMessageItem(message, coordinator.images)
+            if (message.details.isNotEmpty()) AgentDetailLinks(message.details, repository)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              if (message.role == "assistant" && message.text.isNotBlank()) {
+                val speaking = speech.activeMessageId == message.id
+                IconButton(onClick = { speech.toggle(message) }, modifier = Modifier.size(32.dp)) {
+                  Icon(if (speaking) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.VolumeUp,
+                    contentDescription = if (speaking) "停止朗读" else "朗读回复",
+                    modifier = Modifier.size(16.dp),
+                    tint = if (speaking) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+              }
+              if (message.sources.isNotEmpty()) AgentSources(message.sources)
             }
           }
         }
+      }
+    }
+    if (ready && input.isBlank() && pendingImages.isEmpty() && pendingDocuments.isEmpty() && messages.isEmpty() && !conversation.running && commandError == null && conversation.error == null && conversation.drafts.isEmpty()) {
+      Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(Icons.Outlined.ChatBubbleOutline, null, tint = MaterialTheme.colorScheme.primary)
+        Text("想从哪笔账聊起？", Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+        AssistChip(onClick = { input = "这个月的钱主要花在哪些地方？" }, label = { Text("看看本月开支") })
       }
     }
     if (list.canScrollBackward) {
@@ -231,46 +243,56 @@ fun AgentChatScreen(coordinator: AgentCoordinator, repository: SextantRepository
     if (importing || attachmentError != null) Text(attachmentError ?: preparingAttachment.orEmpty(),
       modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall,
       color = if (attachmentError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.Bottom,
-      horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Box {
-        IconButton(modifier = Modifier.size(48.dp).padding(bottom = 4.dp),
-          enabled = ready && !conversation.running && !importing, onClick = { showAttachments = true }) {
-          Icon(Icons.Outlined.AttachFile, "添加附件")
-        }
-        DropdownMenu(expanded = showAttachments, onDismissRequest = { showAttachments = false }) {
-          DropdownMenuItem(text = { Text("添加图片") }, leadingIcon = { Icon(Icons.Outlined.AddPhotoAlternate, null) },
-            enabled = pendingImages.size < AgentImageStore.MAX_IMAGES, onClick = {
-              showAttachments = false
-              picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            })
-          DropdownMenuItem(text = { Text("添加文件") }, leadingIcon = { Icon(Icons.Outlined.AttachFile, null) },
-            enabled = pendingDocuments.size < AgentDocumentStore.MAX_FILES, onClick = {
-              showAttachments = false
-              documentPicker.launch(arrayOf("*/*"))
-            })
-        }
-      }
-      OutlinedTextField(value = input, onValueChange = { if (it.length <= 6000) input = it },
-        modifier = Modifier.weight(1f), placeholder = { Text(if (pendingImages.isEmpty() && pendingDocuments.isEmpty())
-          "说说想记或想了解的…" else "补充说明，或直接发送附件") },
-        maxLines = 5, enabled = ready && !conversation.running)
-      FilledIconButton(modifier = Modifier.size(56.dp),
-        enabled = ready && (conversation.running || (!importing && (input.isNotBlank() || pendingImages.isNotEmpty() || pendingDocuments.isNotEmpty()))), onClick = {
-          if (conversation.running) coordinator.stop()
-          else {
-            chatScroll.requestBottom()
-            if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            coordinator.send(input, pendingImages, pendingDocuments) {
-              input = ""
-              pendingImages = emptyList()
-              pendingDocuments = emptyList()
-              attachmentError = null
-            }
+    Surface(
+      modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+      shape = MaterialTheme.shapes.extraLarge,
+      color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+      Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box {
+          IconButton(modifier = Modifier.size(48.dp),
+            enabled = ready && !conversation.running && !importing, onClick = { showAttachments = true }) {
+            Icon(Icons.Outlined.AttachFile, "添加附件")
           }
-        }) {
-        Icon(if (conversation.running) Icons.Outlined.Pause else Icons.AutoMirrored.Outlined.Send,
-          contentDescription = if (conversation.running) "停止任务" else "发送")
+          DropdownMenu(expanded = showAttachments, onDismissRequest = { showAttachments = false }) {
+            DropdownMenuItem(text = { Text("添加图片") }, leadingIcon = { Icon(Icons.Outlined.AddPhotoAlternate, null) },
+              enabled = pendingImages.size < AgentImageStore.MAX_IMAGES, onClick = {
+                showAttachments = false
+                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+              })
+            DropdownMenuItem(text = { Text("添加文件") }, leadingIcon = { Icon(Icons.Outlined.AttachFile, null) },
+              enabled = pendingDocuments.size < AgentDocumentStore.MAX_FILES, onClick = {
+                showAttachments = false
+                documentPicker.launch(arrayOf("*/*"))
+              })
+          }
+        }
+        TextField(value = input, onValueChange = { if (it.length <= 6000) input = it },
+          modifier = Modifier.weight(1f), placeholder = { Text(if (pendingImages.isEmpty() && pendingDocuments.isEmpty())
+            "说说想记或想了解的…" else "补充说明，或直接发送附件") },
+          colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,
+          ),
+          maxLines = 5, enabled = ready && !conversation.running)
+        FilledIconButton(modifier = Modifier.size(48.dp),
+          enabled = ready && (conversation.running || (!importing && (input.isNotBlank() || pendingImages.isNotEmpty() || pendingDocuments.isNotEmpty()))), onClick = {
+            if (conversation.running) coordinator.stop()
+            else {
+              chatScroll.requestBottom()
+              if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+              coordinator.send(input, pendingImages, pendingDocuments) {
+                input = ""
+                pendingImages = emptyList()
+                pendingDocuments = emptyList()
+                attachmentError = null
+              }
+            }
+          }) {
+          Icon(if (conversation.running) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send,
+            contentDescription = if (conversation.running) "停止任务" else "发送")
+        }
       }
     }
   }
@@ -365,10 +387,6 @@ private fun AgentMessageItem(message: AgentMessage, images: AgentImageStore, str
         AgentMessageContent(message, images, streaming, Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
       }
     }
-    "receipt" -> Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow,
-      modifier = Modifier.fillMaxWidth()) {
-      AgentMessageContent(message, images, streaming, Modifier.padding(16.dp))
-    }
     else -> AgentMessageContent(message, images, streaming, Modifier.fillMaxWidth().padding(vertical = 4.dp))
   }
 }
@@ -376,12 +394,8 @@ private fun AgentMessageItem(message: AgentMessage, images: AgentImageStore, str
 @Composable
 private fun AgentMessageContent(message: AgentMessage, images: AgentImageStore, streaming: Boolean, modifier: Modifier) {
   Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    if (message.role != "user") {
-      Text(when {
-        streaming -> "Sextant · 正在回答"
-        message.role == "receipt" -> "账本回执"
-        else -> "Sextant"
-      }, style = MaterialTheme.typography.labelMedium)
+    if (streaming) {
+      Text("正在回答", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (message.images.isNotEmpty()) AgentMessageImages(message.images, images)
     message.documents.forEach { AgentDocumentRow(it) }
@@ -401,41 +415,6 @@ private fun AgentMessageContent(message: AgentMessage, images: AgentImageStore, 
         ),
         error = { Text(message.text, style = MaterialTheme.typography.bodyLarge) },
       ) else Text(message.text, style = MaterialTheme.typography.bodyLarge)
-    }
-    if (message.sources.isNotEmpty()) {
-      val handler = LocalUriHandler.current
-      Text("来源", style = MaterialTheme.typography.labelMedium)
-      message.sources.forEach { source ->
-        TextButton(onClick = { runCatching { handler.openUri(source.url) } }, contentPadding = PaddingValues(horizontal = 4.dp)) {
-          Text(source.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun DraftCard(draft: AgentDraft, ledger: AppState, canDecide: Boolean, approve: () -> Unit, reject: () -> Unit, undo: () -> Unit) {
-  Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.tertiaryContainer) {
-    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(when (draft.action) { "create" -> "新增记录"; "update" -> "修改记录"; else -> "删除记录" }, style = MaterialTheme.typography.titleMedium)
-      Text("${when (draft.type) { "expense" -> "支出"; "income" -> "收入"; else -> "转移" }} · ${formatCurrency(draft.amountCents)} · ${agentDraftDate(draft.transactionDate)}")
-      Text("${ledger.categories.firstOrNull { it.id == draft.categoryId }?.name ?: "未分类"} · ${ledger.allPaymentMethods.firstOrNull { it.id == draft.paymentMethodId }?.name ?: "未设置来源"}")
-      if (draft.description.isNotBlank()) Text(draft.description)
-      draft.before?.let { before ->
-        Text("原记录：${formatCurrency(before.amountCents)} · ${agentDraftDate(before.transactionDate)} · ${before.description}", style = MaterialTheme.typography.bodySmall)
-        Text("原分类：${ledger.categories.firstOrNull { it.id == before.categoryId }?.name ?: "未分类"} · 原来源：${ledger.allPaymentMethods.firstOrNull { it.id == before.paymentMethodId }?.name ?: "未设置"}", style = MaterialTheme.typography.bodySmall)
-      }
-      if (draft.status == "pending") {
-        Text("尚未入账；如需调整，可直接发消息说明。", style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Button(onClick = approve, enabled = canDecide) { Text(if (draft.action == "delete") "确认删除" else "确认保存") }
-          TextButton(onClick = reject, enabled = canDecide) { Text("拒绝") }
-        }
-      } else {
-        Text(draft.result ?: "已处理", style = MaterialTheme.typography.bodySmall)
-        if (draft.status == "applied") TextButton(onClick = undo, enabled = canDecide) { Text("准备撤销") }
-      }
     }
   }
 }

@@ -4,6 +4,8 @@ import ai.koog.prompt.message.Message
 import ai.koog.prompt.message.MessagePart
 import ai.koog.prompt.message.RequestMetaInfo
 import com.sextant.app.data.AgentConversation
+import com.sextant.app.data.AgentLedgerDetail
+import kotlinx.serialization.json.JsonPrimitive
 import com.sextant.app.data.AgentImageStore
 import com.sextant.app.data.AgentTurnTranscript
 import kotlinx.serialization.json.Json
@@ -23,6 +25,16 @@ internal object AgentTranscriptCodec {
     return messages[lastAssistant].parts.filterIsInstance<MessagePart.Tool.Call>().filter { it.id !in results }
   }
 }
+
+internal fun ledgerDetailsFrom(messages: List<Message>): List<AgentLedgerDetail> =
+  messages.flatMap { it.parts }.filterIsInstance<MessagePart.Tool.Result>()
+    .filter { it.tool == "show_ledger_details" && !it.isError }
+    .mapNotNull { result ->
+      runCatching {
+        val output = Json.parseToJsonElement(result.output)
+        Json.decodeFromString<AgentLedgerDetail>(if (output is JsonPrimitive) output.content else result.output)
+      }.getOrNull()
+    }.distinct()
 
 internal class AgentContextBuilder(private val images: AgentImageStore) {
   suspend fun build(conversation: AgentConversation, documentMarkers: Map<String, String> = emptyMap()): List<Message> {

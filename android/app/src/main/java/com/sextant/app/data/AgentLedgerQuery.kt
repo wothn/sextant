@@ -30,6 +30,30 @@ class AgentLedgerQuery private constructor(private val file: File, val capturedA
     }
   }
 
+  internal suspend fun detail(title: String, start: Long, end: Long, type: TransactionType, categoryId: String?): AgentLedgerDetail =
+    withContext(Dispatchers.IO) {
+      require(start < end && title.isNotBlank() && title.length <= 60) { "请检查明细日期范围和标题" }
+      val category = categoryId.orEmpty()
+      synchronized(lock) {
+        val categoryName = categoryId?.let { id ->
+          database.rawQuery("SELECT name FROM categories WHERE id = ?", arrayOf(id)).use {
+            require(it.moveToFirst()) { "分类不存在，请先查询分类 ID" }
+            it.getString(0)
+          }
+        }
+        database.rawQuery("""
+          SELECT COUNT(*), COALESCE(SUM(t.amountCents), 0) FROM transactions t
+          LEFT JOIN categories c ON c.id = t.categoryId AND c.isActive = 1
+          WHERE t.transactionDate >= ? AND t.transactionDate < ? AND t.type = ?
+            AND (t.type != 'expense' OR COALESCE(c.includeInSpending, 1) = 1)
+            AND (? = '' OR t.categoryId = ? OR t.categoryId IN (SELECT id FROM categories WHERE parentCategoryId = ?))
+        """.trimIndent(), arrayOf(start.toString(), end.toString(), type.storageValue(), category, category, category)).use {
+          it.moveToFirst()
+          AgentLedgerDetail(title, start, end, type, categoryId, it.getInt(0), it.getLong(1), categoryName)
+        }
+      }
+    }
+
   fun schema(): String = synchronized(lock) {
     val definitions = database.rawQuery("SELECT sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'", null)
       .use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }

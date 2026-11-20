@@ -13,7 +13,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import com.sextant.app.agent.AgentCoordinator
 import com.sextant.app.data.*
-import com.sextant.app.ui.components.SextantTabContent
 import com.sextant.app.ui.screens.AgentChatScreen
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -51,7 +50,10 @@ class AgentChatScreenNavigationTest {
           }
         }),
       )
-    }) }
+    } + AgentMessage("sourced", "assistant", "这是一条带来源的回答。", sources = listOf(
+      AgentWebSource("https://example.invalid/a", "第一篇文章"),
+      AgentWebSource("https://example.invalid/b", "第二篇文章"),
+    ))) }
     coordinator = AgentCoordinator(context, repository, scope, store = store)
     withTimeout(10_000) { coordinator.ready.first { it } }
     Unit
@@ -68,17 +70,15 @@ class AgentChatScreenNavigationTest {
       MaterialTheme {
         val pages = rememberSaveableStateHolder()
         Box(Modifier.size(360.dp, 640.dp)) {
-          SextantTabContent(selectedIndex = if (chatVisible) 0 else 1) { tab ->
-            pages.SaveableStateProvider(tab) {
-              if (tab == 0) AgentChatScreen(coordinator, repository) else Text("其他页面")
-            }
-          }
+          if (chatVisible) pages.SaveableStateProvider("agent") {
+            AgentChatScreen(coordinator, repository) { chatVisible = false }
+          } else Text("其他页面")
         }
       }
     }
   }
 
-  @Test fun completedMarkdownConversationKeepsReadingPositionAcrossTabs() {
+  @Test fun completedMarkdownConversationKeepsReadingPositionAcrossPageVisits() {
     showPages()
     val messages = compose.onNode(hasScrollToIndexAction())
     // Read inside a long completed answer, not just at a message boundary.
@@ -89,7 +89,7 @@ class AgentChatScreenNavigationTest {
     val visibleBefore = visibleParagraphs()
     Assert.assertTrue("The test must actually be reading a Markdown answer", visibleBefore.isNotEmpty())
     repeat(3) {
-      compose.runOnIdle { chatVisible = false }
+      compose.onNodeWithContentDescription("返回").performClick()
       compose.waitForIdle()
       compose.runOnIdle { chatVisible = true }
       compose.waitForIdle()
@@ -109,6 +109,20 @@ class AgentChatScreenNavigationTest {
     val position = messages.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
     assertEquals(0f, position, 0.01f)
     compose.onNodeWithContentDescription("回到底部").assertDoesNotExist()
+  }
+
+  @Test fun replyActionsFollowTextAndSourcesExpandOnDemand() {
+    showPages()
+    val answer = compose.onNodeWithText("这是一条带来源的回答。", substring = true)
+    val sourceButton = compose.onNodeWithText("2 个来源")
+    val bottom = answer.fetchSemanticsNode().boundsInRoot.bottom
+    Assert.assertTrue(sourceButton.fetchSemanticsNode().boundsInRoot.top >= bottom)
+    Assert.assertTrue(compose.onAllNodesWithContentDescription("朗读回复")
+      .fetchSemanticsNodes().any { it.boundsInRoot.top >= bottom })
+    compose.onNodeWithText("第一篇文章").assertDoesNotExist()
+    sourceButton.performClick()
+    compose.onNodeWithText("第一篇文章").assertIsDisplayed()
+    compose.onNodeWithText("第二篇文章").assertIsDisplayed()
   }
 
   private fun visibleParagraphs(): List<String> =

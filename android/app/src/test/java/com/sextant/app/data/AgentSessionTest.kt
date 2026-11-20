@@ -389,6 +389,31 @@ class AgentSessionTest {
     assertEquals("分析second", history.last().textContent())
   }
 
+  @Test fun analysisToolLinksItsActualFilteredTotalToTheCompletedTurn() = runBlocking {
+    val store = AgentConversationStore(context, fileName)
+    begin(store, "run")
+    val day = java.time.LocalDate.of(2026, 10, 25)
+    val category = repository.listCategories().first { it.type == TransactionType.Expense && it.includeInSpending }
+    val entry = AgentDraft("coffee", "seed", "create", "tx-coffee", amountCents = 1800,
+      transactionDate = day.toStartOfDayMillis(), categoryId = category.id)
+    repository.applyAgentDraft(entry)
+    repository.applyAgentDraft(entry.copy(id = "next", transactionId = "tx-next", transactionDate = day.plusDays(1).toStartOfDayMillis()))
+    repository.applyAgentDraft(entry.copy(id = "other", transactionId = "tx-other", categoryId = null))
+    var calls = 0
+    val model = executor {
+      if (++calls == 1) Message.Assistant(listOf(MessagePart.Tool.Call("details", "show_ledger_details", buildJsonObject {
+        put("title", "当天开支"); put("startDate", "2026-10-25"); put("endDateInclusive", "2026-10-25")
+        put("type", "expense"); put("categoryId", category.id)
+      })), ResponseMetaInfo.Empty, "tool_calls") else assistant("当天共 18 元")
+    }
+    agent(store, model).run("run", AgentSettings("test-key"), "run")
+    val persisted = AgentConversationStore(context, fileName).load().transcript.single()
+    val detail = com.sextant.app.agent.ledgerDetailsFrom(AgentTranscriptCodec.decode(persisted)).single()
+    assertEquals(1800L, detail.totalCents)
+    assertEquals(1, detail.count)
+    assertEquals(listOf("tx-coffee"), repository.detailTransactions(detail).map { it.transaction.id })
+  }
+
   @Test fun orphanDraftIsReplacedWhenInterruptedToolHasNoSavedResult() = runBlocking {
     val store = AgentConversationStore(context, fileName)
     begin(store, "run")

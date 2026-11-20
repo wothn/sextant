@@ -3,6 +3,7 @@ package com.sextant.app
 import com.sextant.app.data.AgentDraft
 import com.sextant.app.data.AgentMessage
 import com.sextant.app.ui.screens.agentDraftsByMessage
+import com.sextant.app.ui.screens.agentVisibleMessages
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -11,7 +12,7 @@ class AgentChatTimelineTest {
   private fun draft(id: String, run: String, status: String = "pending") =
     AgentDraft(id, run, "update", "transaction-$id", status = status)
 
-  @Test fun oldCardsStayBeforeLaterTurnsAndReceipts() {
+  @Test fun confirmedCardStaysWithItsReplyWithoutAnExtraReceipt() {
     val first = draft("first", "run-1", "applied")
     val second = draft("second", "run-2")
     val messages = listOf(
@@ -21,9 +22,10 @@ class AgentChatTimelineTest {
       AgentMessage("user-2", "user", "再记一笔", "run-2"),
       AgentMessage("answer-2", "assistant", "请确认", "run-2"),
     )
-    val cards = agentDraftsByMessage(messages, listOf(first, second))
-    val timeline = messages.flatMap { message -> listOf(message.id) + cards[message.id].orEmpty().map { it.id } }
-    assertEquals(listOf("user-1", "answer-1", "first", "receipt", "user-2", "answer-2", "second"), timeline)
+    val visible = agentVisibleMessages(messages)
+    val cards = agentDraftsByMessage(visible, listOf(first, second))
+    val timeline = visible.flatMap { message -> listOf(message.id) + cards[message.id].orEmpty().map { it.id } }
+    assertEquals(listOf("user-1", "answer-1", "first", "user-2", "answer-2", "second"), timeline)
   }
 
   @Test fun runningAndUndoCardsStayWithTheirRunInDraftOrder() {

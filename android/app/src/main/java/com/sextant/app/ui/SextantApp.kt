@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -79,7 +78,7 @@ import com.sextant.app.ui.navigation.rememberQuickEntryFabState
 import com.sextant.app.ui.screens.AnalyticsScreen
 import com.sextant.app.ui.screens.HomeScreen
 import com.sextant.app.ui.screens.LedgerCalendarScreen
-import androidx.activity.compose.BackHandler
+import com.sextant.app.ui.screens.AgentChatScreen
 import com.sextant.app.ui.screens.PlansScreen
 import com.sextant.app.ui.screens.SettingsScreen
 import com.sextant.app.ui.theme.SextantColors
@@ -109,11 +108,10 @@ fun SextantApp(
   val updateCoordinator = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.sextant.app.SextantApplication).updateCoordinator
   com.sextant.app.ui.components.AppUpdateDialog(updateCoordinator)
   var tab by rememberSaveable { mutableStateOf(Tab.Home) }
-  LaunchedEffect(openAgent) {
-    if (openAgent) { tab = Tab.Chat; onAgentRequestConsumed() }
-  }
+  var showAgent by rememberSaveable { mutableStateOf(false) }
   var showCalendar by rememberSaveable { mutableStateOf(false) }
-  val calendarOpen = tab == Tab.Home && showCalendar
+  val calendarOpen = tab == Tab.Home && showCalendar && !showAgent
+  SextantPredictiveBackHandler(enabled = showAgent) { showAgent = false }
   SextantPredictiveBackHandler(enabled = calendarOpen) { showCalendar = false }
   var showQuickEntry by rememberSaveable { mutableStateOf(false) }
   var editingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -135,7 +133,6 @@ fun SextantApp(
   val projection = when (tab) {
     Tab.Discover -> StateProjection.Plans
     Tab.Settings -> StateProjection.Settings
-    Tab.Chat -> StateProjection.Settings
     Tab.Analytics -> StateProjection.Analytics
     else -> StateProjection.Ledger
   }
@@ -198,12 +195,14 @@ fun SextantApp(
       filter = LedgerFilter.forMonth(item.transaction.transactionDate)
       tab = Tab.Home
       showCalendar = false
+      showAgent = false
       editingId = id
     }
     onEditRequestConsumed()
   }
   LaunchedEffect(widgetDestination) {
     val destination = widgetDestination ?: return@LaunchedEffect
+    showAgent = false
     showCalendar = false
     showQuickEntry = false
     editingId = null
@@ -238,11 +237,19 @@ fun SextantApp(
   }
 
   val useRail = LocalConfiguration.current.screenWidthDp >= 600 && !calendarOpen
-  val chatKeyboardOpen = tab == Tab.Chat && WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+  LaunchedEffect(openAgent) {
+    if (openAgent) {
+      showQuickEntry = false
+      editingId = null
+      pendingDelete = null
+      showAgent = true
+      onAgentRequestConsumed()
+    }
+  }
   Scaffold(
     snackbarHost = { SnackbarHost(snackbarHostState) },
     bottomBar = {
-      if (!calendarOpen && !useRail && !chatKeyboardOpen) LedgerBottomBar(
+      if (!calendarOpen && !useRail && !showAgent) LedgerBottomBar(
         selectedTab = tab,
         onTabSelected = { tab = it },
       )
@@ -259,11 +266,22 @@ fun SextantApp(
       LocalBottomBarInset provides barInset,
       LocalSnackbarHostState provides snackbarHostState,
     ) {
+      if (showAgent) {
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
+          pageStates.SaveableStateProvider("agent") {
+            AgentChatScreen(
+              (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.sextant.app.SextantApplication).agentCoordinator,
+              repository,
+              onBack = { showAgent = false },
+            )
+          }
+        }
+        return@CompositionLocalProvider
+      }
       Row(
         Modifier
           .padding(top = padding.calculateTopPadding(), bottom = navBarInset)
           .consumeWindowInsets(PaddingValues(top = padding.calculateTopPadding(), bottom = navBarInset))
-          .then(if (tab == Tab.Chat) Modifier.imePadding() else Modifier)
           .fillMaxSize()
           // FAB 的滚动收起挂在内容区最外层：页面里的任何列表滚动都会经过这里，
           // 只读方向、不消费位移，所以页面的滚动行为不受影响。
@@ -286,7 +304,6 @@ fun SextantApp(
               Tab.Analytics -> StateProjection.Analytics
               Tab.Discover -> StateProjection.Plans
               Tab.Settings -> StateProjection.Settings
-              Tab.Chat -> StateProjection.Settings
             },
             if (pageTab == Tab.Analytics) analysisPeriod else AnalysisPeriod.Month,
           )
@@ -320,6 +337,7 @@ fun SextantApp(
                         filter = filter,
                         onFilterChanged = { filter = it },
                         onTransactionClick = { saveAction.dismissError(); editingId = it.transaction.id },
+                        onOpenAgent = { showAgent = true },
                         onOpenCalendar = { showCalendar = true },
                         onCreateEntry = { saveAction.dismissError(); showQuickEntry = true },
                       )
@@ -344,10 +362,6 @@ fun SextantApp(
                     onThemePreferenceChanged = { preference ->
                       themeSaveAction.launch { repository.setThemePreference(preference) }
                     },
-                  )
-                  Tab.Chat -> com.sextant.app.ui.screens.AgentChatScreen(
-                    (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.sextant.app.SextantApplication).agentCoordinator,
-                    repository,
                   )
                 }
               }
