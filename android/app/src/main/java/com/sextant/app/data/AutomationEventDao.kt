@@ -59,6 +59,17 @@ internal interface AutomationEventDao {
   @Query("SELECT * FROM automation_events WHERE sourcePackage = :sourcePackage AND postedAt BETWEEN :start AND :end AND parsedSummary = :summary AND id != :eventId AND status IN ('posted', 'undone') ORDER BY postedAt DESC")
   suspend fun findNearby(sourcePackage: String, start: Long, end: Long, summary: String, eventId: String): List<AutomationEventEntity>
 
+  @Query(
+    """
+    SELECT * FROM automation_events
+    WHERE sourcePackage = :sourcePackage AND postedAt BETWEEN :start AND :end
+      AND status = 'captured' AND notificationKey LIKE 'payment-page:%'
+      AND encryptedPayload IS NOT NULL AND payloadIv IS NOT NULL
+    ORDER BY createdAt ASC
+    """,
+  )
+  suspend fun findNearbyPendingPages(sourcePackage: String, start: Long, end: Long): List<AutomationEventEntity>
+
   @Query("SELECT EXISTS(SELECT 1 FROM automation_events WHERE transactionId = :transactionId AND status = 'duplicate' AND ((:isPage AND notificationKey LIKE :pattern) OR (NOT :isPage AND notificationKey NOT LIKE 'payment-page:%')))")
   suspend fun hasMergedChannel(transactionId: String?, pattern: String, isPage: Boolean): Boolean
 

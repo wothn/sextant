@@ -101,6 +101,13 @@ internal class AutomationStore(private val database: SextantDatabase) {
   suspend fun getEvent(id: String): StoredAutomationEvent? =
     database.automationEventDao().findById(id)?.toStoredEvent()
 
+  suspend fun findNearbyPendingPages(notification: StoredAutomationEvent): List<StoredAutomationEvent> =
+    database.automationEventDao().findNearbyPendingPages(
+      notification.sourcePackage,
+      notification.postedAt - PAYMENT_MATCH_WINDOW_MILLIS,
+      notification.postedAt + PAYMENT_MATCH_WINDOW_MILLIS,
+    ).map { it.toStoredEvent() }
+
   suspend fun markFailed(id: String, failureCode: String, clearPayload: Boolean = false) {
     updateEvent(id, AutomationEventStatus.Failed, failureCode = failureCode, clearPayload = clearPayload)
   }
@@ -130,6 +137,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
     sourcePackage: String,
     candidate: ParsedTransactionCandidate,
     originalNotificationTime: Long? = null,
+    expectedTransactionId: String? = null,
   ): PostedTransaction? = database.withTransaction {
     val events = database.automationEventDao()
     val now = System.currentTimeMillis()
@@ -153,7 +161,8 @@ internal class AutomationStore(private val database: SextantDatabase) {
     } else null
     val identityMatch = referenceMatch ?: notificationMatch
     val matches = if (identityMatch != null) listOf(identityMatch) else {
-      events.findNearby(sourcePackage, candidate.occurredAt - 90_000, candidate.occurredAt + 90_000, summary, eventId)
+      events.findNearby(sourcePackage, candidate.occurredAt - PAYMENT_MATCH_WINDOW_MILLIS,
+        candidate.occurredAt + PAYMENT_MATCH_WINDOW_MILLIS, summary, eventId)
         .filter { previous ->
           val previousPage = previous.notificationKey.startsWith("payment-page:")
           if (candidate.enrichmentOnly && (previousPage || previous.status != AutomationEventStatus.Posted)) return@filter false
@@ -168,6 +177,11 @@ internal class AutomationStore(private val database: SextantDatabase) {
             (isPage && row != null && (row.description == candidate.description ||
               row.description.isBlank() || candidate.description.isBlank())))
         }
+    }
+    // A notification-triggered pass only acts on a page that uniquely matches that transaction.
+    // Leave unresolved pages to their scheduled worker.
+    if (expectedTransactionId != null && matches.singleOrNull()?.transactionId != expectedTransactionId) {
+      return@withTransaction null
     }
     if (candidate.enrichmentOnly && matches.isEmpty()) {
       // Page and notification workers can run in either order. Keep the encrypted card
@@ -347,6 +361,7 @@ internal class AutomationStore(private val database: SextantDatabase) {
     const val KEY_ALIPAY = "automation_alipay_enabled"
     const val KEY_RESULT_NOTIFICATIONS = "automation_result_notifications_enabled"
     const val KEY_PAYMENT_PAGE = "automation_payment_page_enabled"
+    const val PAYMENT_MATCH_WINDOW_MILLIS = 90_000L
     const val RAW_RETENTION_MILLIS = 7L * 24 * 60 * 60 * 1000
     const val AUDIT_RETENTION_MILLIS = 90L * 24 * 60 * 60 * 1000
   }

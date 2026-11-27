@@ -9,6 +9,7 @@ import com.sextant.app.data.AutomationEventStatus
 import com.sextant.app.data.AutomationDiagnostics
 import com.sextant.app.data.PostedTransaction
 import com.sextant.app.data.SextantRepository
+import com.sextant.app.data.StoredAutomationEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -89,14 +90,17 @@ class AutomationCoordinator(
     repository.notifyChanged()
   }
 
-  internal suspend fun processLocal(eventId: String): ProcessingResult {
+  internal suspend fun processLocal(
+    eventId: String,
+    decrypt: (EncryptedValue?) -> CapturedNotification? = ::decryptNotification,
+  ): ProcessingResult {
     repository.automationDiagnostics.record("worker", "process", "process_started", traceId = eventId)
     val stored = repository.automationStore.getEvent(eventId) ?: return ProcessingResult.Failure
     if (stored.status != AutomationEventStatus.Captured) {
       repository.automationDiagnostics.record("worker", "process", "already_processed", stored.sourcePackage, eventId)
       return ProcessingResult.Success
     }
-    val notification = decryptNotification(stored.encrypted) ?: run {
+    val notification = decrypt(stored.encrypted) ?: run {
       repository.automationStore.markFailed(eventId, "payload_unavailable", clearPayload = true)
       repository.automationDiagnostics.record("worker", "process", "payload_unavailable", stored.sourcePackage, eventId)
       repository.notifyChanged()
@@ -131,12 +135,46 @@ class AutomationCoordinator(
         if (outcome.candidate.enrichmentOnly && result?.status == AutomationEventStatus.Captured) {
           return ProcessingResult.Retry
         }
-        noteCapture(notification, "post", result?.failureCode ?: result?.status?.name?.lowercase() ?: "event_missing",
-          eventId, outcome.candidate, includeContent = true, transactionId = result?.transactionId)
-        onPosted(posted)
+        notePost(notification, eventId, outcome.candidate, result)
+        val finalPosted = if (posted != null && result?.status == AutomationEventStatus.Posted &&
+          notification.pageCandidate == null && settings.paymentPageEnabled) {
+          enrichFromPendingPages(stored, posted, decrypt)
+        } else posted
+        onPosted(finalPosted)
         ProcessingResult.Success
       }
     }
+  }
+
+  private suspend fun enrichFromPendingPages(
+    notification: StoredAutomationEvent,
+    posted: PostedTransaction,
+    decrypt: (EncryptedValue?) -> CapturedNotification?,
+  ): PostedTransaction {
+    val store = repository.automationStore
+    var latest = posted
+    for (event in store.findNearbyPendingPages(notification)) {
+      val page = decrypt(event.encrypted) ?: continue
+      val candidate = page.pageCandidate?.takeIf { it.enrichmentOnly } ?: continue
+      val updated = store.postCandidate(event.id, event.sourcePackage, candidate, expectedTransactionId = posted.id)
+      val result = store.getEvent(event.id)
+      if (result != null && result.status != AutomationEventStatus.Captured) {
+        notePost(page, event.id, candidate, result)
+      }
+      // The result notification must use the timestamp after enrichment so Undo remains valid.
+      if (updated != null) latest = updated
+    }
+    return latest
+  }
+
+  private suspend fun notePost(
+    notification: CapturedNotification,
+    eventId: String,
+    candidate: ParsedTransactionCandidate,
+    result: StoredAutomationEvent?,
+  ) {
+    noteCapture(notification, "post", result?.failureCode ?: result?.status?.name?.lowercase() ?: "event_missing",
+      eventId, candidate, includeContent = true, transactionId = result?.transactionId)
   }
 
   suspend fun undo(transactionId: String, expectedUpdatedAt: Long?): Boolean {
