@@ -109,6 +109,19 @@ class PaymentPageParserTest {
     }
   }
 
+  @Test fun alipaySuccessWithTransactionMethodReadsMerchantFromDiagnostics() {
+    val page = listOf("支付成功￥100.00", "支付成功", "100.00", "示例交通服务", "￥100.00",
+      "交易方式", "余额宝(转出资金付款)", "完成", "回首页")
+    val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE, page, now)!!
+    assertEquals("示例交通服务", candidate.merchant)
+    assertEquals(10_000L, candidate.amountCents)
+    assertEquals(TransactionType.Expense, candidate.direction)
+    assertTrue(candidate.hasFinalPageTotal)
+    assertNull(PaymentPageParser.parse(WECHAT_PACKAGE, page, now))
+    assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, page - "完成", now))
+    assertNull(PaymentPageParser.parse(ALIPAY_PACKAGE, page.map { if (it == "￥100.00") "￥99.00" else it }, now))
+  }
+
   @Test fun alipaySplitCurrencyTotalOverridesOriginalPriceAndDiscountFromDiagnostics() {
     val candidate = PaymentPageParser.parse(ALIPAY_PACKAGE, alipaySplitSuccess, now)!!
     assertEquals(1792L, candidate.amountCents)

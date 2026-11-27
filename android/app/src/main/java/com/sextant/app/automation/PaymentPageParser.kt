@@ -143,8 +143,6 @@ object PaymentPageParser {
   private data class ResultHeader(val merchant: String, val amountText: String, val splitAmount: Boolean = false)
 
   private fun resultHeader(sourcePackage: String, lines: List<String>): ResultHeader? {
-    if (lines.first() != "支付成功") return null
-    val header = lines.dropWhile { it == "支付成功" }.dropWhile { it == "回首页" }
     fun merchant(value: String) = validMerchant(value, allowSingleCharacter = sourcePackage == WECHAT_PACKAGE) &&
       excludedKinds.none(value::startsWith)
     if (sourcePackage == WECHAT_PACKAGE) {
@@ -153,6 +151,20 @@ object PaymentPageParser {
       // These controls identify Alipay's compact result card, including the variant without
       // payment fields. Do not apply its amount-first layout to arbitrary success text.
       if ("完成" !in lines || lines.none { it == "回首页" || it == "使用说明" }) return null
+      val spokenTotal = alipaySuccessAmount.matchEntire(lines.first())?.groupValues?.get(1)
+      // This layout exposes the same total in the parent description and both amount nodes.
+      if (spokenTotal != null && lines.size >= 6 && lines[1] == "支付成功" && lines[5] == "交易方式" &&
+        unsignedAmount.matches(lines[2]) && merchant(lines[3]) && wechatResultAmount.matches(lines[4])) {
+        val cents = parseAmountCents(amount.matchEntire(spokenTotal)!!.groupValues[2])
+        if (cents != null && cents == parseAmountCents(lines[2]) &&
+          cents == parseAmountCents(amount.matchEntire(lines[4])!!.groupValues[2])) {
+          return ResultHeader(lines[3], spokenTotal)
+        }
+      }
+    }
+    if (lines.first() != "支付成功") return null
+    val header = lines.dropWhile { it == "支付成功" }.dropWhile { it == "回首页" }
+    if (sourcePackage == ALIPAY_PACKAGE) {
       if (header.size >= 3 && header[0] == "¥" &&
         unsignedAmount.matches(header[1]) && merchant(header[2])) {
         return ResultHeader(header[2], "¥${header[1]}", splitAmount = true)
@@ -220,7 +232,7 @@ object PaymentPageParser {
   private val paymentFields = listOf("付款方式", "支付方式", "收款方", "商户全称", "商户名称", "收款人")
   private val allLabels = (paymentFields + listOf(
     "商户", "商品", "实付金额", "实付款", "支付金额", "付款金额", "付款时间", "支付时间", "交易时间", "创建时间",
-    "转账时间", "交易单号", "交易号", "订单号", "转账单号", "商品说明",
+    "转账时间", "交易单号", "交易号", "订单号", "转账单号", "商品说明", "交易方式",
     // 详情卡里紧挨着金额的字段名和分组标题；它们不是商户，也不能当作别的字段的值。
     "当前状态", "收单机构", "商户简称", "商户单号", "交易服务", "收款方备注",
   )).toSet()

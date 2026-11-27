@@ -48,6 +48,28 @@ class PaymentPageScanTest {
     assertFalse(guard.isRepeated(window, "merchant|550", 91001))
   }
 
+  @Test fun wechatClaimUpdateInTheSameWindowIsRepeatedAfterTheNormalWindowExpires() {
+    val guard = PaymentPageRepeatGuard()
+    val window = WECHAT_PACKAGE to 384
+    val initial = listOf("支付成功", "示例零食店", "￥5.00", "摇一摇，有优惠", "完成")
+    val updated = listOf("支付成功", "示例零食店", "￥5.00", "摇一摇有优惠", "点击领取优惠", "领取", "完成")
+    val shake = wechatPaymentPromotion(initial)
+    val claim = wechatPaymentPromotion(updated)
+    assertEquals(WechatPaymentPromotion.Shake, shake)
+    assertEquals(WechatPaymentPromotion.Claim, claim)
+    val identity = "merchant|500"
+    guard.record(window, identity, 0, shake)
+
+    // The promotion rules were displayed in another window before returning to the result.
+    assertFalse(guard.isRepeated(WECHAT_PACKAGE to 390, identity, 80_000, claim))
+    assertTrue(guard.isRepeated(window, identity, 114_010, claim))
+    assertFalse(guard.isRepeated(window, "merchant|600", 114_010, claim))
+    assertFalse(guard.isRepeated(window, identity, 114_010, shake))
+
+    guard.onWechatCheckout(window)
+    assertFalse(guard.isRepeated(window, identity, 115_000, claim))
+  }
+
   // Current device nodes: merchant and closing action are content descriptions in a mini-program.
   private val completedPage = listOf("支付成功", "示例交通服务", "￥20.00", "摇一摇，有优惠", "返回商家")
   private val observedAt = 1_791_817_200_000L

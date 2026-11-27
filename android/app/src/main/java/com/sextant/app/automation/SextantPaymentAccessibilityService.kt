@@ -51,7 +51,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
       // Content events must not keep restarting the delay while the page is loading.
       return
     }
-    val scanSession = session
+    var scanSession = session
     val eventDetails = mapOf("windowId" to event.windowId.toString(), "eventType" to event.eventType.toString(),
       "windowClass" to event.className?.toString().orEmpty())
     scanJob = serviceScope.launch {
@@ -73,6 +73,8 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           result = "automation_disabled"
           return@launch
         }
+        var promotion: WechatPaymentPromotion? = null
+        var sawCheckout = false
         val candidate = awaitPaymentPageCandidate(pause = { delay(it) }, settle = packageName == ALIPAY_PACKAGE) {
           val root = rootInActiveWindow ?: run {
             reasons.add("root_unavailable")
@@ -96,6 +98,16 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           }
           val inspection = alipayPaymentContext.inspect(packageName, window.second, texts.text,
             System.currentTimeMillis(), SystemClock.elapsedRealtime())
+          if (packageName == WECHAT_PACKAGE) {
+            promotion = inspection.candidate?.let { wechatPaymentPromotion(texts.text) }
+            if (!sawCheckout && inspection.candidate == null && texts.text.any { it in wechatCheckoutActions }) {
+              sawCheckout = true
+              recentPages.onWechatCheckout(window)
+              lastPage = null
+              scanSession = UUID.randomUUID().toString()
+              session = scanSession
+            }
+          }
           reasons.add(inspection.reason)
           val attempt = reasons.size
           scanDetails["attempt$attempt.reason"] = inspection.reason
@@ -111,7 +123,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           return@launch
         }
         val identity = "$packageName|${candidate.providerReference}|${candidate.amountCents}|${candidate.description}|${candidate.occurredAt.takeIf { candidate.hasExactTime }}"
-        if (identity == lastPage || recentPages.isRepeated(window, identity, SystemClock.elapsedRealtime())) {
+        if (identity == lastPage || recentPages.isRepeated(window, identity, SystemClock.elapsedRealtime(), promotion)) {
           result = "page_repeated"
           return@launch
         }
@@ -119,7 +131,7 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           app.automationCoordinator.receivePaymentPage(packageName, scanSession, candidate)
         }
         lastPage = identity
-        recentPages.record(window, identity, SystemClock.elapsedRealtime())
+        recentPages.record(window, identity, SystemClock.elapsedRealtime(), promotion)
         result = "parsed"
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -134,8 +146,9 @@ class SextantPaymentAccessibilityService : AccessibilityService() {
           "reasons" to reasons.joinToString(",")) + scanDetails +
           (errorType?.let { mapOf("errorType" to it) } ?: emptyMap())
         val finalResult = result
+        val traceId = scanSession
         app.applicationScope.launch {
-          diagnostics.record("page", "scan", finalResult, packageName, scanSession, details,
+          diagnostics.record("page", "scan", finalResult, packageName, traceId, details,
             content = { scanContent.toList() })
         }
       }
@@ -174,16 +187,51 @@ internal suspend inline fun awaitPaymentPageCandidate(
   return null
 }
 
+private val wechatCheckoutActions = setOf("确认付款", "立即付款", "确认支付", "立即支付", "请输入支付密码")
+
+internal enum class WechatPaymentPromotion { Shake, Claim }
+
+internal fun wechatPaymentPromotion(text: List<String>): WechatPaymentPromotion? {
+  if (text.none { it == "摇一摇，有优惠" || it == "摇一摇,有优惠" || it == "摇一摇有优惠" }) return null
+  return if ("点击领取优惠" in text) WechatPaymentPromotion.Claim else WechatPaymentPromotion.Shake
+}
+
 /** Keep repeats stable when a temporary overlay changes the active window. */
 internal class PaymentPageRepeatGuard {
   private val pages = mutableMapOf<Pair<String, Int>, Pair<String, Long>>()
-  fun isRepeated(window: Pair<String, Int>, identity: String, elapsed: Long): Boolean {
+  private var wechatOfferPage: Pair<Int, String>? = null
+
+  fun isRepeated(
+    window: Pair<String, Int>,
+    identity: String,
+    elapsed: Long,
+    promotion: WechatPaymentPromotion? = null,
+  ): Boolean {
     pages.entries.removeAll { elapsed - it.value.second !in 0..90_000L }
-    return pages[window]?.first == identity
+    return pages[window]?.first == identity ||
+      (window.first == WECHAT_PACKAGE && window.second >= 0 && promotion == WechatPaymentPromotion.Claim &&
+        wechatOfferPage == (window.second to identity))
   }
-  fun record(window: Pair<String, Int>, identity: String, elapsed: Long) {
+
+  fun record(
+    window: Pair<String, Int>,
+    identity: String,
+    elapsed: Long,
+    promotion: WechatPaymentPromotion? = null,
+  ) {
     isRepeated(window, identity, elapsed)
     pages[window] = identity to elapsed
+    if (window.first == WECHAT_PACKAGE) {
+      wechatOfferPage = if (window.second >= 0 && promotion == WechatPaymentPromotion.Shake) {
+        window.second to identity
+      } else null
+    }
+  }
+
+  fun onWechatCheckout(window: Pair<String, Int>) {
+    wechatOfferPage?.let { pages.remove(WECHAT_PACKAGE to it.first) }
+    wechatOfferPage = null
+    pages.remove(window)
   }
 }
 
